@@ -1,3 +1,8 @@
 * change c code to c++
 * make parse_flags generic
 * use namespace cwputils
+* change calls to usage() to throws and catch in main()
+* move parse_flags to main()
+* fix man page:
+  - autoformat middle in Makefile
+  - manually format head and foot
