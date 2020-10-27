@@ -1,5 +1,5 @@
 PROG    = env2
-LIBOBJ0 = vars5.o
+LIBOBJ0 = vars2.o
 LIBOBJ1 = libenv2.o
 LIBOBJ2 = libdumpargs.o
 LIBOBJ3 = parse_flags.o

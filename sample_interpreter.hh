@@ -15,7 +15,7 @@ extern int my_parse_flags(char *flags_str) ;
 
 #include <bits/stdc++.h>
 typedef std::map<std::string, std::string> hash_t;
-extern hash_t add_args;                       // Set in vars5()
+extern hash_t add_args;                       // Set in vars2()
 extern hash_t flags;                          // Place for flags
 
 // Global vars

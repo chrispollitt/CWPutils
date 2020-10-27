@@ -294,7 +294,7 @@ void env2 (int *argcp, char ***argvp) {
   // prep conf args ////////////////////////////////////////////////////////////
   eargc = nargc-nstart;
   if(!flags["norc"].length()) {
-    vars5();
+    vars2();
     interpreter_base = basename(nargv[int_loc]);
     if(Debug) fprintf(stderr, "Debug: interpreter_base: %s\n", interpreter_base.c_str());
     if(add_args.find(interpreter_base) != add_args.end()) {
