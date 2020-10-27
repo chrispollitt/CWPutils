@@ -1,0 +1,23 @@
+./env2 error: No interpreter found
+Usage:                                                                  
+  #!./env2 [flags] <interpreter> [<interpreter_args>]                     
+  #!./env2 [flags] -f <interpreter> [<interpreter_args>] ~~ <script_args> 
+Where [flags] are one or more of:                                       
+  -c     : comments mode                                                
+  -d     : debug mode                                                   
+  -e     : emit (dump) mode                                             
+  -f[=S] : find (delim) mode using opt string S (S=~~ if not specified) 
+  -n     : no rc file                                                   
+  -p     : preserve empty args                                          
+  -s     : strip backslashes                                            
+  -x     : expand standard backslash-escaped characters                 
+  -h     : this help                                                    
+Notes:                                                                  
+  * flags can be combined in one string                                 
+  * all flags are off by default                                        
+  * if using debug flag, best to put it first                           
+  * if using find flag, best to put it last                             
+Examples:                                                               
+  #!./env2 -s -n perl -w                                                  
+  #!./env2 bash -x -v                                                     
+  #!./env2 -def=@@ python @@ -sf                                          

@@ -1,0 +1,20 @@
+Debug: Debug mode activated
+Debug: setenv: FOO="BABBLE" 'MUTTER'
+Debug: add_args: perl=-w -I"/foo bar"
+Debug: add_args: bash=-x
+Debug: add_args: sh=-x -v
+Debug: setenv: BOO=BABBLE MUTTER
+Debug: setenv: BAR=
+Debug: unsetenv: BAZ
+Debug: add_args: boo=-s
+Debug: add_args: bar=
+Debug: set_args: baz=-le
+Debug: interpreter_base: bash
+Debug: adding cfg interprter arg: -x
+Debug: hashbang=-d bash -c
+Debug: argv[0]='bash'
+Debug: argv[1]='-x'
+Debug: argv[2]='-c'
+Debug: argv[3]='echo "Hi from 5"'
++ echo 'Hi from 5'
+Hi from 5

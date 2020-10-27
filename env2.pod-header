@@ -1,0 +1,18 @@
+=head1 NAME
+
+'''env2''' - run a program in a modified environment
+
+=head1 SYNOPSIS
+
+    #!/usr/bin/env2 [flags] <interpreter> [<interpreter_args>]
+    #!/usr/bin/env2 [flags] -f <interpreter> [<interpreter_args>] ~~ <script_args>
+
+=head1 DESCRIPTION
+
+'''env2''' can serve as a replacement for env(1). It has many nice features.
+This program will (among many other things) split
+out the interpreter_args string into seperate args before calling exec().
+See the "A BIT OF HISTORY" section for more on why this is necessary.
+
+=head1 OPTIONS
+

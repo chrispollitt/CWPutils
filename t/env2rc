@@ -1,0 +1,40 @@
+#=======Env Vars========
+
+# This is awkward but standard
+FOO="\"BABBLE\" 'MUTTER'"
+
+# This is OK too (more awkward)
+#FOO=\"BABBLE\" \'MUTTER\'
+
+# Don't do this (Even though it works)
+#FOO="BABBLE" 'MUTTER'
+
+# Don't do this either (Even though it also works)
+#FOO=\"BABBLE" "MUTTER"
+
+# Don't do this ever (It will not work)
+#FOO="BABBLE" "MUTTER"
+
+# This is fine
+#FOO=BABBLE MUTTER
+
+#=====Int Args==========
+
+perl:-w -I"/foo bar"
+
+bash:-x
+sh:-x -v
+
+#=======Env Vars========
+
+# This is awkward but standard
+BOO=BABBLE MUTTER
+BAR=
+BAZ!
+
+#=====Int Args==========
+
+boo: -s
+bar:
+baz; -le
+
