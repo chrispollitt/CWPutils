@@ -30,3 +30,14 @@
 *.exe
 *.out
 *.app
+
+# Local stuff
+env2.man
+env2.pod
+t/out0
+t/out1
+t/out2
+t/out3
+t/out4
+t/out5
+t/out6
