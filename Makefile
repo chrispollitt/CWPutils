@@ -40,7 +40,7 @@ $(SAMPLE): $(SAMPLE).o $(LIBOBJ0) $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3)
 	$(CXX) -o $@ $^
 
 clean:
-	-rm -f *.o $(PROG) $(PROG).pod $(PROG).man $(PROG).exe *~
+	-rm -f *.o $(PROG) $(PROG).pod $(PROG).man $(SAMPLE) *.exe *~
 	-rm -f t/out?
 
 install: build
