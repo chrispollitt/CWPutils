@@ -1,8 +1,16 @@
+* change nargv[MAX_STR_CONST][MAX_STR_CONST] to **nargv
+* add a merge_arrays() function
+   - specify insertion point
+   - insert at or overwrite at insertion point 
 * change c code to c++
-* make parse_flags generic
+* move parse_flags() call to main() (and call parse_input beforehand?)
+* fix parse_flags
+   - make it generic
+   - replace with getopts_long
+   - replace with boost program_options
+   - other?
 * use namespace cwputils
 * change calls to usage() to throws and catch in main()
-* move parse_flags to main()
 * fix man page:
   - autoformat middle in Makefile
   - manually format head and foot
