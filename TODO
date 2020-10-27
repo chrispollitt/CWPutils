@@ -1,0 +1,3 @@
+* change c code to c++
+* make parse_flags generic
+* use namespace cwputils
