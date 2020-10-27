@@ -56,15 +56,16 @@
 
     If a configureation file is found ($HOME/.env2rc) then it is parsed as follows:
 
-    # These are environment variables    
-    VARIABLE1=value
-    VARIABLE2="value with spaces"
-    # These are program arguments
-    prog1:-flag1
-    prog2:-flag1 -arg2="val with spaces"
-
-    Here, environment variables are set with the '''var=val''' lines and additonal
-    interpreter arguments are supplied via the '''prog:arg''' lines.
+    # These are environment variables           - this is a comment line
+    VARIABLE1=foo                               - set VARIABLE1
+    VARIABLE2="with embedded spaces"            - set VARIABLE2 
+    VARIABLE3+additional                        - append to VARIABLE3
+    VARIABLE4!                                  - unset VARIABLE4
+                                                - blank lines are ignored
+    # These are program arguments               - another comment
+    prog1:-flag1                                - append flag to prog1
+    prog2:-flag1 -arg2="val with spaces"        - append flags to prog2
+    prog3;-opt1                                 - override flags with ones listed here
 
 =head1 A BIT OF HISTORY
 
@@ -98,7 +99,7 @@ In 2018, the GNU version on env(1) added the same flag.
 
 =head1 REPOSITORY
 
-    https://github.com/chrispollitt/LinuxApps
+    https://github.com/chrispollitt/CWPutils
 
 =head1 AUTHORS
 

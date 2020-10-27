@@ -26,7 +26,7 @@ void vars2() {
   char *conf_line = NULL; 
   size_t size = 0;
   int read;
-  regex cfg_re0( R"(^\s*(\w+)\s*([;:=!])\s*(.*)$)" );   // find a=b or a! OR a:b a;b
+  regex cfg_re0( R"(^\s*(\w+)\s*([;:=+!])\s*(.*)$)" );  // find a=b or a! OR a:b a;b
   regex cfg_re1( R"(\s+$)" );                           // trailing whitespace
   regex cfg_re2( R"(\\\\)" );                           // unescape backslash
   regex cfg_re3( R"(^['](.*)[']$)" );                   // remove enclosing ''
@@ -47,19 +47,24 @@ void vars2() {
     string conf_line_s = conf_line;
     conf_line_s = regex_replace(conf_line_s, cfg_re1, "");  // remove trailing whitespace
     if(regex_search(conf_line_s, cfg_matches, cfg_re0)) {   // look for a=b or a:b
-      string var = cfg_matches[1].str();
-      string sep = cfg_matches[2].str();
-      string val = cfg_matches[3].str();
+      string var  = cfg_matches[1].str();
+      string sep  = cfg_matches[2].str();
+      string val  = cfg_matches[3].str();
+      string oval = "";
       
       val = regex_replace(val, cfg_re2, "\\");              // unescape backslash
       // Set Environment Variable
-      if(sep == "=") {
+      if(sep == "=" || sep == "+") {
         if        (regex_search(val, cfg_re3)) {            // remove enclosing ''
         val =   regex_replace(val, cfg_re3, "$1");
         } else if (regex_search(val, cfg_re4)) {            // remove enclosing ""
         val =   regex_replace(val, cfg_re4, "$1");
         }
         val = regex_replace(val, cfg_re5, "$1");            // unescape ' and "
+	if(sep == "+") {
+	  oval = getenv(var.c_str());
+	  val += oval;
+	}
         if(Debug) fprintf(stderr, "Debug: setenv: %s=%s\n", var.c_str(), val.c_str());
         setenv(var.c_str(),val.c_str(),1);
       // Unset Environment Variable

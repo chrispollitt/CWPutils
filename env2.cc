@@ -39,7 +39,7 @@ hash_t flags;                  // Place for flags
 void usage(int ret) {
   if(ret==2) {
     printf(
-"env2 (CWP utils) version %s                                             \n"
+"env2 (CWPutils) version %s                                              \n"
 "Copyright (C) %s Universal Laughter                                     \n"
 "License GPLv3+: GNU GPL version 3 or later.                             \n"
 "This is free software: you are free to change and redistribute it.      \n"
