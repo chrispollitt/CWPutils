@@ -11,6 +11,8 @@
    - other?
 * use namespace cwputils
 * change calls to usage() to throws and catch in main()
+* add_args should not be a global var
+* flags doen't need to be global either
 * fix man page:
   - autoformat middle in Makefile
   - manually format head and foot
