@@ -1,0 +1,3 @@
+Convert enum elements to strings
+  https://stackoverflow.com/questions/5093460/how-to-convert-an-enum-type-variable-to-a-string
+

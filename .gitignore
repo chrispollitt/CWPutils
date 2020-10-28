@@ -34,6 +34,7 @@
 # Local stuff
 env2.man
 env2.pod
+dumpargs.man
 t/out0
 t/out1
 t/out2

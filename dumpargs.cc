@@ -103,7 +103,7 @@ int dumpargs(int argc, char **argv) {
   return(0);
 }
 
-#ifndef DUMPARGS_LIB
+#ifdef MAKE_EXE
 
 int main(int argc, char **argv) {
   dumpargs(argc, argv);
