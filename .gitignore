@@ -31,6 +31,12 @@
 *.out
 *.app
 
+# Backup files
+*~
+*.bak
+*.BAK
+BAK/*
+
 # Local stuff
 env2.man
 env2.pod

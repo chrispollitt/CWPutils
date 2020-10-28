@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
 
 
 // *************************************************************
-// * main2 - Call parse_input()
+// * main2 - Call split_string()
 // ************************************************************ 
 
 #include "env2lib.hh"
@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
   int i = 0;                                  
   int j = 0;
 
-  nargc = parse_input(argv[1], nargv);
+  nargc = split_string(argv[1], nargv);
   // copy from argv & nargv to eargv //////////////////////////////////////////
   eargv[j++] = argv[0];  
   for(i=0;i<nargc;i++) {

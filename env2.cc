@@ -52,12 +52,12 @@ hash_t flags;                  // Place for flags
 #define BACKSLASH     '\\'
 
 /****************************************************************
- * parse hashbang line
+ * split out string into array
  *   input:   input   // Input string
  *   output:  output  // Output string array
  *   return:  count   // Number of strings found
  **************************************************************/
-int parse_input(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
+int split_string(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
   char *input_ptr;    // Input string pointer
   char *output_ptr;   // Output string pointer
   int count=0;        // Number of strings found
@@ -231,7 +231,7 @@ void env2 (int *argcp, char ***argvp) {
   nstart = parse_flags(argv[1]);
 
   // split up argv[1] (from #! line) ///////////////////////////////////////////
-  nargc = parse_input(argv[1], nargv);
+  nargc = split_string(argv[1], nargv);
   
   // restore argv[1] if undocumented -O flag given /////////////////////////////
   if(flags["orig"].length()) {
@@ -311,7 +311,7 @@ void env2 (int *argcp, char ***argvp) {
     if(add_args.find(interpreter_base) != add_args.end()) {
       char *add_args_s = (char *)add_args[interpreter_base].c_str();
     
-      cargc = parse_input(add_args_s, cargv);
+      cargc = split_string(add_args_s, cargv);
       eargc += cargc;
     }
   }
