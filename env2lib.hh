@@ -1,4 +1,5 @@
 #include <bits/stdc++.h>
+#include <exception>
 
 #define MAX_STR_CONST 255
 
@@ -21,3 +22,18 @@ extern char *Argv0;                           // Name of program
 extern int   Debug;                           // Debug flag
 extern hash_t add_args;                       // Set in vars2()
 extern hash_t flags;                          // Place for flags
+
+// std::exception with a what() 
+class StdException: public std::exception {
+  public:
+    StdException (const char *m) noexcept {
+      message = m;
+    }
+    virtual const char* what() const throw() {
+      return message;
+    }
+
+  private:
+    const char *message;
+};
+

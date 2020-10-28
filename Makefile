@@ -12,9 +12,8 @@ SAMPLE  = sample_interpreter
 LIBOBJ0 = $(PROG1).o
 LIBOBJ1 = $(PROG2).o
 LIBOBJ2 = merge_arrays.o
-LIBOBJ3 = parse_flags.o
-LIBOBJ4 = vars2.o
-LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3) $(LIBOBJ4)
+LIBOBJ3 = vars2.o
+LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3)
 
 # Logical Targets ##################
 

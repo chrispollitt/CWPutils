@@ -9,5 +9,4 @@ int errno;
 
 // Local functions
 extern void usage(int ret);
-extern int parse_flags(char *flags_str) ;
 

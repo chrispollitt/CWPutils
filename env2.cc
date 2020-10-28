@@ -23,9 +23,6 @@
 #include "env2.hh"
 #endif
 
-extern void usage(int ret);               // xxx move to .hh
-extern int parse_flags(char *flags_str);  // xxx move to .hh
-
 using namespace std; 
 
 #ifdef MAKE_EXE
@@ -51,156 +48,11 @@ hash_t flags;                  // Place for flags
 #define DOUBLEQUOTE   '\"'
 #define BACKSLASH     '\\'
 
-/****************************************************************
- * split out string into array
- *   input:   input   // Input string
- *   output:  output  // Output string array
- *   return:  count   // Number of strings found
- **************************************************************/
-int split_string(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
-  char *input_ptr;    // Input string pointer
-  char *output_ptr;   // Output string pointer
-  int count=0;        // Number of strings found
-  int ccnt=0;         // Character count of current string
-  int in_sq=0;        // Inside single quote
-  int in_dq=0;        // Inside double quote
-  int in_bs=0;        // Inside backslash
-
-  /****************************************
-   * inline helper function to reduce duplicated code for quote parsing
-   ****************************************/
-  auto found_q = [&](int sq) {
-    // set in_q1 and in_q2 refs
-    int *in_q1 =  sq ? &in_sq : &in_dq;
-    int *in_q2 = !sq ? &in_sq : &in_dq;
-
-    // if not in quoted string
-    if(!*in_q2 && !in_bs) {
-      // if closed on empty string, add to array and move to next argv
-      if(*in_q1 && ccnt==0 && flags["pre"].length()) {
-        *output_ptr = ENDOFSTR;
-        output_ptr = output[++count];
-      }
-      // flip flag
-      *in_q1=1-*in_q1;
-    } else {
-      // add to string
-      *output_ptr++ = *input_ptr;
-      ccnt++;
-    }
-    // clear in_bs
-    in_bs=0;
-  };
-  /***********************************/
-
-  // init in and out pointers
-  input_ptr = input;
-  output_ptr = (char *)output;
-  // loop over input string
-  while(*input_ptr) {
-    // whitespace //////////////////////////////////////
-    if(
-      *input_ptr==SPACE   ||
-      *input_ptr==TAB     ||
-      *input_ptr==NEWLINE ||
-      *input_ptr==RETURN 
-    ) {
-      // not in single, double, or backslash
-      if(!in_sq && !in_dq && !in_bs) {
-        // and we have a string, term string and move to next argv
-        if(ccnt) {
-          *output_ptr = ENDOFSTR;
-          output_ptr = output[++count];
-          ccnt=0;
-        }
-        // discard unquoted whitespace
-      } 
-      // add to string
-      else {
-        *output_ptr++ = *input_ptr;
-        ccnt++;
-      }
-      in_bs=0;
-    }
-    // not whitespace or quote (regular character) //////////////////////
-    else if (
-      *input_ptr != SPACE       &&
-      *input_ptr != TAB         &&
-      *input_ptr != NEWLINE     &&
-      *input_ptr != RETURN      &&
-      *input_ptr != BACKSLASH   &&
-      *input_ptr != DOUBLEQUOTE &&
-      *input_ptr != SINGLEQUOTE
-    ) {
-      // comment
-      if(
-        (flags["cmt"].length())       && 
-        (*input_ptr     == COMMENT)   && 
-        (*(input_ptr-1) == SPACE)     &&
-        (*(input_ptr-2) != BACKSLASH) &&
-        !in_sq                        &&
-        !in_dq                        &&
-        ccnt == 0
-      ) {
-        *input_ptr = ENDOFSTR;
-        break;
-      // regular character
-      } else {
-        if(
-          flags["exp"].length() && 
-          in_bs                 &&
-          strchr("abefnrtv\\",*input_ptr)
-        ) {
-          char expa[] = "abefnrtv\\";
-          char expc[] = {7,8,27,12,10,13,9,11,92};
-          long pos = (strchr(expa,*input_ptr) - expa);
-
-          output_ptr--;
-          *output_ptr++ = expc[pos];
-        } else {
-          *output_ptr++ = *input_ptr;
-          ccnt++;
-        }
-      }
-      in_bs=0;
-    }
-    // single quote //////////////////////////////////
-    else if (*input_ptr==SINGLEQUOTE) {
-      found_q(1);
-    }
-    // double quote ///////////////////////////////////
-    else if (*input_ptr==DOUBLEQUOTE) {
-      found_q(0);
-    }
-    // back slash (escape char) ///////////////////////
-    else if (*input_ptr==BACKSLASH) {
-      in_bs=1-in_bs;
-      *output_ptr++ = *input_ptr;
-      ccnt++;
-    }
-    // move to next input char 
-    input_ptr++;
-  } // while
-  // catch final string ///////////////////////////
-  if(!in_sq && !in_dq && !in_bs) {
-    // and we have a string, term string and increase count
-    if(ccnt) {
-      *output_ptr = ENDOFSTR;
-      count++;
-    }
-  }
-  // dangling quote or escape /////////////////////
-  else if(ccnt) {
-    fprintf(stderr, "%s error: unmatched quote\n", Argv0);
-  }
-  // return number of strings found
-  return(count);
-}
 
 /****************************************************************
  * env2
  **************************************************************/
-void env2 (int *argcp, char ***argvp) {
+void env2 (int *argcp, char ***argvp, int nstart) {
   char **argv;                               // Orig argv
   int    argc;                               // size of argv
   char  nargv[MAX_STR_CONST][MAX_STR_CONST]; // New  argv (as array of arrays)
@@ -211,7 +63,6 @@ void env2 (int *argcp, char ***argvp) {
   int   eargc = 0;                           // size of eargv
   int i, j, k;                               // Loop counters
   int set;                                   // cnf args set or add
-  int nstart = 0;                            // nargv start element
   int int_loc = 0;                           // interpreter nargv location
   int scr_loc = 0;                           // script      nargv location
   string interpreter_base;                   // basename of interpreter
@@ -220,15 +71,13 @@ void env2 (int *argcp, char ***argvp) {
   argv = *argvp;                       // Orig argv
   argc = *argcp;                       // size of argv
 
-  // make sure we have the right number of args
+  // main() should check for this - make sure we have the right number of args
   if(argc == 1) {
-    fprintf(stderr, "%s error: No interpreter found\n", Argv0);
-    usage(1);
+    throw StdException("No interpreter found");
   }
 
-  // parse my flags 
+  // save hashbang
   strncpy(hashbang, argv[1], sizeof(hashbang)-1);
-  nstart = parse_flags(argv[1]);
 
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   nargc = split_string(argv[1], nargv);
@@ -265,8 +114,7 @@ void env2 (int *argcp, char ***argvp) {
   
   // check that we have an interpreter from #! /////////////////////////////////
   if(!flags["found"].length()) {
-    fprintf(stderr, "%s error: no interpreter found\n", argv[0]);
-    usage(1);
+    throw StdException("No interpreter found");
   }
   int_loc = nstart;
   
@@ -284,8 +132,7 @@ void env2 (int *argcp, char ***argvp) {
   
   // check that we have a script next //////////////////////////////////////////
   if(argc<3 || argv[2][0] == '-') {
-    fprintf(stderr, "%s error: no script found\n", argv[0]);
-    usage(1);
+    throw StdException("No script found");
   }
   
   // add script  ///////////////////////////////////////////////////////////////
@@ -365,6 +212,7 @@ void env2 (int *argcp, char ***argvp) {
   eargv[j] = NULL;
   
   // dump args /////////////////////////////////////////////////////////////////
+//  if(Debug) fprintf(stderr, "Debug: oargv[1]=%s\n", argv[1]);
   if(Debug) fprintf(stderr, "Debug: hashbang=%s\n", hashbang);
   if(Debug && !flags["dump"].length()) {
     for(i=0;i<j;i++) fprintf(stderr, "Debug: argv[%d]='%s'\n", i, eargv[i]);
@@ -383,9 +231,126 @@ void env2 (int *argcp, char ***argvp) {
   *argcp = eargc;
 }
 
-// #######################################################
+// #############################################################################
 
 #ifdef MAKE_EXE
+
+/**************************************************************
+ * parse_flags
+ **************************************************************/
+int parse_flags(char *flags_str) { // xxx change to all of argv after split_and_merge()
+  int nstart = 0;                            // nargv start element
+  int j = 0;
+
+  flags["cmt"]      = "";                     // comments 
+  flags["pre"]      = ""; 
+  flags["dump"]     = "";                     // Dump args flag
+  flags["sbs"]      = "";                     // Strip backslashes
+  flags["norc"]     = "";                     // Do not read rc file
+  flags["orig"]     = "";                     // Do NOT split argv[1] (undocumented)
+  flags["delim"]    = "";                     // Delimiter to sep interpreter args from script args
+  flags["exp"]      = "";                     // Expand  backslash-escaped characters
+  flags["found"]    = "";                     // found non flag 
+
+  // strip off args meant for me (from #! line) ////////////////////////////////
+  while(*flags_str != ENDOFSTR) {
+    j=1;
+    // options
+    if        (strcmp(flags_str,"--help")==STRCMP_TRUE) {
+      usage(0);
+    } else if (strcmp(flags_str,"--version")==STRCMP_TRUE) {
+      usage(2);
+    } else if (*flags_str == '-') {
+      while(*(flags_str+j) != ENDOFSTR && *(flags_str+j) != ' ') {
+        int b=0;
+        
+        // help
+        if     (*(flags_str+j) == 'h') {
+          usage(0);
+        }
+        // comment
+        else if(*(flags_str+j) == 'c') {
+          flags["cmt"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Comment mode activated\n");
+        }
+        // debug
+        else if(*(flags_str+j) == 'd') {
+          Debug = 1;
+          if(Debug) fprintf(stderr, "Debug: Debug mode activated\n");
+        }
+        // emit (dump)
+        else if(*(flags_str+j) == 'e' || *(flags_str+j) == 'D' ) {
+          flags["dump"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Dump mode activated\n");
+        }
+        // find (delim)
+        else if(*(flags_str+j) == 'f') {
+          if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
+            char delim[40];
+            long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
+            strncpy(delim, (char *)flags_str+j+2, l);
+            delim[l] = '\0';
+            flags["delim"] = delim;
+            j += l+2;
+            b=1;
+          } else {
+            flags["delim"] = (char *) "~~";
+          }
+          if(Debug) fprintf(stderr, "Debug: Delim mode activated with '%s'\n", flags["delim"].c_str());
+           // if delim spec'd, break as this delim string must term with a space
+          if (b) {
+            b=0;
+            break; // from inner while
+          }
+        }
+        // no rc file
+        else if(*(flags_str+j) == 'n' ) {
+          flags["norc"] = "1";
+          if(Debug) fprintf(stderr, "Debug: No rc file mode activated\n");
+        }
+        // preserve empty args
+        else if(*(flags_str+j) == 'p') {
+          flags["pre"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Perserve empty args mode activated\n");
+        }
+        // strip backslashes
+        else if(*(flags_str+j) == 's' ) {
+          flags["sbs"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
+        }
+        // keep original #! behaviour (why on earth!?)
+        else if(*(flags_str+j) == 'O' ) {
+          flags["orig"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Undocumented Orig mode activated (why!?)\n");
+        }
+        // expand backslash-escaped chars
+        else if(*(flags_str+j) == 'x' ) {
+          flags["exp"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Expand mode activated\n");
+        }
+        // illegal
+        else {
+          fprintf(stderr, "%s error: unrecognized flag %c\n", Argv0, *(flags_str+j));
+          usage(1);
+        }
+        j++;
+      } // while
+      // inc new start position
+      nstart++;
+    } // if -
+    // found a blank
+    else if(*(flags_str) == ' ') {
+      ; // do nothing
+    }
+    // found non-flag argument
+    else {
+      flags["found"] = "1";
+      break; // from outter while
+    }
+    flags_str += j;
+  } // while
+  return nstart;
+}
 
 /****************************************************************
  * print usage
@@ -440,14 +405,38 @@ void usage(int ret) {
  * main
  **************************************************************/
 int main(int argc, char **argv) {
-  int code;
+  // define local vars
+  int code, nstart;
 
+  // define global vars
   Argv0 = argv[0];
   Debug = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
 
-  env2(&argc, &argv);
+  // make sure we have the right number of args
+  if(argc == 1) {
+    fprintf(stderr, "%s error: No interpreter found\n", Argv0);
+    usage(1);
+  }
+ 
+  // Split argv[1] and merge back into argv
+  //split_and_merge(); // xxx
+  
+  // Parse out my flags
+  nstart = parse_flags(argv[1]); // xxx change to all of argv after split_and_merge()
+
+  // Call the main env2() function
+  try {
+    env2(&argc, &argv, nstart);
+  } catch (StdException &e) {
+    fprintf(stderr, "%s error: %s\n", Argv0, e.what());
+    usage(1);
+  }
+  
+  // Exec the interpreter
   code = execvp(argv[0], argv);
+  
+  // Oh dear, there was an error
   fprintf(stderr, "%s error: ", argv[0]);
   perror(argv[0]);
   return(code);

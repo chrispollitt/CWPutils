@@ -32,12 +32,18 @@ void usage(int ret) {
 }
 
 int main(int argc, char **argv) {
+  int nstart;
   int argc2 = 3;
   char **argv2 = (char **)calloc(4, sizeof(char *));
   char *argv1  = (char *)malloc(1024);
   int i = 0;
   int j = 0;
   
+  // set global vars
+  Argv0 = argv[0];
+  Debug = 0;
+  setvbuf(stdout, NULL, _IONBF, 0);
+
   snprintf(argv1, 1024, "%s %s %s",
     "-d",                      // flags to env2
     argv[0],                   // this prog name
@@ -49,7 +55,20 @@ int main(int argc, char **argv) {
   argv2[2] = (char *)argv[2];  // the script name
   argv2[3] = (char *)NULL;     // end of argv
 
-  env2((int *)&argc2, (char ***)&argv2);
+  /////////////////////////////////////
+
+  // Split argv[1] and merge back into argv
+  //split_and_merge();
+  
+  // Call the main env2() function
+  try {
+    env2(&argc, &argv, 1); // xxx
+  } catch (StdException &e) {
+    fprintf(stderr, "%s error: %s\n", Argv0, e.what());
+    usage(1);
+  }
+  
+  //////////////////////////////////
 
   for(i=0;i<argc2;i++) {
     printf("argv[%i]='%s'\n",j++,argv2[i]);
@@ -96,7 +115,14 @@ int main(int argc, char **argv) {
   int i = 0;                                  
   int j = 0;
 
+  // set global vars
+  Argv0 = argv[0];
+  Debug = 0;
+  setvbuf(stdout, NULL, _IONBF, 0);
+
+  // split_and_merge() xxx
   nargc = split_string(argv[1], nargv);
+  
   // copy from argv & nargv to eargv //////////////////////////////////////////
   eargv[j++] = argv[0];  
   for(i=0;i<nargc;i++) {
@@ -212,15 +238,25 @@ int my_parse_flags(char *flags_str) {
 
 // * main 3 ******************************************************
 int main(int argc, char **argv) {
-  int nstart;
+  // define local vars
+  int code, nstart;
 
+  // set global vars
   Argv0 = argv[0];
   Debug = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
 
-  nstart = my_parse_flags(argv[1]);
+  // make sure we have the right number of args
+  if(argc == 1) {
+    fprintf(stderr, "%s error: No interpreter found\n", Argv0);
+    usage(1);
+  }
+ 
+  // Parse out my flags
+  nstart = parse_flags(argv[1]);
+
+  // test parsing
   printf("flag groupings=%d\n", nstart);
-  
   printf("Argv0=%s\n", Argv0);
   
   return(0);

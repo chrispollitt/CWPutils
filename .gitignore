@@ -31,13 +31,22 @@
 *.out
 *.app
 
+# Coredumps
+*.stackdump
+core
+a.out
+
 # Backup files
 *~
 *.bak
 *.BAK
+*-BAK
 BAK/*
 
 # Local stuff
+dumpargs
+env2
+sample_interpreter
 env2.man
 env2.pod
 dumpargs.man
