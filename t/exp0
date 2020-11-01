@@ -1,4 +1,3 @@
-./env2 error: No interpreter found
 Usage:                                                                  
   #!./env2 [flags] <interpreter> [<interpreter_args>]                     
   #!./env2 [flags] -f <interpreter> [<interpreter_args>] ~~ <script_args> 

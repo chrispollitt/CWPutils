@@ -19,8 +19,7 @@ using namespace std;
 void vars2() {
   char *myname = basename(Argv0);
   char *home = getenv("HOME");
-  char conf_name[255];
-  snprintf(conf_name, sizeof(conf_name),"%s/.%s%s",home,myname,"rc");
+  char conf_name[MAX_STR_CONST];
   struct stat conf_stat;
   FILE *conf_fh;
   char *conf_line = NULL; 
@@ -34,6 +33,7 @@ void vars2() {
   regex cfg_re5( R"(\\(["']))" );                       // unescape ' and "
   smatch cfg_matches;
   
+  snprintf(conf_name, sizeof(conf_name)-1,"%s/.%s%s",home,myname,"rc");
   if(stat(conf_name, &conf_stat) != 0) {
     if(Debug) fprintf(stderr, "Debug: conf file not found: %s\n", conf_name);
     return;
@@ -50,21 +50,21 @@ void vars2() {
       string var  = cfg_matches[1].str();
       string sep  = cfg_matches[2].str();
       string val  = cfg_matches[3].str();
-      string oval = "";
+      char *oval;
       
       val = regex_replace(val, cfg_re2, "\\");              // unescape backslash
       // Set Environment Variable
       if(sep == "=" || sep == "+") {
         if        (regex_search(val, cfg_re3)) {            // remove enclosing ''
-        val =   regex_replace(val, cfg_re3, "$1");
+          val =   regex_replace(val, cfg_re3, "$1");
         } else if (regex_search(val, cfg_re4)) {            // remove enclosing ""
-        val =   regex_replace(val, cfg_re4, "$1");
+          val =   regex_replace(val, cfg_re4, "$1");
         }
         val = regex_replace(val, cfg_re5, "$1");            // unescape ' and "
-	if(sep == "+") {
-	  oval = getenv(var.c_str());
-	  val += oval;
-	}
+        if(sep == "+") {
+          oval = getenv(var.c_str());
+          if (oval) val += string(oval);
+        }
         if(Debug) fprintf(stderr, "Debug: setenv: %s=%s\n", var.c_str(), val.c_str());
         setenv(var.c_str(),val.c_str(),1);
       // Unset Environment Variable

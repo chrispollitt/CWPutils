@@ -1,4 +1,3 @@
-#define MAX_STR_CONST 255
 
 // Declare Globals ////////////////
 

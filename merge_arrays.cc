@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <malloc.h>
 #include <errno.h>
 #include <libgen.h>
 #include "env2lib.hh"
@@ -31,7 +32,10 @@ using namespace std;
  *   output:  output  // Output string array
  *   return:  count   // Number of strings found
  **************************************************************/
-int split_string(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
+argv_t split_string(char *input) {
+  argv_t o;
+  char **output;
+  char *output_tmp;   // tmp placeholder for output string
   char *input_ptr;    // Input string pointer
   char *output_ptr;   // Output string pointer
   int count=0;        // Number of strings found
@@ -53,7 +57,9 @@ int split_string(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
       // if closed on empty string, add to array and move to next argv
       if(*in_q1 && ccnt==0 && flags["pre"].length()) {
         *output_ptr = ENDOFSTR;
-        output_ptr = output[++count];
+        output[count++] = output_tmp;
+        output_tmp = (char *)malloc(MAX_STR_CONST);
+        output_ptr = output_tmp;    // yyy
       }
       // flip flag
       *in_q1=1-*in_q1;
@@ -67,9 +73,12 @@ int split_string(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
   };
   /***********************************/
 
+  output = (char **)calloc(MAX_STR_CONST, sizeof(char *));
+
   // init in and out pointers
   input_ptr = input;
-  output_ptr = (char *)output;
+  output_tmp = (char *)malloc(MAX_STR_CONST); //  yyy
+  output_ptr = output_tmp;
   // loop over input string
   while(*input_ptr) {
     // whitespace //////////////////////////////////////
@@ -84,7 +93,9 @@ int split_string(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
         // and we have a string, term string and move to next argv
         if(ccnt) {
           *output_ptr = ENDOFSTR;
-          output_ptr = output[++count];
+          output[count++] = output_tmp;
+          output_tmp = (char *)malloc(MAX_STR_CONST);
+          output_ptr = output_tmp;    // yyy
           ccnt=0;
         }
         // discard unquoted whitespace
@@ -116,7 +127,6 @@ int split_string(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
         !in_dq                        &&
         ccnt == 0
       ) {
-        *input_ptr = ENDOFSTR;
         break;
       // regular character
       } else {
@@ -160,16 +170,19 @@ int split_string(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
     // and we have a string, term string and increase count
     if(ccnt) {
       *output_ptr = ENDOFSTR;
-      count++;
+      output[count++] = output_tmp; // yyy
     }
   }
   // dangling quote or escape /////////////////////
   else if(ccnt) {
     fprintf(stderr, "%s error: unmatched quote\n", Argv0);
-//  throw new StdException("split_string(): unmatched quote");
+//  throw StdException("split_string(): unmatched quote");
   }
+  output[count] = NULL;
   // return number of strings found
-  return(count);
+  o.argc = count;
+  o.argv = output;
+  return(o);
 }
 
 /****************************************************************
@@ -178,8 +191,26 @@ int split_string(char *input, char output[MAX_STR_CONST][MAX_STR_CONST]) {
  *   output:  output  // Output string array
  *   return:  count   // Number of strings found
  **************************************************************/
-char **merge_arrays(char **argv1, char **argv2, int insp, int ovr) {
-  char **argv3 = (char **)NULL;
+argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr) {
+  argv_t argv3;
+  int i, j, k;
+
+  i = 0;
+  j = 0;
+  k = 0;
+  argv3.argc = argv1.argc + argv2.argc;
+  argv3.argv = (char **)calloc(argv3.argc, sizeof(char *));
+  
+  while(i < argv3.argc) {
+    if((k == at) && (j < argv2.argc)) {
+      argv3.argv[i++] = argv2.argv[j++];
+      if(ovr && j==argv2.argc-1) k++;
+    } else {
+      argv3.argv[i++] = argv1.argv[k++];
+    }
+  }
+  argv3.argv[i] = NULL;
+  
   return(argv3);
 }
 
@@ -189,10 +220,21 @@ char **merge_arrays(char **argv1, char **argv2, int insp, int ovr) {
  *   output:  output  // Output string array
  *   return:  count   // Number of strings found
  **************************************************************/
-char **split_and_merge(char **argv1, char **argv2, int insp, int ovr) {
-  char **argv3 = (char **)NULL;
-//  split_string()
-//  merge_arrays()
-  return(argv3);
-}
+argv_t split_and_merge(argv_t argvi, char *stri, int at) {
+  argv_t argvs = {0, (char **)NULL};
+  argv_t argvo = {0, (char **)NULL};
+  int ovr = 0;
+  
+  if(stri == NULL) {
+    stri = argvi.argv[at];
+    ovr  = 1;
+  }
+  
+  //  split_string()
+  argvs = split_string(stri);
 
+  //  merge_arrays()
+  argvo = merge_arrays(argvi, argvs, at, ovr);
+
+  return(argvo);
+}

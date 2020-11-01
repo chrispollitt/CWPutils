@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <malloc.h>
 #include <errno.h>
 #include <libgen.h>
 
@@ -35,7 +36,7 @@ int main(int argc, char **argv) {
   int nstart;
   int argc2 = 3;
   char **argv2 = (char **)calloc(4, sizeof(char *));
-  char *argv1  = (char *)malloc(1024);
+  char *argv1  = (char *)malloc(MAX_LINE_LEN);
   int i = 0;
   int j = 0;
   
@@ -44,7 +45,7 @@ int main(int argc, char **argv) {
   Debug = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
 
-  snprintf(argv1, 1024, "%s %s %s",
+  snprintf(argv1, MAX_LINE_LEN-1, "%s %s %s",
     "-d",                      // flags to env2
     argv[0],                   // this prog name
     argv[1]                    // combined are for this program
@@ -108,9 +109,10 @@ void usage(int ret) {
 }
 
 int main(int argc, char **argv) {
-  char  nargv[MAX_STR_CONST][MAX_STR_CONST]; // New  argv (as array of arrays)
+  argv_t n;
+  char  **nargv; // New  argv (as array of arrays)
   int   nargc = 0;                           // size of nargv
-  char *eargv[MAX_STR_CONST];                // New  argv (as array of pointers)
+  char **eargv;                // New  argv (as array of pointers)
   int   eargc = 0;                           // size of eargv
   int i = 0;                                  
   int j = 0;
@@ -121,8 +123,11 @@ int main(int argc, char **argv) {
   setvbuf(stdout, NULL, _IONBF, 0);
 
   // split_and_merge() xxx
-  nargc = split_string(argv[1], nargv);
+  n = split_string(argv[1]);
+  nargc = n.argc;
+  nargv = n.argv;
   
+  eargv = (char **)calloc(MAX_STR_CONST, sizeof(char *));
   // copy from argv & nargv to eargv //////////////////////////////////////////
   eargv[j++] = argv[0];  
   for(i=0;i<nargc;i++) {

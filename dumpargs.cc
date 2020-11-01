@@ -2,10 +2,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <malloc.h>
-
-#define MAX_LINE_LEN 1024
-
-extern int dumpargs(int argc, char **argv);
+#include "env2lib.hh"
 
 char *getaline(FILE *fh) {
     char *line = (char *)malloc(MAX_LINE_LEN), *linep = line;

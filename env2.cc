@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <malloc.h>
 #include <errno.h>
 #include <libgen.h>
 #include "env2lib.hh"
@@ -53,46 +54,52 @@ hash_t flags;                  // Place for flags
  * env2
  **************************************************************/
 void env2 (int *argcp, char ***argvp, int nstart) {
+//  argv_t o;
   char **argv;                               // Orig argv
   int    argc;                               // size of argv
-  char  nargv[MAX_STR_CONST][MAX_STR_CONST]; // New  argv (as array of arrays)
+  argv_t n;
+  char  **nargv; // New  argv (as array of arrays)
   int   nargc = 0;                           // size of nargv
-  char  cargv[MAX_STR_CONST][MAX_STR_CONST]; // config  argv (as array of arrays)
+  argv_t c;
+  char  **cargv; // config  argv (as array of arrays)
   int   cargc = 0;                           // size of cargv
-  char *eargv[MAX_STR_CONST];                // New  argv (as array of pointers)
+//  argv_t e;
+  char **eargv;                // New  argv (as array of pointers)
   int   eargc = 0;                           // size of eargv
   int i, j, k;                               // Loop counters
   int set;                                   // cnf args set or add
   int int_loc = 0;                           // interpreter nargv location
   int scr_loc = 0;                           // script      nargv location
   string interpreter_base;                   // basename of interpreter
-  char hashbang[1024] = "";
+  char hashbang[MAX_LINE_LEN] = "";
   
   argv = *argvp;                       // Orig argv
   argc = *argcp;                       // size of argv
 
   // main() should check for this - make sure we have the right number of args
   if(argc == 1) {
-    throw StdException("No interpreter found");
+    throw StdException("No args found");
   }
 
   // save hashbang
   strncpy(hashbang, argv[1], sizeof(hashbang)-1);
 
   // split up argv[1] (from #! line) ///////////////////////////////////////////
-  nargc = split_string(argv[1], nargv);
+  n = split_string(argv[1]);
+  nargv = n.argv;
+  nargc = n.argc;
   
   // restore argv[1] if undocumented -O flag given /////////////////////////////
   if(flags["orig"].length()) {
     nargc = nstart+2;
     char *argv1 = strstr(argv[1], nargv[nstart]);
-    strncpy(nargv[nstart+1], argv1+strlen(nargv[nstart])+1, MAX_STR_CONST-1);
+    nargv[nstart+1] = strndup( argv1+strlen(nargv[nstart])+1, MAX_STR_CONST-1);
   }
   
   // if sbs mode, strip off excess backslashes from nargs  /////////////////////
   if(flags["sbs"].length()) {
     for(i=0; i< nargc; i++) {
-      char nargvx[MAX_STR_CONST];
+      char *nargvx = (char *)malloc(MAX_STR_CONST);
       k=0;
       j=0;
       
@@ -108,7 +115,7 @@ void env2 (int *argcp, char ***argvp, int nstart) {
         j++;
       }
       nargvx[k++] = ENDOFSTR;
-      strncpy(nargv[i], nargvx, MAX_STR_CONST-1);
+      nargv[i] = strndup( nargvx, MAX_STR_CONST-1);
     }
   }
   
@@ -138,15 +145,15 @@ void env2 (int *argcp, char ***argvp, int nstart) {
   // add script  ///////////////////////////////////////////////////////////////
   if(flags["found"].length()) {
     scr_loc = stoi(flags["found"])-1;
-    strncpy(nargv[scr_loc], argv[2], MAX_STR_CONST-1);
+    nargv[scr_loc] = strndup( argv[2], MAX_STR_CONST-1);
   } else {
     scr_loc = nargc;
-    strncpy(nargv[nargc++], argv[2], MAX_STR_CONST-1);
+    nargv[nargc++] = strndup( argv[2], MAX_STR_CONST-1);
   }
   
   // add remaining args for script (from user) /////////////////////////////////
   for(j=3;j<argc;j++) {
-    strncpy(nargv[nargc++], argv[j], MAX_STR_CONST-1);
+    nargv[nargc++] = strndup( argv[j], MAX_STR_CONST-1);
   }
   
   // prep conf args ////////////////////////////////////////////////////////////
@@ -158,7 +165,9 @@ void env2 (int *argcp, char ***argvp, int nstart) {
     if(add_args.find(interpreter_base) != add_args.end()) {
       char *add_args_s = (char *)add_args[interpreter_base].c_str();
     
-      cargc = split_string(add_args_s, cargv);
+      c = split_string(add_args_s);
+      cargc = c.argc;
+      cargv = c.argv;
       eargc += cargc;
     }
   }
@@ -167,6 +176,7 @@ void env2 (int *argcp, char ***argvp, int nstart) {
   i=nstart; // nargv (nstart is first non-env2 flag arg)
   j=0;      // eargv
   k=0;      // cargv
+  eargv = (char **)calloc(MAX_STR_CONST, sizeof(char *));
   
   // add interpreter
   eargv[j++] = nargv[i++];
@@ -242,15 +252,15 @@ int parse_flags(char *flags_str) { // xxx change to all of argv after split_and_
   int nstart = 0;                            // nargv start element
   int j = 0;
 
-  flags["cmt"]      = "";                     // comments 
-  flags["pre"]      = ""; 
+  flags["cmt"]      = "";                     // allow comments 
+  flags["pre"]      = "";                     // preserve empty args
   flags["dump"]     = "";                     // Dump args flag
   flags["sbs"]      = "";                     // Strip backslashes
   flags["norc"]     = "";                     // Do not read rc file
   flags["orig"]     = "";                     // Do NOT split argv[1] (undocumented)
   flags["delim"]    = "";                     // Delimiter to sep interpreter args from script args
-  flags["exp"]      = "";                     // Expand  backslash-escaped characters
-  flags["found"]    = "";                     // found non flag 
+  flags["exp"]      = "";                     // Expand standard backslash-escaped characters
+  flags["found"]    = "";                     // [internal] found non flag 
 
   // strip off args meant for me (from #! line) ////////////////////////////////
   while(*flags_str != ENDOFSTR) {
@@ -415,7 +425,6 @@ int main(int argc, char **argv) {
 
   // make sure we have the right number of args
   if(argc == 1) {
-    fprintf(stderr, "%s error: No interpreter found\n", Argv0);
     usage(1);
   }
  
