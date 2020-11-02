@@ -17,4 +17,4 @@ Notes:
 Examples:                                                               
   #!./env2 -s -n perl -w                                                  
   #!./env2 bash -x -v                                                     
-  #!./env2 -def=@@ python @@ -sf                                          
+  #!./env2 -c python # -*-Python-*-                                       

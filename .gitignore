@@ -50,6 +50,7 @@ env2
 sample_interpreter
 env2.man
 env2.pod
+env2.pod-middle
 dumpargs.man
 t/out0
 t/out1

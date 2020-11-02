@@ -409,7 +409,10 @@ void usage(int ret) {
 "Examples:                                                               \n"
 "  #!%1$s -s -n perl -w                                                  \n"
 "  #!%1$s bash -x -v                                                     \n"
-"  #!%1$s -def=@@ python @@ -sf                                          \n",
+#ifdef F_TAKES_ARG
+"  #!%1$s -def=@@ python @@ -sf                                          \n"
+#endif
+"  #!%1$s -c python # -*-Python-*-                                       \n",
       Argv0
     );
     exit(ret);
