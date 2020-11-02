@@ -11,7 +11,7 @@
 #include <string>
 #include "env2lib.hh"
 
-using namespace std; 
+using namespace std;
 
 /*************************
  * parse config file and fill add_args[]
@@ -22,7 +22,7 @@ void vars2() {
   char conf_name[MAX_STR_CONST];
   struct stat conf_stat;
   FILE *conf_fh;
-  char *conf_line = NULL; 
+  char *conf_line = NULL;
   size_t size = 0;
   int read;
   regex cfg_re0( R"(^\s*(\w+)\s*([;:=+!])\s*(.*)$)" );  // find a=b or a! OR a:b a;b
@@ -32,7 +32,7 @@ void vars2() {
   regex cfg_re4( R"(^["](.*)["]$)" );                   // remove enclosing ""
   regex cfg_re5( R"(\\(["']))" );                       // unescape ' and "
   smatch cfg_matches;
-  
+
   snprintf(conf_name, sizeof(conf_name)-1,"%s/.%s%s",home,myname,"rc");
   if(stat(conf_name, &conf_stat) != 0) {
     if(Debug) fprintf(stderr, "Debug: conf file not found: %s\n", conf_name);
@@ -51,7 +51,7 @@ void vars2() {
       string sep  = cfg_matches[2].str();
       string val  = cfg_matches[3].str();
       char *oval;
-      
+
       val = regex_replace(val, cfg_re2, "\\");              // unescape backslash
       // Set Environment Variable
       if(sep == "=" || sep == "+") {
@@ -67,19 +67,19 @@ void vars2() {
         }
         if(Debug) fprintf(stderr, "Debug: setenv: %s=%s\n", var.c_str(), val.c_str());
         setenv(var.c_str(),val.c_str(),1);
-      // Unset Environment Variable
+        // Unset Environment Variable
       } else if(sep == "!") {
         if(Debug) fprintf(stderr, "Debug: unsetenv: %s\n", var.c_str());
         unsetenv(var.c_str());
-      // Extra interpeter args
+        // Extra interpeter args
       } else if(sep == ":") {
         if(Debug) fprintf(stderr, "Debug: add_args: %s=%s\n", var.c_str(), val.c_str());
         add_args[var] = val;
-      // Only interpeter args
+        // Only interpeter args
       } else if(sep == ";") {
         if(Debug) fprintf(stderr, "Debug: set_args: %s=%s\n", var.c_str(), val.c_str());
         add_args[var] = "~~"+val;
-      // Impossible!
+        // Impossible!
       } else {
         if(Debug) fprintf(stderr, "Debug: sep illegal: %s\n", sep.c_str());
       }

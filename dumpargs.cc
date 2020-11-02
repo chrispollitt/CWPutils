@@ -5,42 +5,42 @@
 #include "env2lib.hh"
 
 char *getaline(FILE *fh) {
-    char *line = (char *)malloc(MAX_LINE_LEN), *linep = line;
-    size_t lenmax = MAX_LINE_LEN, len = lenmax;
-    int c;
+  char *line = (char *)malloc(MAX_LINE_LEN), *linep = line;
+  size_t lenmax = MAX_LINE_LEN, len = lenmax;
+  int c;
 
-    if(line == NULL)
-        return NULL;
+  if(line == NULL)
+    return NULL;
 
-    for(;;) {
-        c = fgetc(fh);
-        if(c == EOF) {
-            *line++ = '\4';
-            break;
-        }
-
-        if(--len == 0) {
-            len = lenmax;
-            char *linen = (char *)realloc(linep, lenmax *= 2);
-
-            if(linen == NULL) {
-                free(linep);
-                return NULL;
-            }
-            line = linen + (line - linep);
-            linep = linen;
-        }
-
-        if( c == '\n') {
-            *line++ = '\0';
-            break;
-        }
-        else {
-            *line++ = c; 
-        }
+  for(;;) {
+    c = fgetc(fh);
+    if(c == EOF) {
+      *line++ = '\4';
+      break;
     }
-    *line = '\0';
-    return linep;
+
+    if(--len == 0) {
+      len = lenmax;
+      char *linen = (char *)realloc(linep, lenmax *= 2);
+
+      if(linen == NULL) {
+        free(linep);
+        return NULL;
+      }
+      line = linen + (line - linep);
+      linep = linen;
+    }
+
+    if( c == '\n') {
+      *line++ = '\0';
+      break;
+    }
+    else {
+      *line++ = c;
+    }
+  }
+  *line = '\0';
+  return linep;
 }
 
 int dumpargs(int argc, char **argv) {
@@ -51,7 +51,7 @@ int dumpargs(int argc, char **argv) {
   int j=0;
 
   printf("------arguments-----\n");
-  for(i=0;i<argc;i++) {
+  for(i=0; i<argc; i++) {
     printf("arg%d='%s'",i,argv[i]);
     if(i>0 && script == NULL && argv[i][0] != '-') {
       script = argv[i];
@@ -96,7 +96,7 @@ int dumpargs(int argc, char **argv) {
     fclose(fh);
   }
   printf("------output-----\n");
-  
+
   return(0);
 }
 

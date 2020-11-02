@@ -12,7 +12,7 @@
 #include <libgen.h>
 #include "env2lib.hh"
 
-using namespace std; 
+using namespace std;
 
 // Constants
 #define STRCMP_TRUE    0
@@ -86,7 +86,7 @@ argv_t split_string(char *input) {
       *input_ptr==SPACE   ||
       *input_ptr==TAB     ||
       *input_ptr==NEWLINE ||
-      *input_ptr==RETURN 
+      *input_ptr==RETURN
     ) {
       // not in single, double, or backslash
       if(!in_sq && !in_dq && !in_bs) {
@@ -99,7 +99,7 @@ argv_t split_string(char *input) {
           ccnt=0;
         }
         // discard unquoted whitespace
-      } 
+      }
       // add to string
       else {
         *output_ptr++ = *input_ptr;
@@ -119,8 +119,8 @@ argv_t split_string(char *input) {
     ) {
       // comment
       if(
-        (flags["cmt"].length())       && 
-        (*input_ptr     == COMMENT)   && 
+        (flags["cmt"].length())       &&
+        (*input_ptr     == COMMENT)   &&
         (*(input_ptr-1) == SPACE)     &&
         (*(input_ptr-2) != BACKSLASH) &&
         !in_sq                        &&
@@ -128,10 +128,10 @@ argv_t split_string(char *input) {
         ccnt == 0
       ) {
         break;
-      // regular character
+        // regular character
       } else {
         if(
-          flags["exp"].length() && 
+          flags["exp"].length() &&
           in_bs                 &&
           strchr("abefnrtv\\",*input_ptr)
         ) {
@@ -162,7 +162,7 @@ argv_t split_string(char *input) {
       *output_ptr++ = *input_ptr;
       ccnt++;
     }
-    // move to next input char 
+    // move to next input char
     input_ptr++;
   } // while
   // catch final string ///////////////////////////
@@ -201,7 +201,7 @@ argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr) {
   argv3.argc = argv1.argc + argv2.argc;
   if(ovr) argv3.argc--;
   argv3.argv = (char **)calloc(argv3.argc+1, sizeof(char *));
-  
+
   while(i < argv3.argc) {
     if((k == at) && (j < argv2.argc)) {
       argv3.argv[i++] = argv2.argv[j++];
@@ -211,12 +211,12 @@ argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr) {
     }
   }
   argv3.argv[i] = NULL;
-  
+
   return(argv3);
 }
 
 /****************************************************************
- * split and merge 
+ * split and merge
  *   input:   input   // Input string
  *   output:  output  // Output string array
  *   return:  count   // Number of strings found
@@ -225,12 +225,12 @@ argv_t split_and_merge(argv_t argvi, char *stri, int at) {
   argv_t argvs = {0, (char **)NULL};
   argv_t argvo = {0, (char **)NULL};
   int ovr = 0;
-  
+
   if(stri == NULL) {
     stri = argvi.argv[at];
     ovr  = 1;
   }
-  
+
   //  split_string()
   argvs = split_string(stri);
 

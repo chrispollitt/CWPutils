@@ -13,7 +13,7 @@
 
 // *************************************************************
 // * main1 - Call env2()
-// ************************************************************ 
+// ************************************************************
 
 #include "env2lib.hh"
 #include "sample_interpreter.hh"
@@ -24,7 +24,7 @@ int   Debug;                   // Debug flag
 hash_t add_args;               // Set in vars2()
 hash_t flags;                  // Place for flags
 
-using namespace std; 
+using namespace std;
 
 // * usage *****************************************************
 void usage(int ret) {
@@ -39,18 +39,18 @@ int main(int argc, char **argv) {
   char *argv1  = (char *)malloc(MAX_LINE_LEN);
   int i = 0;
   int j = 0;
-  
+
   // set global vars
   Argv0 = argv[0];
   Debug = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
 
   snprintf(argv1, MAX_LINE_LEN-1, "%s %s %s",
-    "-d",                      // flags to env2
-    argv[0],                   // this prog name
-    argv[1]                    // combined are for this program
-  );
- 
+           "-d",                      // flags to env2
+           argv[0],                   // this prog name
+           argv[1]                    // combined are for this program
+          );
+
   argv2[0] = (char *)argv[0];  // this prog name
   argv2[1] = (char *)argv1;    // combined ars for this program
   argv2[2] = (char *)argv[2];  // the script name
@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
 
   // Split argv[1] and merge back into argv
   //split_and_merge();
-  
+
   // Call the main env2() function
   try {
     env2(&argc, &argv, 1); // xxx
@@ -68,13 +68,13 @@ int main(int argc, char **argv) {
     fprintf(stderr, "%s error: %s\n", Argv0, e.what());
     usage(1);
   }
-  
+
   //////////////////////////////////
 
-  for(i=0;i<argc2;i++) {
+  for(i=0; i<argc2; i++) {
     printf("argv[%i]='%s'\n",j++,argv2[i]);
   }
-  for(i=3;i<argc;i++) {
+  for(i=3; i<argc; i++) {
     printf("argv[%i]='%s'\n",j++,argv[i]);
   }
   return(0);
@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
 
 // *************************************************************
 // * main2 - Call split_string()
-// ************************************************************ 
+// ************************************************************
 
 #include "env2lib.hh"
 #include "sample_interpreter.hh"
@@ -100,7 +100,7 @@ int   Debug;                   // Debug flag
 hash_t add_args;               // Set in vars2()
 hash_t flags;                  // Place for flags
 
-using namespace std; 
+using namespace std;
 
 // * usage *****************************************************
 void usage(int ret) {
@@ -121,16 +121,16 @@ int main(int argc, char **argv) {
   n.argc = argc;
   n.argv = argv;
   e = split_and_merge(n, NULL, 1);
-  
+
   //////////////////////////////////////////////////////////////////////////////
-  for(i=0;i<e.argc;i++) {
+  for(i=0; i<e.argc; i++) {
     printf("argv[%i]='%s'\n",i,e.argv[i]);
   }
 
   return(0);
 }
 
-#endif 
+#endif
 
 // #############################################################################
 
@@ -138,7 +138,7 @@ int main(int argc, char **argv) {
 
 // *************************************************************
 // * main3 - Call own parse_flags() modeled on one from env2.cc
-// ************************************************************ 
+// ************************************************************
 
 #include "sample_interpreter.hh"
 
@@ -152,7 +152,7 @@ int   Debug;                   // Debug flag
 hash_t add_args;               // Set in vars2()
 hash_t flags;                  // Place for flags
 
-using namespace std; 
+using namespace std;
 
 // * usage *****************************************************
 void usage(int ret) {
@@ -168,7 +168,7 @@ int my_parse_flags(char *flags_str) {
   flags["found"] = "";                   // found non flag arg
   flags["aaa"] = "";                     // aaa flag
   flags["bbb"] = "";                     // bbb flag
-  flags["ccc"] = "";                     // ccc flag 
+  flags["ccc"] = "";                     // ccc flag
 
   // strip off args meant for me (from #! line) ////////////////////////////////
   while(*flags_str != ENDOFSTR) {
@@ -181,7 +181,7 @@ int my_parse_flags(char *flags_str) {
     } else if (*flags_str == '-') {
       j=1;
       while(*(flags_str+j) != ENDOFSTR && *(flags_str+j) != ' ') {
-        
+
         // help
         if     (*(flags_str+j) == 'h') {
           usage(0);
@@ -240,14 +240,14 @@ int main(int argc, char **argv) {
     fprintf(stderr, "%s error: No interpreter found\n", Argv0);
     usage(1);
   }
- 
+
   // Parse out my flags
   nstart = my_parse_flags(argv[1]);
 
   // test parsing
   printf("flag groupings=%d\n", nstart);
   printf("Argv0=%s\n", Argv0);
-  
+
   return(0);
 }
 

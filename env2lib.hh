@@ -31,16 +31,16 @@ extern int   Debug;                           // Debug flag
 extern hash_t add_args;                       // Set in vars2()
 extern hash_t flags;                          // Place for flags
 
-// std::exception with a what() 
+// std::exception with a what()
 class StdException: public std::exception {
-  public:
-    StdException (const char *m) noexcept {
-      message = m;
-    }
-    virtual const char* what() const throw() {
-      return message;
-    }
+public:
+  StdException (const char *m) noexcept {
+    message = m;
+  }
+  virtual const char* what() const throw() {
+    return message;
+  }
 
-  private:
-    const char *message;
+private:
+  const char *message;
 };
