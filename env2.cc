@@ -300,7 +300,7 @@ int parse_flags(argv_t e) { // xxx change to all of argv after split_and_merge()
           if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
             char delim[40];
             long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
-            strncpy(delim, (char *)flags_str+j+2, l);
+            strncpy(delim, (char *)flags_str+j+2, l); // Segfault!
             delim[l] = '\0';
             flags["delim"] = delim;
             j += l+2;

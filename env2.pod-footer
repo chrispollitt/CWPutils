@@ -92,7 +92,6 @@ In 2018, the GNU version on env(1) added the same flag.
 
 =head1 BUGS
 
-    Code uses strcpy/strcmp instead of the safer srtncpy/strncmp.
     Code has hard limits for string sizes (255).
     Code uses a strange mix of C and C++.
     Please report all Bugs to the author.
