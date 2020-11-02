@@ -5,7 +5,7 @@ Where [flags] are one or more of:
   -c     : comments mode                                                
   -d     : debug mode                                                   
   -e     : emit (dump) mode                                             
-  -f[=S] : find (delim) mode using opt string S (S=~~ if not specified) 
+  -f     : find script opts separated by delimiter ~~                   
   -n     : no rc file                                                   
   -p     : preserve empty args                                          
   -s     : strip backslashes                                            
@@ -14,8 +14,6 @@ Where [flags] are one or more of:
 Notes:                                                                  
   * flags can be combined in one string                                 
   * all flags are off by default                                        
-  * if using debug flag, best to put it first                           
-  * if using find flag, best to put it last                             
 Examples:                                                               
   #!./env2 -s -n perl -w                                                  
   #!./env2 bash -x -v                                                     
