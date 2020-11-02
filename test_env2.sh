@@ -37,9 +37,9 @@ echo "==Test 2"
 diff t/out2 t/exp2
 [[ $? != 0 ]] && (( errs = errs + 1 ))
 
-# Run Test 3 strip, norc, custom delim
+# Run Test 3 strip, norc, comment
 echo "==Test 3"
-./$prog '-snf=@@ perl -le @@ "hello\\ three"' '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/' 'goodbye' >& t/out3
+./$prog '-snc perl -le # "hello\\ three"' '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/' 'goodbye' >& t/out3
 diff t/out3 t/exp3
 [[ $? != 0 ]] && (( errs = errs + 1 ))
 

@@ -71,7 +71,6 @@ void env2 (int *argcp, char ***argvp, int nstart) {
   int int_loc = 0;                           // interpreter nargv location
   int scr_loc = 0;                           // script      nargv location
   string interpreter_base;                   // basename of interpreter
-  char hashbang[MAX_LINE_LEN] = "";
   
   argv = *argvp;                       // Orig argv
   argc = *argcp;                       // size of argv
@@ -80,9 +79,6 @@ void env2 (int *argcp, char ***argvp, int nstart) {
   if(argc == 1) {
     throw StdException("No args found");
   }
-
-  // save hashbang
-  strncpy(hashbang, argv[1], sizeof(hashbang)-1);
 
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_string(argv[1]);
@@ -222,8 +218,7 @@ void env2 (int *argcp, char ***argvp, int nstart) {
   eargv[j] = NULL;
   
   // dump args /////////////////////////////////////////////////////////////////
-//  if(Debug) fprintf(stderr, "Debug: oargv[1]=%s\n", argv[1]);
-  if(Debug) fprintf(stderr, "Debug: hashbang=%s\n", hashbang);
+  if(Debug) fprintf(stderr, "Debug: hashbang=%s\n", argv[1]);
   if(Debug && !flags["dump"].length()) {
     for(i=0;i<j;i++) fprintf(stderr, "Debug: argv[%d]='%s'\n", i, eargv[i]);
   }
@@ -248,7 +243,7 @@ void env2 (int *argcp, char ***argvp, int nstart) {
 /**************************************************************
  * parse_flags
  **************************************************************/
-int parse_flags(char *flags_str) { // xxx change to all of argv after split_and_merge()
+int parse_flags(argv_t e) { // xxx change to all of argv after split_and_merge()
   int nstart = 0;                            // nargv start element
   int j = 0;
 
@@ -263,6 +258,12 @@ int parse_flags(char *flags_str) { // xxx change to all of argv after split_and_
   flags["found"]    = "";                     // [internal] found non flag 
 
   // strip off args meant for me (from #! line) ////////////////////////////////
+  for(int i=1;i<e.argc;i++) {
+  char *flags_str = e.argv[i];
+  if(*flags_str != '-') {
+    flags["found"] = "1";
+    break;
+  }
   while(*flags_str != ENDOFSTR) {
     j=1;
     // options
@@ -295,6 +296,7 @@ int parse_flags(char *flags_str) { // xxx change to all of argv after split_and_
         }
         // find (delim)
         else if(*(flags_str+j) == 'f') {
+#ifdef F_TAKES_ARG
           if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
             char delim[40];
             long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
@@ -303,9 +305,9 @@ int parse_flags(char *flags_str) { // xxx change to all of argv after split_and_
             flags["delim"] = delim;
             j += l+2;
             b=1;
-          } else {
+          } else
+#endif
             flags["delim"] = (char *) "~~";
-          }
           if(Debug) fprintf(stderr, "Debug: Delim mode activated with '%s'\n", flags["delim"].c_str());
            // if delim spec'd, break as this delim string must term with a space
           if (b) {
@@ -359,6 +361,7 @@ int parse_flags(char *flags_str) { // xxx change to all of argv after split_and_
     }
     flags_str += j;
   } // while
+  }
   return nstart;
 }
 
@@ -390,7 +393,11 @@ void usage(int ret) {
 "  -c     : comments mode                                                \n"
 "  -d     : debug mode                                                   \n"
 "  -e     : emit (dump) mode                                             \n"
+#ifdef F_TAKES_ARG
 "  -f[=S] : find (delim) mode using opt string S (S=~~ if not specified) \n"
+#else
+"  -f     : find script opts separated by delimiter ~~                   \n"
+#endif
 "  -n     : no rc file                                                   \n"
 "  -p     : preserve empty args                                          \n"
 "  -s     : strip backslashes                                            \n"
@@ -399,8 +406,6 @@ void usage(int ret) {
 "Notes:                                                                  \n"
 "  * flags can be combined in one string                                 \n"
 "  * all flags are off by default                                        \n"
-"  * if using debug flag, best to put it first                           \n"
-"  * if using find flag, best to put it last                             \n"
 "Examples:                                                               \n"
 "  #!%1$s -s -n perl -w                                                  \n"
 "  #!%1$s bash -x -v                                                     \n"
@@ -417,6 +422,7 @@ void usage(int ret) {
 int main(int argc, char **argv) {
   // define local vars
   int code, nstart;
+  argv_t n, e;
 
   // define global vars
   Argv0 = argv[0];
@@ -429,10 +435,12 @@ int main(int argc, char **argv) {
   }
  
   // Split argv[1] and merge back into argv
-  //split_and_merge(); // xxx
+  n.argc = argc;
+  n.argv = argv;
+  e = split_and_merge(n, NULL, 1);
   
   // Parse out my flags
-  nstart = parse_flags(argv[1]); // xxx change to all of argv after split_and_merge()
+  nstart = parse_flags(e);
 
   // Call the main env2() function
   try {

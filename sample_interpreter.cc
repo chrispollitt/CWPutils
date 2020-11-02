@@ -109,38 +109,22 @@ void usage(int ret) {
 }
 
 int main(int argc, char **argv) {
-  argv_t n;
-  char  **nargv; // New  argv (as array of arrays)
-  int   nargc = 0;                           // size of nargv
-  char **eargv;                // New  argv (as array of pointers)
-  int   eargc = 0;                           // size of eargv
-  int i = 0;                                  
-  int j = 0;
+  argv_t n, e;
+  int i = 0;
 
   // set global vars
   Argv0 = argv[0];
   Debug = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
 
-  // split_and_merge() xxx
-  n = split_string(argv[1]);
-  nargc = n.argc;
-  nargv = n.argv;
+  // split_and_merge()
+  n.argc = argc;
+  n.argv = argv;
+  e = split_and_merge(n, NULL, 1);
   
-  eargv = (char **)calloc(MAX_STR_CONST, sizeof(char *));
-  // copy from argv & nargv to eargv //////////////////////////////////////////
-  eargv[j++] = argv[0];  
-  for(i=0;i<nargc;i++) {
-    eargv[j++] = nargv[i];  
-  }
-  for(i=2;i<argc;i++) {
-    eargv[j++] = argv[i];
-  }
-  eargv[j] = NULL;
-  eargc = j;
   //////////////////////////////////////////////////////////////////////////////
-  for(i=0;i<eargc;i++) {
-    printf("argv[%i]='%s'\n",i,eargv[i]);
+  for(i=0;i<e.argc;i++) {
+    printf("argv[%i]='%s'\n",i,e.argv[i]);
   }
 
   return(0);
@@ -258,7 +242,7 @@ int main(int argc, char **argv) {
   }
  
   // Parse out my flags
-  nstart = parse_flags(argv[1]);
+  nstart = my_parse_flags(argv[1]);
 
   // test parsing
   printf("flag groupings=%d\n", nstart);

@@ -195,17 +195,18 @@ argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr) {
   argv_t argv3;
   int i, j, k;
 
-  i = 0;
-  j = 0;
-  k = 0;
+  i = 0; // argv3 out: combined array
+  j = 0; // argv2 in:  array to be inserted at 'at' point
+  k = 0; // argv1 in:  array to receive insertion
   argv3.argc = argv1.argc + argv2.argc;
-  argv3.argv = (char **)calloc(argv3.argc, sizeof(char *));
+  if(ovr) argv3.argc--;
+  argv3.argv = (char **)calloc(argv3.argc+1, sizeof(char *));
   
   while(i < argv3.argc) {
     if((k == at) && (j < argv2.argc)) {
       argv3.argv[i++] = argv2.argv[j++];
-      if(ovr && j==argv2.argc-1) k++;
     } else {
+      if((ovr) && (k==at)) k++;
       argv3.argv[i++] = argv1.argv[k++];
     }
   }

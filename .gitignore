@@ -42,6 +42,7 @@ a.out
 *.BAK
 *-BAK
 BAK/*
+tmp/*
 
 # Local stuff
 dumpargs

@@ -1,1 +1,1 @@
-ARGV="hello\ three" "goodbye" FOO=""
+ARGV="goodbye" FOO=""
