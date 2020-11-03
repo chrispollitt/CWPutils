@@ -1,9 +1,11 @@
 Debug: Debug mode activated
 Debug: No rc file mode activated
-Debug: hashbang=-dn bash -x -c
+Debug: Delim mode activated with '~~'
+Debug: hashbang=-dnf  bash -x -c ~~ "tab\ttab"
 Debug: argv[0]='bash'
 Debug: argv[1]='-x'
 Debug: argv[2]='-c'
-Debug: argv[3]='echo "Hi from 6"'
-+ echo 'Hi from 6'
-Hi from 6
+Debug: argv[3]='echo -E "Hi from 6 $0"'
+Debug: argv[4]='tab\ttab'
++ echo -E 'Hi from 6 tab\ttab'
+Hi from 6 tab\ttab

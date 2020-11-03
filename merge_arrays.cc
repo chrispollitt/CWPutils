@@ -59,7 +59,7 @@ argv_t split_string(char *input) {
         *output_ptr = ENDOFSTR;
         output[count++] = output_tmp;
         output_tmp = (char *)malloc(MAX_STR_CONST);
-        output_ptr = output_tmp;    // yyy
+        output_ptr = output_tmp;
       }
       // flip flag
       *in_q1=1-*in_q1;
@@ -77,7 +77,7 @@ argv_t split_string(char *input) {
 
   // init in and out pointers
   input_ptr = input;
-  output_tmp = (char *)malloc(MAX_STR_CONST); //  yyy
+  output_tmp = (char *)malloc(MAX_STR_CONST);
   output_ptr = output_tmp;
   // loop over input string
   while(*input_ptr) {
@@ -95,7 +95,7 @@ argv_t split_string(char *input) {
           *output_ptr = ENDOFSTR;
           output[count++] = output_tmp;
           output_tmp = (char *)malloc(MAX_STR_CONST);
-          output_ptr = output_tmp;    // yyy
+          output_ptr = output_tmp;
           ccnt=0;
         }
         // discard unquoted whitespace
@@ -130,18 +130,25 @@ argv_t split_string(char *input) {
         break;
         // regular character
       } else {
+        char expa[] = "abefnrtv";
+        char expc[] = {7,8,27,12,10,13,9,11};
+        char *pos;
+
         if(
           flags["exp"].length() &&
           in_bs                 &&
-          strchr("abefnrtv\\",*input_ptr)
+          (pos = strchr(expa, *input_ptr))
         ) {
-          char expa[] = "abefnrtv\\";
-          char expc[] = {7,8,27,12,10,13,9,11,92};
-          long pos = (strchr(expa,*input_ptr) - expa);
-
+          long posd = pos - expa;
           output_ptr--;
-          *output_ptr++ = expc[pos];
+          *output_ptr++ = expc[posd];
         } else {
+          if(
+            flags["sbs"].length() &&
+            in_bs
+          ) {
+            output_ptr--;
+          }
           *output_ptr++ = *input_ptr;
           ccnt++;
         }
@@ -158,6 +165,12 @@ argv_t split_string(char *input) {
     }
     // back slash (escape char) ///////////////////////
     else if (*input_ptr==BACKSLASH) {
+      if(
+        flags["sbs"].length() &&
+        in_bs
+      ) {
+        output_ptr--;
+      }
       in_bs=1-in_bs;
       *output_ptr++ = *input_ptr;
       ccnt++;
@@ -170,7 +183,7 @@ argv_t split_string(char *input) {
     // and we have a string, term string and increase count
     if(ccnt) {
       *output_ptr = ENDOFSTR;
-      output[count++] = output_tmp; // yyy
+      output[count++] = output_tmp;
     }
   }
   // dangling quote or escape /////////////////////

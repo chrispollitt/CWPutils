@@ -30,8 +30,7 @@ using namespace std;
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t add_args;               // Set in vars2()
-hash_t flags;                  // Place for flags
+hash_t flags;                  // Place for flags xxx
 #endif
 
 // Constants
@@ -53,27 +52,28 @@ hash_t flags;                  // Place for flags
 /****************************************************************
  * env2
  **************************************************************/
-void env2 (int *argcp, char ***argvp, int nstart) {
-//  argv_t o;
-  char **argv;                               // Orig argv
-  int    argc;                               // size of argv
+argv_t env2 (argv_t o) {
+  char **argv;               // Orig argv
+  int    argc;               // size of argv
   argv_t n;
-  char  **nargv; // New  argv (as array of arrays)
-  int   nargc = 0;                           // size of nargv
+  char  **nargv;             // New  argv 
+  int   nargc = 0;           // size of nargv
   argv_t c;
-  char  **cargv; // config  argv (as array of arrays)
-  int   cargc = 0;                           // size of cargv
-//  argv_t e;
-  char **eargv;                // New  argv (as array of pointers)
-  int   eargc = 0;                           // size of eargv
-  int i, j, k;                               // Loop counters
-  int set;                                   // cnf args set or add
-  int int_loc = 0;                           // interpreter nargv location
-  int scr_loc = 0;                           // script      nargv location
-  string interpreter_base;                   // basename of interpreter
+  char  **cargv;             // config  argv 
+  int   cargc = 0;           // size of cargv
+  argv_t e;
+  char **eargv;              // Final  argv 
+  int   eargc = 0;           // size of eargv
+  int i, j, k;               // Loop counters
+  int set;                   // cnf args set or add
+  int int_loc = 0;           // interpreter nargv location
+  int scr_loc = 0;           // script      nargv location
+  string interpreter_base;   // basename of interpreter
+  int nstart = stoi(flags["nstart"]);
+  hash_t add_args;
 
-  argv = *argvp;                       // Orig argv
-  argc = *argcp;                       // size of argv
+  argv = o.argv;             // Orig argv
+  argc = o.argc;             // size of argv
 
   // main() should check for this - make sure we have the right number of args
   if(argc == 1) {
@@ -84,29 +84,6 @@ void env2 (int *argcp, char ***argvp, int nstart) {
   n = split_string(argv[1]);
   nargv = n.argv;
   nargc = n.argc;
-
-  // if sbs mode, strip off excess backslashes from nargs  /////////////////////
-  if(flags["sbs"].length()) {
-    for(i=0; i< nargc; i++) {
-      char *nargvx = (char *)malloc(MAX_STR_CONST);
-      k=0;
-      j=0;
-
-      while(nargv[i][j] != ENDOFSTR) {
-        if(nargv[i][j] == BACKSLASH) {
-          if(nargv[i][j+1] == BACKSLASH) {
-            nargvx[k++] = nargv[i][j];
-            j++;
-          }
-        } else {
-          nargvx[k++] = nargv[i][j];
-        }
-        j++;
-      }
-      nargvx[k++] = ENDOFSTR;
-      nargv[i] = strndup( nargvx, MAX_STR_CONST-1);
-    }
-  }
 
   // check that we have an interpreter from #! /////////////////////////////////
   if(!flags["found"].length()) {
@@ -127,17 +104,18 @@ void env2 (int *argcp, char ***argvp, int nstart) {
   }
 
   // check that we have a script next //////////////////////////////////////////
-  if(argc<3 || argv[2][0] == '-') {
+  int oscr_loc = stoi(flags["scr_loc"]);
+  if(argc<3 || argv[oscr_loc][0] == '-') {
     throw StdException("No script found");
   }
 
   // add script  ///////////////////////////////////////////////////////////////
   if(flags["found"].length()) {
     scr_loc = stoi(flags["found"])-1;
-    nargv[scr_loc] = strndup( argv[2], MAX_STR_CONST-1);
+    nargv[scr_loc] = strndup( argv[oscr_loc], MAX_STR_CONST-1);
   } else {
     scr_loc = nargc;
-    nargv[nargc++] = strndup( argv[2], MAX_STR_CONST-1);
+    nargv[nargc++] = strndup( argv[oscr_loc], MAX_STR_CONST-1);
   }
 
   // add remaining args for script (from user) /////////////////////////////////
@@ -148,7 +126,7 @@ void env2 (int *argcp, char ***argvp, int nstart) {
   // prep conf args ////////////////////////////////////////////////////////////
   eargc = nargc-nstart;
   if(!flags["norc"].length()) {
-    vars2();
+    add_args = vars2();
     interpreter_base = basename(nargv[int_loc]);
     if(Debug) fprintf(stderr, "Debug: interpreter_base: %s\n", interpreter_base.c_str());
     if(add_args.find(interpreter_base) != add_args.end()) {
@@ -224,9 +202,10 @@ void env2 (int *argcp, char ***argvp, int nstart) {
     dumpargs(j, eargv);
   }
 
-  /// move pointers to new vars ////////////////////////////////////////////////
-  *argvp = eargv;
-  *argcp = eargc;
+  /// return new vars ////////////////////////////////////////////////
+  e.argv = eargv;
+  e.argc = eargc;
+  return(e);
 }
 
 // #############################################################################
@@ -236,7 +215,7 @@ void env2 (int *argcp, char ***argvp, int nstart) {
 /**************************************************************
  * parse_flags
  **************************************************************/
-int parse_flags(argv_t e) { // xxx change to all of argv after split_and_merge()
+hash_t parse_flags(argv_t e) { 
   int nstart = 0;                            // nargv start element
   int j = 0;
 
@@ -349,7 +328,8 @@ int parse_flags(argv_t e) { // xxx change to all of argv after split_and_merge()
       flags_str += j;
     } // while
   }
-  return nstart;
+  flags["nstart"] = to_string(nstart);
+  return flags;
 }
 
 /****************************************************************
@@ -411,7 +391,7 @@ void usage(int ret) {
  **************************************************************/
 int main(int argc, char **argv) {
   // define local vars
-  int code, nstart;
+  int code;
   argv_t n, e;
 
   // define global vars
@@ -430,21 +410,22 @@ int main(int argc, char **argv) {
   e = split_and_merge(n, NULL, 1);
 
   // Parse out my flags
-  nstart = parse_flags(e);
+  flags   = parse_flags(e);
+  flags["scr_loc"] = to_string(2); // zzz
 
   // Call the main env2() function
   try {
-    env2(&argc, &argv, nstart);
+    e = env2(n);
   } catch (StdException &e) {
     fprintf(stderr, "%s error: %s\n", Argv0, e.what());
     usage(1);
   }
 
   // Exec the interpreter
-  code = execvp(argv[0], argv);
+  code = execvp(e.argv[0], e.argv);
 
   // Oh dear, there was an error
-  fprintf(stderr, "%s error: ", argv[0]);
+  fprintf(stderr, "%s error: exec() failed: ", Argv0);
   perror(argv[0]);
   return(code);
 }

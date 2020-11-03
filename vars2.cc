@@ -16,7 +16,7 @@ using namespace std;
 /*************************
  * parse config file and fill add_args[]
  ************************/
-void vars2() {
+hash_t vars2() {
   char *myname = basename(Argv0);
   char *home = getenv("HOME");
   char conf_name[MAX_STR_CONST];
@@ -25,6 +25,7 @@ void vars2() {
   char *conf_line = NULL;
   size_t size = 0;
   int read;
+  hash_t add_args;
   regex cfg_re0( R"(^\s*(\w+)\s*([;:=+!])\s*(.*)$)" );  // find a=b or a! OR a:b a;b
   regex cfg_re1( R"(\s+$)" );                           // trailing whitespace
   regex cfg_re2( R"(\\\\)" );                           // unescape backslash
@@ -36,12 +37,12 @@ void vars2() {
   snprintf(conf_name, sizeof(conf_name)-1,"%s/.%s%s",home,myname,"rc");
   if(stat(conf_name, &conf_stat) != 0) {
     if(Debug) fprintf(stderr, "Debug: conf file not found: %s\n", conf_name);
-    return;
+    return add_args;
   }
   conf_fh=fopen(conf_name, "r");
   if(conf_fh == NULL) {
     if(Debug) fprintf(stderr, "Debug: conf file not readable: %s\n", conf_name);
-    return;
+    return add_args;
   }
   while((read =  getline(&conf_line, &size, conf_fh)) != -1) {
     string conf_line_s = conf_line;
@@ -87,4 +88,5 @@ void vars2() {
   }
   free(conf_line);
   fclose(conf_fh);
+  return(add_args);
 }

@@ -21,7 +21,6 @@
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t add_args;               // Set in vars2()
 hash_t flags;                  // Place for flags
 
 using namespace std;
@@ -97,7 +96,6 @@ int main(int argc, char **argv) {
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t add_args;               // Set in vars2()
 hash_t flags;                  // Place for flags
 
 using namespace std;
@@ -149,7 +147,6 @@ int main(int argc, char **argv) {
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t add_args;               // Set in vars2()
 hash_t flags;                  // Place for flags
 
 using namespace std;

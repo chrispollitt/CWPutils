@@ -1,1 +1,32 @@
-ARGV="goodbye" FOO=""
+Debug: Debug mode activated
+Debug: Dump mode activated
+Debug: Delim mode activated with '~~'
+Debug: Strip mode activated
+Debug: setenv: FOO="BABBLE" 'MUTTER'
+Debug: add_args: perl=-w -I"/foo bar"
+Debug: add_args: bash=-x
+Debug: add_args: sh=-x -v
+Debug: setenv: BOO=BABBLE MUTTER
+Debug: setenv: BAR=
+Debug: unsetenv: BAZ
+Debug: add_args: boo=-s
+Debug: add_args: bar=
+Debug: set_args: baz=-le
+Debug: interpreter_base: perl
+Debug: adding cfg interprter arg: -w
+Debug: adding cfg interprter arg: -I/foo bar
+Debug: hashbang=-defs perl -le ~~ "hello\\ three"
+------env-----
+arg0='./env2'
+arg1='-defs'
+------arguments-----
+arg0='perl' <-- interpreter
+arg1='-w'
+arg2='-I/foo bar'
+arg3='-le'
+arg4='$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/' <-- script
+arg5='hello\ three'
+arg6='goodbye'
+warning: script file not found: '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/'
+------output-----
+ARGV="hello\ three" "goodbye" FOO=""BABBLE" 'MUTTER'"

@@ -34,7 +34,7 @@ install: build
 
 clean:
 	-rm -f $(PROG1) $(PROG2) $(SAMPLE) $(PROG1).pod
-	-rm -f *.man *.o *.exe *~
+	-rm -f *.man *.o *.exe *~ *.stackdump core
 	-rm -f t/out?
 
 uninstall:

@@ -3,7 +3,7 @@
 read -p "Are you sure? " ans
 if [[ $ans == YES ]]; then
   echo "OK then"
-  for i in 0 1 2 3 4 5 6; do
+  for i in 0 1 2 3 4 5 6 7; do
     if [[ -f out$i && -s out$i ]]; then
       mv out$i exp$i
     else

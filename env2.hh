@@ -1,11 +1,9 @@
 
 // Declare Globals ////////////////
 
-// System vars and functions
-void perror(const char *s);
-int errno;
 
-
+#ifdef MAKE_EXE
 // Local functions
-extern void usage(int ret);
-
+extern void   usage(int ret);
+extern hash_t parse_flags(char *flags_str);
+#endif

@@ -1,0 +1,10 @@
+Debug: Debug mode activated
+Debug: No rc file mode activated
+Debug: Comment mode activated
+Debug: hashbang=-dnc bash -x -c # comment
+Debug: argv[0]='bash'
+Debug: argv[1]='-x'
+Debug: argv[2]='-c'
+Debug: argv[3]='echo "Hi from 7"'
++ echo 'Hi from 7'
+Hi from 7
