@@ -17,13 +17,15 @@ LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3)
 
 # Logical Targets ##################
 
-all: build sample
+build all: progs samples
 
-build: $(PROG1) $(PROG1).man $(PROG2) $(PROG2).man
+rebuild: clean all
 
-sample: $(SAMPLE)
+progs: $(PROG1) $(PROG1).man $(PROG2) $(PROG2).man
 
-test check: build
+samples: $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3
+
+test check: all
 	./test_$(PROG1).sh ./$(PROG1)
 
 install: build
@@ -33,7 +35,7 @@ install: build
 	cp $(PROG2).man $(PREFIX)/share/man/man1/$(PROG2).1
 
 clean:
-	-rm -f $(PROG1) $(PROG2) $(SAMPLE) $(PROG1).pod
+	-rm -f $(PROG1) $(PROG2) $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3 $(PROG1).pod
 	-rm -f *.man *.o *.exe *~ *.stackdump core
 	-rm -f t/out?
 
@@ -59,11 +61,18 @@ $(PROG1).pod-middle: $(PROG1)
 $(PROG2): $(PROG2)_m.o
 	$(CXX) -o $@ $^
 
-# SAMPLE
-$(SAMPLE).o: $(SAMPLE).cc
+# SAMPLES
+$(SAMPLE)1.o: $(SAMPLE).cc
+	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=1 -o $@ -c $<
+$(SAMPLE)1: $(SAMPLE)1.o $(LIBOBJS) $(LIBOBJ0)
+	$(CXX) -o $@ $^
+$(SAMPLE)2.o: $(SAMPLE).cc
 	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=2 -o $@ -c $<
-
-$(SAMPLE): $(SAMPLE).o $(LIBOBJS) $(LIBOBJ0)
+$(SAMPLE)2: $(SAMPLE)2.o $(LIBOBJS) $(LIBOBJ0)
+	$(CXX) -o $@ $^
+$(SAMPLE)3.o: $(SAMPLE).cc
+	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=3 -o $@ -c $<
+$(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
 	$(CXX) -o $@ $^
 
 # Generic Rules ##############
@@ -82,7 +91,7 @@ $(SAMPLE): $(SAMPLE).o $(LIBOBJS) $(LIBOBJ0)
 
 # Special Rules ##############
 
-.PHONY: all build sample test check install clean uninstall 
+.PHONY: all build rebuild progs sample test check install clean uninstall 
 
 .PRECIOUS: %.o %.c
 

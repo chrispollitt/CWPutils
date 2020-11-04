@@ -18,7 +18,7 @@ int errno;
 
 // env2 functions
 extern int    dumpargs(int argc, char **argv);
-extern argv_t env2 (int *argcp, char ***argvp, int nstart);
+extern argv_t env2(argv_t o);
 extern argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr);
 extern argv_t split_and_merge(argv_t argvi, char *stri, int at);
 extern argv_t split_string(char *input);

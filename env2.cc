@@ -52,51 +52,53 @@ hash_t flags;                  // Place for flags xxx
 /****************************************************************
  * env2
  **************************************************************/
-argv_t env2 (argv_t o) {
-  char **argv;               // Orig argv
-  int    argc;               // size of argv
-  argv_t n;
-  char  **nargv;             // New  argv 
-  int   nargc = 0;           // size of nargv
-  argv_t c;
-  char  **cargv;             // config  argv 
-  int   cargc = 0;           // size of cargv
-  argv_t e;
-  char **eargv;              // Final  argv 
-  int   eargc = 0;           // size of eargv
+argv_t env2(argv_t o) {
+  argv_t n = {0, (char **)NULL};
+  argv_t c = {0, (char **)NULL};
+  argv_t e = {0, (char **)NULL};
   int i, j, k;               // Loop counters
   int set;                   // cnf args set or add
   int int_loc = 0;           // interpreter nargv location
   int scr_loc = 0;           // script      nargv location
+  int oscr_loc = 0;
   string interpreter_base;   // basename of interpreter
   int nstart = stoi(flags["nstart"]);
   hash_t add_args;
 
-  argv = o.argv;             // Orig argv
-  argc = o.argc;             // size of argv
-
   // main() should check for this - make sure we have the right number of args
-  if(argc == 1) {
+  if(o.argc == 1) {
     throw StdException("No args found");
   }
 
   // split up argv[1] (from #! line) ///////////////////////////////////////////
-  n = split_string(argv[1]);
-  nargv = n.argv;
-  nargc = n.argc;
+  n = split_string(o.argv[1]);
 
   // check that we have an interpreter from #! /////////////////////////////////
-  if(!flags["found"].length()) {
-    throw StdException("No interpreter found");
+  if(stoi(flags["found"]) == 1) {
+    int_loc = nstart;
+    interpreter_base = basename(n.argv[int_loc]);
+  } else if(stoi(flags["found"]) == -1) {
+    int_loc = 0;
+    interpreter_base = basename(o.argv[int_loc]);
+  } else {
+    // find int location in o.argv
+    int_loc = 1;
+    while(int_loc<o.argc && o.argv[int_loc][0] == '-') {
+      int_loc++;
+    }
+    if(int_loc == o.argc || o.argv[int_loc][0] == '-') {
+      throw StdException("No interpreter found");
+    } else {
+      interpreter_base = basename(o.argv[int_loc]);
+    }
   }
-  int_loc = nstart;
 
   // look for args meant for script, not interpreter ///////////////////////////
-  flags["found"] = "";
+  flags["found"] = "0";
   if(flags["delim"].length()) {
-    for(i=nstart; i < nargc; i++) {
+    for(i=nstart; i < n.argc; i++) {
       // options
-      if(strncmp(nargv[i], flags["delim"].c_str(), MAX_STR_CONST-1 )==STRCMP_TRUE) {
+      if(strncmp(n.argv[i], flags["delim"].c_str(), MAX_STR_CONST-1 )==STRCMP_TRUE) {
         flags["found"] = to_string(i+1);
         break;
       }
@@ -104,38 +106,47 @@ argv_t env2 (argv_t o) {
   }
 
   // check that we have a script next //////////////////////////////////////////
-  int oscr_loc = stoi(flags["scr_loc"]);
-  if(argc<3 || argv[oscr_loc][0] == '-') {
+  // find script location
+  oscr_loc = 2;
+  while(oscr_loc<o.argc && o.argv[oscr_loc][0] == '-') {
+    oscr_loc++;
+  }
+  if((oscr_loc == o.argc) || (o.argv[oscr_loc][0] == '-')) {
     throw StdException("No script found");
   }
+  if(Debug) fprintf(stderr, "Debug: oscr_loc: %d\n", oscr_loc);
 
   // add script  ///////////////////////////////////////////////////////////////
-  if(flags["found"].length()) {
+  if(stoi(flags["found"])) {
     scr_loc = stoi(flags["found"])-1;
-    nargv[scr_loc] = strndup( argv[oscr_loc], MAX_STR_CONST-1);
+    n.argv[scr_loc] = strndup( o.argv[oscr_loc], MAX_STR_CONST-1);
   } else {
-    scr_loc = nargc;
-    nargv[nargc++] = strndup( argv[oscr_loc], MAX_STR_CONST-1);
+    if(oscr_loc == 2) {
+      scr_loc = n.argc;
+      n.argv[scr_loc] = strndup( o.argv[oscr_loc], MAX_STR_CONST-1);
+      n.argc++;
+    } else {
+      scr_loc = n.argc + (oscr_loc-2);
+      // o.argv[oscr_loc] will be added below
+    }
   }
 
   // add remaining args for script (from user) /////////////////////////////////
-  for(j=3; j<argc; j++) {
-    nargv[nargc++] = strndup( argv[j], MAX_STR_CONST-1);
+  for(j = (oscr_loc == 2) ? 3 : 2; j<o.argc; j++) {
+    n.argv[n.argc] = strndup( o.argv[j], MAX_STR_CONST-1);
+    n.argc++;
   }
 
   // prep conf args ////////////////////////////////////////////////////////////
-  eargc = nargc-nstart;
+  e.argc = n.argc-nstart;
   if(!flags["norc"].length()) {
     add_args = vars2();
-    interpreter_base = basename(nargv[int_loc]);
     if(Debug) fprintf(stderr, "Debug: interpreter_base: %s\n", interpreter_base.c_str());
     if(add_args.find(interpreter_base) != add_args.end()) {
       char *add_args_s = (char *)add_args[interpreter_base].c_str();
 
       c = split_string(add_args_s);
-      cargc = c.argc;
-      cargv = c.argv;
-      eargc += cargc;
+      e.argc += c.argc;
     }
   }
 
@@ -143,68 +154,66 @@ argv_t env2 (argv_t o) {
   i=nstart; // nargv (nstart is first non-env2 flag arg)
   j=0;      // eargv
   k=0;      // cargv
-  eargv = (char **)calloc(MAX_STR_CONST, sizeof(char *));
+  e.argv = (char **)calloc(MAX_STR_CONST, sizeof(char *));
 
   // add interpreter
-  eargv[j++] = nargv[i++];
+  e.argv[j++] = n.argv[i++];
   // add remaining args
   set = 0;
-  while(j < eargc) {
+  while(j < e.argc) {
     // add config args ////////////////////////////////////
-    if(cargc && k<cargc) {
+    if(c.argc && k<c.argc) {
       // if set_arg
-      if(strncmp(cargv[k],"~~",2)==STRCMP_TRUE) {
+      if(strncmp(c.argv[k],"~~",2)==STRCMP_TRUE) {
         set = 1;
         // if empty string
-        if (!strlen(cargv[k]+2) && !flags["pre"].length()) {
+        if (!strlen(c.argv[k]+2) && !flags["pre"].length()) {
           if(Debug) fprintf(stderr, "Debug: skipping empty cfg interprter arg at %d\n", k);
           k++;
           // set it
         } else {
-          if(Debug) fprintf(stderr, "Debug: setting cfg interprter arg: %s\n", cargv[k]+2);
-          eargv[j++] = cargv[k++]+2;
+          if(Debug) fprintf(stderr, "Debug: setting cfg interprter arg: %s\n", c.argv[k]+2);
+          e.argv[j++] = c.argv[k++]+2;
         }
         // else add_arg
       } else {
         // if empty string
-        if (!strlen(cargv[k]) && !flags["pre"].length()) {
+        if (!strlen(c.argv[k]) && !flags["pre"].length()) {
           if(Debug) fprintf(stderr, "Debug: skipping empty cfg interprter arg at %d\n", k);
           k++;
           // add it
         } else {
-          if(Debug) fprintf(stderr, "Debug: adding cfg interprter arg: %s\n", cargv[k]);
-          eargv[j++] = cargv[k++];
+          if(Debug) fprintf(stderr, "Debug: adding cfg interprter arg: %s\n", c.argv[k]);
+          e.argv[j++] = c.argv[k++];
         }
       }
       // add nargv args //////////////////////////////////////
     } else {
       if(set && i < scr_loc ) {
-        if(Debug) fprintf(stderr, "Debug: skipping nargv interprter arg: %s\n", nargv[i]);
+        if(Debug) fprintf(stderr, "Debug: skipping nargv interprter arg: %s\n", n.argv[i]);
         i++;
       } else {
-        eargv[j++] = nargv[i++];
+        e.argv[j++] = n.argv[i++];
       }
     }
   }
-  eargv[j] = NULL;
+  e.argv[j] = NULL;
 
   // dump args /////////////////////////////////////////////////////////////////
-  if(Debug) fprintf(stderr, "Debug: hashbang=%s\n", argv[1]);
+  if(Debug) fprintf(stderr, "Debug: hashbang=%s\n", o.argv[1]);
   if(Debug && !flags["dump"].length()) {
-    for(i=0; i<j; i++) fprintf(stderr, "Debug: argv[%d]='%s'\n", i, eargv[i]);
+    for(i=0; i<j; i++) fprintf(stderr, "Debug: argv[%d]='%s'\n", i, e.argv[i]);
   }
   if(flags["dump"].length()) {
     printf("------env-----\n");
-    printf("arg%d='%s'\n",0,argv[0]);
+    printf("arg%d='%s'\n",0,o.argv[0]);
     for(i=0; i<nstart; i++) {
-      printf("arg%d='%s'\n",i+1,nargv[i]);
+      printf("arg%d='%s'\n",i+1,n.argv[i]);
     }
-    dumpargs(j, eargv);
+    dumpargs(j, e.argv);
   }
 
   /// return new vars ////////////////////////////////////////////////
-  e.argv = eargv;
-  e.argc = eargc;
   return(e);
 }
 
@@ -215,120 +224,119 @@ argv_t env2 (argv_t o) {
 /**************************************************************
  * parse_flags
  **************************************************************/
-hash_t parse_flags(argv_t e) { 
+hash_t parse_flags(char *flags_str) { 
   int nstart = 0;                            // nargv start element
   int j = 0;
 
+  flags["found"]    = "0";                    // [internal] a found non-flag arg
+  flags["nstart"]   = "0";                    // [internal] end of env2 args
+//      "Debug"                               // turn on debug mode
+//      "Help"                                // show usage
+//      "Version"                             // show version
   flags["cmt"]      = "";                     // allow comments
-  flags["pre"]      = "";                     // preserve empty args
-  flags["dump"]     = "";                     // Dump args flag
-  flags["sbs"]      = "";                     // Strip backslashes
-  flags["norc"]     = "";                     // Do not read rc file
   flags["delim"]    = "";                     // Delimiter to sep interpreter args from script args
+  flags["dump"]     = "";                     // Dump args flag
   flags["exp"]      = "";                     // Expand standard backslash-escaped characters
-  flags["found"]    = "";                     // [internal] found non flag
+  flags["norc"]     = "";                     // Do not read rc file
+  flags["pre"]      = "";                     // preserve empty args
+  flags["sbs"]      = "";                     // Strip backslashes
 
   // strip off args meant for me (from #! line) ////////////////////////////////
-  for(int i=1; i<e.argc; i++) {
-    char *flags_str = e.argv[i];
-    if(*flags_str != '-') {
-      flags["found"] = "1";
-      break;
-    }
-    while(*flags_str != ENDOFSTR) {
-      j=1;
-      // options
-      if        (strcmp(flags_str,"--help")==STRCMP_TRUE) {
-        usage(0);
-      } else if (strcmp(flags_str,"--version")==STRCMP_TRUE) {
-        usage(2);
-      } else if (*flags_str == '-') {
-        while(*(flags_str+j) != ENDOFSTR && *(flags_str+j) != ' ') {
-          int b=0;
+  while(*flags_str != ENDOFSTR) {
+    j=1;
+    // options
+    if        (strcmp(flags_str,"--help")==STRCMP_TRUE) {
+      usage(0);
+    } else if (strcmp(flags_str,"--version")==STRCMP_TRUE) {
+      usage(2);
+    } else if (*flags_str == '-') {
+      while(*(flags_str+j) != ENDOFSTR && *(flags_str+j) != ' ') {
+        int b=0;
 
-          // help
-          if     (*(flags_str+j) == 'h') {
-            usage(0);
-          }
-          // comment
-          else if(*(flags_str+j) == 'c') {
-            flags["cmt"] = "1";
-            if(Debug) fprintf(stderr, "Debug: Comment mode activated\n");
-          }
-          // debug
-          else if(*(flags_str+j) == 'd') {
-            Debug = 1;
-            if(Debug) fprintf(stderr, "Debug: Debug mode activated\n");
-          }
-          // emit (dump)
-          else if(*(flags_str+j) == 'e' || *(flags_str+j) == 'D' ) {
-            flags["dump"] = "1";
-            if(Debug) fprintf(stderr, "Debug: Dump mode activated\n");
-          }
-          // find (delim)
-          else if(*(flags_str+j) == 'f') {
+        // help
+        if     (*(flags_str+j) == 'h') {
+          usage(0);
+        }
+        // comment
+        else if(*(flags_str+j) == 'c') {
+          flags["cmt"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Comment mode activated\n");
+        }
+        // debug
+        else if(*(flags_str+j) == 'd') {
+          Debug = 1;
+          if(Debug) fprintf(stderr, "Debug: Debug mode activated\n");
+        }
+        // emit (dump)
+        else if(*(flags_str+j) == 'e' || *(flags_str+j) == 'D' ) {
+          flags["dump"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Dump mode activated\n");
+        }
+        // find (delim)
+        else if(*(flags_str+j) == 'f') {
 #ifdef F_TAKES_ARG
-            if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
-              char delim[40];
-              long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
-              strncpy(delim, (char *)flags_str+j+2, l); // Segfault!
-              delim[l] = '\0';
-              flags["delim"] = delim;
-              j += l+2;
-              b=1;
-            } else
+          if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
+            char delim[40];
+            long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
+            strncpy(delim, (char *)flags_str+j+2, l); // Segfault!
+            delim[l] = '\0';
+            flags["delim"] = delim;
+            j += l+2;
+            b=1;
+          } else
 #endif
-              flags["delim"] = (char *) "~~";
-            if(Debug) fprintf(stderr, "Debug: Delim mode activated with '%s'\n", flags["delim"].c_str());
-            // if delim spec'd, break as this delim string must term with a space
-            if (b) {
-              b=0;
-              break; // from inner while
-            }
+            flags["delim"] = (char *) "~~";
+          if(Debug) fprintf(stderr, "Debug: Delim mode activated with '%s'\n", flags["delim"].c_str());
+          // if delim spec'd, break as this delim string must term with a space
+          if (b) {
+            b=0;
+            break; // from inner while
           }
-          // no rc file
-          else if(*(flags_str+j) == 'n' ) {
-            flags["norc"] = "1";
-            if(Debug) fprintf(stderr, "Debug: No rc file mode activated\n");
-          }
-          // preserve empty args
-          else if(*(flags_str+j) == 'p') {
-            flags["pre"] = "1";
-            if(Debug) fprintf(stderr, "Debug: Perserve empty args mode activated\n");
-          }
-          // strip backslashes
-          else if(*(flags_str+j) == 's' ) {
-            flags["sbs"] = "1";
-            if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
-          }
-          // expand backslash-escaped chars
-          else if(*(flags_str+j) == 'x' ) {
-            flags["exp"] = "1";
-            if(Debug) fprintf(stderr, "Debug: Expand mode activated\n");
-          }
-          // illegal
-          else {
-            fprintf(stderr, "%s error: unrecognized flag %c\n", Argv0, *(flags_str+j));
-            usage(1);
-          }
-          j++;
-        } // while
-        // inc new start position
-        nstart++;
-      } // if -
-      // found a blank
-      else if(*(flags_str) == ' ') {
-        ; // do nothing
-      }
-      // found non-flag argument
-      else {
-        flags["found"] = "1";
-        break; // from outter while
-      }
-      flags_str += j;
-    } // while
-  }
+        }
+        // no rc file
+        else if(*(flags_str+j) == 'n' ) {
+          flags["norc"] = "1";
+          if(Debug) fprintf(stderr, "Debug: No rc file mode activated\n");
+        }
+        // preserve empty args
+        else if(*(flags_str+j) == 'p') {
+          flags["pre"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Perserve empty args mode activated\n");
+        }
+        // strip backslashes
+        else if(*(flags_str+j) == 's' ) {
+          flags["sbs"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
+        }
+        // expand backslash-escaped chars
+        else if(*(flags_str+j) == 'x' ) {
+          flags["exp"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Expand mode activated\n");
+        }
+        // illegal
+        else {
+          fprintf(stderr, "%s error: unrecognized flag %c\n", Argv0, *(flags_str+j));
+          usage(1);
+        }
+        j++;
+      } // while
+      // inc new start position
+      nstart++;
+    } // if -
+    // found a blank
+    else if(*(flags_str) == ' ') {
+      ; // do nothing
+    }
+    // found non-flag argument
+    else {
+      flags["found"] = "1";
+      break; // from outter while
+    }
+    flags_str += j;
+  } // while
   flags["nstart"] = to_string(nstart);
+  if(Debug) fprintf(stderr, "Debug: found: %s\n", flags["found"].c_str());
+  if(Debug) fprintf(stderr, "Debug: nstart: %s\n", flags["nstart"].c_str());
   return flags;
 }
 
@@ -392,32 +400,28 @@ void usage(int ret) {
 int main(int argc, char **argv) {
   // define local vars
   int code;
-  argv_t n, e;
+  argv_t o, e;
+  o.argc = argc;
+  o.argv = argv;
 
   // define global vars
-  Argv0 = argv[0];
+  Argv0 = o.argv[0];
   Debug = 0;
   setvbuf(stdout, NULL, _IONBF, 0);
 
-  // make sure we have the right number of args
-  if(argc == 1) {
+  // make sure we have at least one arg
+  if(o.argc < 2) {
     usage(1);
   }
 
-  // Split argv[1] and merge back into argv
-  n.argc = argc;
-  n.argv = argv;
-  e = split_and_merge(n, NULL, 1);
-
   // Parse out my flags
-  flags   = parse_flags(e);
-  flags["scr_loc"] = to_string(2); // zzz
+  flags   = parse_flags(o.argv[1]);
 
   // Call the main env2() function
   try {
-    e = env2(n);
-  } catch (StdException &e) {
-    fprintf(stderr, "%s error: %s\n", Argv0, e.what());
+    e = env2(o);
+  } catch (StdException &exc) {
+    fprintf(stderr, "%s error: %s\n", Argv0, exc.what());
     usage(1);
   }
 
@@ -426,7 +430,7 @@ int main(int argc, char **argv) {
 
   // Oh dear, there was an error
   fprintf(stderr, "%s error: exec() failed: ", Argv0);
-  perror(argv[0]);
+  perror(e.argv[0]);
   return(code);
 }
 
