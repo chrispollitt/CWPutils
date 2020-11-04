@@ -87,15 +87,15 @@ int main(int argc, char **argv) {
   /// PARSE SCRIPT //////////////////////////////////////////////////////////////
 #ifndef RUN_BASH
   // open files
-  FILE *script = fopen(e.argv[scr_loc], "r");   // zzz NOT WORKING
+  FILE *script = fopen(e.argv[scr_loc], "r");
   FILE *shell  = popen("/bin/bash --norc --noprofile -s", "w");
   char *lineptr = NULL;
   size_t linesze = 0;
   int read;
 
   // set vars vvvvvvvvvvvv
-  iargvs = (char *)"sample_interpreter1 -a -b -c";
-  sargvs = (char *)"-1 -2 -3";
+  iargvs = (char *)"sample_interpreter1 -a -b -c";  // xxx hardcoded!
+  sargvs = (char *)"-1 -2 -3";                      // xxx hardcoded! 
   fprintf(shell, "typeset -a argv=(%s)\n", iargvs);
   fprintf(shell, "BASH_ARGV0=%s\n", e.argv[scr_loc]); // bash v5 feature
   fprintf(shell, "set -- %s\n", sargvs);
