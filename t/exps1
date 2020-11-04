@@ -1,10 +1,10 @@
 Debug: oscr_loc: 2
 Debug: conf file not found: /home/chris/.sample_interpreterrc
 Debug: interpreter_base: sample_interpreter
-Debug: hashbang=-a -b -c ~~ -1 -2 -3
+Debug: hashbang=-a -b -c:foo ~~ -1 -2 -3
 Debug: argv[0]='-a'
 Debug: argv[1]='-b'
-Debug: argv[2]='-c'
+Debug: argv[2]='-c:foo'
 Debug: argv[3]='./sample_script.si'
 Debug: argv[4]='-1'
 Debug: argv[5]='-2'
@@ -15,7 +15,7 @@ Debug: argv[9]='-6'
 argv[0]='/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
 argv[1]='-a'
 argv[2]='-b'
-argv[3]='-c'
+argv[3]='-c:foo'
 argv[4]='./sample_script.si'
 argv[5]='-1'
 argv[6]='-2'

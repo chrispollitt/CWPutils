@@ -249,7 +249,7 @@ hash_t my_parse_flags(char *flags_str) {
         }
         // ccc
         else if(*(flags_str+j) == 'c') {
-#ifdef F_TAKES_ARG
+#ifndef F_TAKES_ARG
           if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
             char delim[40];
             long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
