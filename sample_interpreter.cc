@@ -146,7 +146,7 @@ int main(int argc, char **argv) {
 
   // set global vars
   Argv0 = argv[0];
-  Debug = 0;
+  Debug = 1;
   setvbuf(stdout, NULL, _IONBF, 0);
 
   // make sure we have the right number of args
@@ -300,7 +300,7 @@ int main(int argc, char **argv) {
   /// PARSE ARAGS //////////////////////////////////////////////////////////////
   // set global vars
   Argv0 = argv[0];
-  Debug = 0;
+  Debug = 1;
   setvbuf(stdout, NULL, _IONBF, 0);
 
   // make sure we have the right number of args

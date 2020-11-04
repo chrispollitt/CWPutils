@@ -1,17 +1,12 @@
-* change nargv[MAX_STR_CONST][MAX_STR_CONST] to **nargv
-* add a merge_arrays() function
-   - specify insertion point
-   - insert at or overwrite at insertion point 
+* add flag for "don't make allowances for non-hashbang calls"
+   - right now, if the interpreter flags are pre-split, it is handled
 * change c code to c++
-* move parse_flags() call to main() (and call split_string beforehand?)
 * fix parse_flags
-   - make it generic
+   - make it generic - NO!
    - replace with getopts_long
    - replace with boost program_options
    - other?
 * use namespace cwputils
-* change calls to usage() to throws and catch in main()
-* add_args should not be a global var
 * flags doen't need to be global either
 * fix man page:
   - autoformat middle in Makefile

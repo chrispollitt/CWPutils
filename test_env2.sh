@@ -73,6 +73,18 @@ $prog '-dnc bash -x -c # comment' 'echo "Hi from 7"' >& t/out7
 diff t/out7 t/exp7
 [[ $? != 0 ]] && (( errs = errs + 1 ))
 
+### sample_interpreter ############
+
+(( i = 1 ))
+while (( i <= 3 ));do
+  echo "==Test s$i"
+  ln -fs sample_interpreter$i sample_interpreter
+  ./sample_script.si -4 -5 -6 >& t/outs$i
+  diff t/outs$i t/exps$i
+  [[ $? != 0 ]] && (( errs = errs + 1 ))
+  (( i = i + 1 ))
+done
+
 #################################
 
 # restore orig rc file
