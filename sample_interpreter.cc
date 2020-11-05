@@ -7,67 +7,69 @@
 #include <errno.h>
 #include <libgen.h>
 
-#if MAIN_VARIATION == 1 || MAIN_VARIATION == 2
+//#if MAIN_VARIATION == 1 || MAIN_VARIATION == 2
 #include "env2lib.hh"
-#endif
+//#endif
 #include "sample_interpreter.hh"
 
 // #############################################################################
 
-char* join_strings(char *strings[], int count) {
-  char* str = NULL;             /* Pointer to the joined strings  */
-  size_t total_length = 0;      /* Total length of joined strings */
-  size_t length = 0;            /* Length of a string             */
-  int i = 0;                    /* Loop counter                   */
-  char sep = ' ';
 
-  /* Find total length of joined strings */
-  for(i = 0 ; i<count ; i++)
-  {
-    total_length += strlen(strings[i]);
-    if(strings[i][strlen(strings[i])-1] != sep)
-      ++total_length; /* For sep to be added */
-  }
-  ++total_length;     /* For joined string terminator */
-
-  str = (char*)malloc(total_length);  /* Allocate memory for joined strings */
-  str[0] = '\0';                      /* Empty string we can append to      */
-
-  /* Append all the strings */
-  for(i = 0 ; i<count ; i++)
-  {
-    strcat(str, strings[i]);
-    length = strlen(str);
-
-    /* Check if we need to insert sep */
-    if(str[length-1] != sep)
-    {
-      str[length] = sep;             /* Append a sep       */
-      str[length+1] = '\0';           /* followed by terminator */
-    }
-  }
-  length = strlen(str);
-  str[length-1] = '\0';           /* remove final sep */
-  return str;
-}
-
-void run_bash(argv_t ia, argv_t sa) {
-  char *iargvs;
-  char *sargvs;
+// * load_script *****************************************************
+argv_t load_script(char *scriptname) {
   char *lineptr = NULL;
   size_t linesze = 0;
   int read;
-
-  iargvs = join_strings(ia.argv, ia.argc);
-  sargvs = join_strings(sa.argv+1, sa.argc-1);
+  int i=0;
+  int max_script_lines = 1024;
+  argv_t sc;
+  sc.argv = (char **)calloc(max_script_lines, sizeof(char *));
 
   // open files
-  FILE *script = fopen(sa.argv[0], "r");
+  FILE *script = fopen(scriptname, "r");
+  if(script == NULL) {
+    fprintf(stderr, "%s error: file open failed for '%s'\n", Argv0, scriptname);
+    exit(1);
+  }
+
+  // read file
+  while((read = getline(&lineptr, &linesze, script)) != -1) {
+    sc.argv[i++] = strdup(lineptr);
+    if(i==max_script_lines-2) {
+      fprintf(stderr, "%s error: script exceeded max lines '%d' tuncating\n", Argv0, max_script_lines);
+      break;
+    }
+  }
+  sc.argv[i] = NULL;
+  sc.argc = i;
+  free(lineptr);
+  fclose(script);
+
+  return(sc);
+}
+
+// * run_bash *****************************************************
+void run_bash(argv_t ia, argv_t sa) {
+  char *iargvs;
+  char *sargvs;
+  argv_t sc;
+  int i;
+
+  iargvs = join_array(ia.argv, ia.argc);
+  sargvs = join_array(sa.argv+1, sa.argc-1);
+
+  sc = load_script(sa.argv[0]);
+  // open files
 #if 1
   FILE *shell  = popen("/bin/bash --norc --noprofile -s", "w");
 #else
   FILE *shell  = popen("/bin/bash --norc --noprofile -i", "w");
 #endif
+  if(shell == NULL) {
+    fprintf(stderr, "%s error: pipe open failed for '%s'\n", Argv0, "bash");
+    exit(1);
+  }
+
 
   // set vars
   fprintf(shell, "typeset -a argv=(%s)\n", iargvs);
@@ -75,12 +77,10 @@ void run_bash(argv_t ia, argv_t sa) {
   fprintf(shell, "set -- %s\n", sargvs);
 
   // execute script
-  while((read = getline(&lineptr, &linesze, script)) != -1) {
-    fprintf(shell, "%s\n", lineptr);
+  for (i=0;i<sc.argc;i++) {
+    fprintf(shell, "%s\n", sc.argv[i]);
   }
-  free(lineptr);
   pclose(shell);
-  fclose(script);
 }
 
 #if MAIN_VARIATION == 1
@@ -88,7 +88,6 @@ void run_bash(argv_t ia, argv_t sa) {
 // *************************************************************
 // * main1 - Call env2()
 // ************************************************************
-
 
 // Define Globals
 char *Argv0;                   // Name of program

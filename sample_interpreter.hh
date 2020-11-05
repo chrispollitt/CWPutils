@@ -7,21 +7,11 @@ int errno;
 
 // Local functions
 extern void usage(int ret);
+extern argv_t load_script(char *scriptname);
+extern void run_bash(argv_t ia, argv_t sa);
 
 #if MAIN_VARIATION == 3
 
-#include <bits/stdc++.h>
-
-typedef std::map<std::string, std::string> hash_t;
-typedef struct argv {
-  int argc;
-  char **argv;
-} argv_t;
-
 extern hash_t my_parse_flags(char *flags_str);
-
-// Global vars
-extern char *Argv0;                           // Name of program
-extern int   Debug;                           // Debug flag
 
 #endif

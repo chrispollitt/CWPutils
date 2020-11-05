@@ -46,10 +46,10 @@ tmp/*
 
 # Local stuff
 dumpargs
-env2
 sample_interpreter
-env2.man
+sample_interpreter?
+env2
+*.man
 env2.pod
 env2.pod-middle
-dumpargs.man
 t/out*
