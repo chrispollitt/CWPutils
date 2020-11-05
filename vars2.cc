@@ -55,11 +55,14 @@ hash_t vars2() {
 
       // Set Environment Variable
       if(sep == "=" || sep == "+") {
-        if        (regex_search(val, cfg_re3)) {            // remove enclosing ''
+        // remove enclosing ''
+        if        (regex_search(val, cfg_re3)) {            
           val =   regex_replace(val, cfg_re3, "$1");
-        } else if (regex_search(val, cfg_re4)) {            // remove enclosing ""
+        // remove enclosing ""
+        } else if (regex_search(val, cfg_re4)) {            
           val =   regex_replace(val, cfg_re4, "$1");
         }
+        // expand escaped chars
         if(flags["exp"].length()) {
           char expa[] = "abefnrtv";
           char expc[] = {7,8,27,12,10,13,9,11};
@@ -70,6 +73,7 @@ hash_t vars2() {
             }
           }
         }
+        // strip backslashes
         if(flags["sbs"].length()) {
           while( regex_search(val, cfg_re2) ) {
             val = regex_replace(val, cfg_re2, "$1");
@@ -79,6 +83,7 @@ hash_t vars2() {
             val.replace(j,1,"");
           }
         }
+        // append to existing value
         if(sep == "+") {
           oval = getenv(var.c_str());
           if (oval) val += string(oval);

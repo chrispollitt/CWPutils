@@ -34,7 +34,7 @@ hash_t flags;                  // Place for flags xxx
 #endif
 
 // Constants
-#define VERSION   "1.0"
+#define VERSION   "1.1"
 #define YEAR      "2020"
 
 #define STRCMP_TRUE    0
