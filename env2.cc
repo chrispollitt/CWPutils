@@ -76,9 +76,11 @@ argv_t env2(argv_t o) {
   // check that we have an interpreter from #! /////////////////////////////////
   if(stoi(flags["found"]) == 1) {
     int_loc = nstart;
+    oscr_loc = 2;
     interpreter_base = basename(n.argv[int_loc]);
   } else if(stoi(flags["found"]) == -1) {
     int_loc = 0;
+    oscr_loc = 1;
     interpreter_base = basename(o.argv[int_loc]);
   } else {
     // find int location in o.argv
@@ -107,7 +109,6 @@ argv_t env2(argv_t o) {
 
   // check that we have a script next //////////////////////////////////////////
   // find script location
-  oscr_loc = 2;
   while(oscr_loc<o.argc && o.argv[oscr_loc][0] == '-') {
     oscr_loc++;
   }

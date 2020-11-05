@@ -7,7 +7,81 @@
 #include <errno.h>
 #include <libgen.h>
 
+#if MAIN_VARIATION == 1 || MAIN_VARIATION == 2
+#include "env2lib.hh"
+#endif
+#include "sample_interpreter.hh"
+
 // #############################################################################
+
+char* join_strings(char *strings[], int count) {
+  char* str = NULL;             /* Pointer to the joined strings  */
+  size_t total_length = 0;      /* Total length of joined strings */
+  size_t length = 0;            /* Length of a string             */
+  int i = 0;                    /* Loop counter                   */
+  char sep = ' ';
+
+  /* Find total length of joined strings */
+  for(i = 0 ; i<count ; i++)
+  {
+    total_length += strlen(strings[i]);
+    if(strings[i][strlen(strings[i])-1] != sep)
+      ++total_length; /* For sep to be added */
+  }
+  ++total_length;     /* For joined string terminator */
+
+  str = (char*)malloc(total_length);  /* Allocate memory for joined strings */
+  str[0] = '\0';                      /* Empty string we can append to      */
+
+  /* Append all the strings */
+  for(i = 0 ; i<count ; i++)
+  {
+    strcat(str, strings[i]);
+    length = strlen(str);
+
+    /* Check if we need to insert sep */
+    if(str[length-1] != sep)
+    {
+      str[length] = sep;             /* Append a sep       */
+      str[length+1] = '\0';           /* followed by terminator */
+    }
+  }
+  length = strlen(str);
+  str[length-1] = '\0';           /* remove final sep */
+  return str;
+}
+
+void run_bash(argv_t ia, argv_t sa) {
+  char *iargvs;
+  char *sargvs;
+  char *lineptr = NULL;
+  size_t linesze = 0;
+  int read;
+
+  iargvs = join_strings(ia.argv, ia.argc);
+  sargvs = join_strings(sa.argv+1, sa.argc-1);
+
+  // open files
+  FILE *script = fopen(sa.argv[0], "r");
+#if 1
+  FILE *shell  = popen("/bin/bash --norc --noprofile -s", "w");
+#else
+  FILE *shell  = popen("/bin/bash --norc --noprofile -i", "w");
+#endif
+
+  // set vars
+  fprintf(shell, "typeset -a argv=(%s)\n", iargvs);
+  fprintf(shell, "BASH_ARGV0=%s\n", sa.argv[0]);  // bash v5 feature
+  fprintf(shell, "set -- %s\n", sargvs);
+
+  // execute script
+  while((read = getline(&lineptr, &linesze, script)) != -1) {
+    fprintf(shell, "%s\n", lineptr);
+  }
+  free(lineptr);
+  pclose(shell);
+  fclose(script);
+}
 
 #if MAIN_VARIATION == 1
 
@@ -15,8 +89,6 @@
 // * main1 - Call env2()
 // ************************************************************
 
-#include "env2lib.hh"
-#include "sample_interpreter.hh"
 
 // Define Globals
 char *Argv0;                   // Name of program
@@ -37,8 +109,6 @@ int main(int argc, char **argv) {
   // define local vars
   int i, scr_loc;
   argv_t o, e;
-  char *iargvs;
-  char *sargvs;
   
   o.argc = argc;
   o.argv = argv;
@@ -84,31 +154,20 @@ int main(int argc, char **argv) {
     if((i>0) && (e.argv[i][0] != '-')) scr_loc=i;
   }
 
-  /// PARSE SCRIPT //////////////////////////////////////////////////////////////
-#ifndef RUN_BASH
-  // open files
-  FILE *script = fopen(e.argv[scr_loc], "r");
-  FILE *shell  = popen("/bin/bash --norc --noprofile -s", "w");
-  char *lineptr = NULL;
-  size_t linesze = 0;
-  int read;
+  /// PARSE SCRIPT /////////////////////////////////////////////////////////////
+  // fix up iargv and sargv
+  argv_t ia;
+  ia.argv    =  (char **)calloc(e.argc, sizeof(char *));
+  ia.argv[0] = o.argv[0];
+  for(i=1;i<scr_loc+1;i++) ia.argv[i] = e.argv[i-1];
+  ia.argv[i] = NULL;
+  ia.argc    = scr_loc+1;
 
-  // set vars vvvvvvvvvvvv
-  iargvs = (char *)"sample_interpreter1 -a -b -c";  // xxx hardcoded!
-  sargvs = (char *)"-1 -2 -3";                      // xxx hardcoded! 
-  fprintf(shell, "typeset -a argv=(%s)\n", iargvs);
-  fprintf(shell, "BASH_ARGV0=%s\n", e.argv[scr_loc]); // bash v5 feature
-  fprintf(shell, "set -- %s\n", sargvs);
-  // ^^^^^^^^^^^^^^^^^^^^^
-
-  // execute script
-  while((read = getline(&lineptr, &linesze, script)) != -1) {
-    fprintf(shell, "%s\n", lineptr);
-  }
-  free(lineptr);
-  pclose(shell);
-  fclose(script);
-#endif
+  argv_t sa;
+  sa.argv = e.argv+= scr_loc;
+  sa.argc = e.argc-scr_loc;
+  // call run_bash
+  run_bash(ia, sa);
 
   return(0);
 }
@@ -122,8 +181,6 @@ int main(int argc, char **argv) {
 // * main2 - Call split_and_merge()
 // ************************************************************
 
-#include "env2lib.hh"
-#include "sample_interpreter.hh"
 
 // Define Globals
 char *Argv0;                   // Name of program
@@ -187,8 +244,6 @@ int main(int argc, char **argv) {
 // *   This implimentation is a copy of env2's. It sucks.
 // *   Should really copy the way Perl does it.
 // ************************************************************
-
-#include "sample_interpreter.hh"
 
 #define STRCMP_TRUE    0
 #define COMMENT       '#'
@@ -254,7 +309,7 @@ hash_t my_parse_flags(char *flags_str) {
             char delim[40];
             long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
             strncpy(delim, (char *)flags_str+j+2, l); // Segfault!
-            delim[l] = '\0';
+            delim[l] = ENDOFSTR;
             flags["ccc"] = delim;
             j += l+2;
             b=1;

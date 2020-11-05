@@ -85,6 +85,12 @@ while (( i <= 3 ));do
   (( i = i + 1 ))
 done
 
+echo "==Test sp"
+ln -fs sample_interpreter.pl sample_interpreter
+./sample_script.si -4 -5 -6 >& t/outsp
+diff t/outsp t/expsp
+[[ $? != 0 ]] && (( errs = errs + 1 ))
+
 #################################
 
 # restore orig rc file

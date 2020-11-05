@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 #
-# ./sample_script.si -4 -5 -6
-# ./sample_interpreter '-a -b -c ~~ -1 -2 -3' ./sample_script.si -4 -5 -6
+# ln -fs sample_interpreter.pl sample_interpreter;./sample_script.si -4 -5 -6
+# ./sample_interpreter.pl '-a -b -c ~~ -1 -2 -3' ./sample_script.si -4 -5 -6
 #      
 
 use strict;
@@ -14,17 +14,21 @@ sub usage {
 
 sub parse_flags {
   my($iargs, $sargs) = @_;
+  my @sargs_t;
   my %flags;
   my $farg=undef;
   my $delim=0;
   my $oc;
+  my $ia;
   
   # NOTE: This does not handle quoted or escaped whitespaces
-  shift @$iargs;
+  $ia = shift @$iargs;
 A:for my $a (@$iargs) {
 B:  for my $b (split /\s+/, $a) {
       if($b eq "~~") {
         $delim=1;
+      } elsif ($delim) {
+        push(@sargs_t, $b);
       } elsif ($b =~ s/^-//) {
         $farg= undef;
         $oc  = undef;
@@ -47,11 +51,13 @@ C:      for my $c (split //, $b) {
       }
     }
   }
+  unshift @$iargs, $ia;
+  splice(@$sargs, 1, 0, @sargs_t);
   # print found flags #####
   print "---my flags---\n";
   for my $f (sort keys %flags) {
     print "$f='$flags{$f}'\n";
-  }
+  }  
 }
 
 sub print_args {
@@ -113,6 +119,7 @@ sub call_bash {
   my($iargs, $sargs) = @_;
   my $fh;
   my @lines;
+  my $sa;
   local $" = "' '";
 
   # exists?  
@@ -129,8 +136,9 @@ sub call_bash {
   # set vars
   print $fh "typeset -a argv=('@$iargs')\n";
   print $fh "BASH_ARGV0=$$sargs[0]\n";
-  shift @$sargs;
+  $sa = shift @$sargs;
   print $fh "set -- '@$sargs'\n";
+  unshift @$sargs, $sa;
   # run script
   for my $line (@lines) {
     print $fh $line;

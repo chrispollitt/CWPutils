@@ -91,7 +91,7 @@ $(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
 
 # Special Rules ##############
 
-.PHONY: all build rebuild progs sample test check install clean uninstall 
+.PHONY: all build rebuild progs samples test check install clean uninstall 
 
 .PRECIOUS: %.o %.c
 

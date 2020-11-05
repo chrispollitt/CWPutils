@@ -52,11 +52,4 @@ env2.man
 env2.pod
 env2.pod-middle
 dumpargs.man
-t/out0
-t/out1
-t/out2
-t/out3
-t/out4
-t/out5
-t/out6
-t/out7
+t/out*
