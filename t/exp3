@@ -5,7 +5,7 @@ Debug: Strip mode activated
 Debug: found: 1
 Debug: nstart: 1
 Debug: oscr_loc: 2
-Debug: setenv: FOO="BABBLE" 'MUTTER'
+Debug: setenv: FOO=""BABBLE" 'MUTTER'"
 Debug: add_args: perl=-w -I"/foo bar"
 Debug: add_args: bash=-x
 Debug: add_args: sh=-x -v
@@ -32,4 +32,4 @@ arg5='hello\ three'
 arg6='goodbye'
 warning: script file not found: '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/'
 ------output-----
-ARGV="hello\ three" "goodbye" FOO=""BABBLE" 'MUTTER'"
+ARGV="hello\ three" "goodbye" FOO="""BABBLE" 'MUTTER'""

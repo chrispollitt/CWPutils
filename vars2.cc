@@ -25,13 +25,13 @@ hash_t vars2() {
   char *conf_line = NULL;
   size_t size = 0;
   int read;
+  size_t i, j;
   hash_t add_args;
-  regex cfg_re0( R"(^\s*(\w+)\s*([;:=+!])\s*(.*)$)" );  // find a=b or a! OR a:b a;b
+  regex cfg_re0( R"(^\s*(\w+)\s*([;:=+!])\s*(.*)$)" );  // find "a=b" or "a!" OR "a:b" or "a;b"
   regex cfg_re1( R"(\s+$)" );                           // trailing whitespace
-  regex cfg_re2( R"(\\\\)" );                           // unescape backslash
-  regex cfg_re3( R"(^['](.*)[']$)" );                   // remove enclosing ''
-  regex cfg_re4( R"(^["](.*)["]$)" );                   // remove enclosing ""
-  regex cfg_re5( R"(\\(["']))" );                       // unescape ' and "
+  regex cfg_re2( R"(\\([^\\]))" );                      // remove extra backslashes
+  regex cfg_re3( R"(^[']([^']*)[']$)" );                // remove enclosing ''
+  regex cfg_re4( R"(^["]([^"]*)["]$)" );                // remove enclosing ""
   smatch cfg_matches;
 
   snprintf(conf_name, sizeof(conf_name)-1,"%s/.%s%s",home,myname,"rc");
@@ -53,7 +53,6 @@ hash_t vars2() {
       string val  = cfg_matches[3].str();
       char *oval;
 
-      val = regex_replace(val, cfg_re2, "\\");              // unescape backslash
       // Set Environment Variable
       if(sep == "=" || sep == "+") {
         if        (regex_search(val, cfg_re3)) {            // remove enclosing ''
@@ -61,7 +60,25 @@ hash_t vars2() {
         } else if (regex_search(val, cfg_re4)) {            // remove enclosing ""
           val =   regex_replace(val, cfg_re4, "$1");
         }
-        val = regex_replace(val, cfg_re5, "$1");            // unescape ' and "
+        if(flags["exp"].length()) {
+          char expa[] = "abefnrtv";
+          char expc[] = {7,8,27,12,10,13,9,11};
+          for(i=0; i<strlen(expa);i++) {
+            string esc = string("\\") + string(1,(char)expa[i]);
+            while( (j=val.find(esc)) != string::npos ) {
+              val.replace(j,esc.length(),string(1,(char)expc[i]));
+            }
+          }
+        }
+        if(flags["sbs"].length()) {
+          while( regex_search(val, cfg_re2) ) {
+            val = regex_replace(val, cfg_re2, "$1");
+          }
+          string esc = string("\\\\");
+          while( (j=val.find(esc)) != string::npos ) {
+            val.replace(j,1,"");
+          }
+        }
         if(sep == "+") {
           oval = getenv(var.c_str());
           if (oval) val += string(oval);
