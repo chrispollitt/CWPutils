@@ -45,6 +45,11 @@ uninstall:
 	-rm -f $(PREFIX)/bin/$(PROG2)
 	-rm -f $(PREFIX)/share/man/man1/$(PROG2).1
 
+fixpaths:
+	@for f in sample_script.si t/exp*; do \
+	perl -lpi~ -e 's,/(.+/CWPutils/)(sample_interpreter),'"$(PWD)"'/$$2,;' $$f; \
+	done
+
 # Real Targets ####################
 
 # PROG1
@@ -91,7 +96,7 @@ $(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
 
 # Special Rules ##############
 
-.PHONY: all build rebuild progs samples test check install clean uninstall 
+.PHONY: all build rebuild progs samples test check install clean uninstall fixpaths
 
 .PRECIOUS: %.o %.c
 

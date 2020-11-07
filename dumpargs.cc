@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <malloc.h>
+//#include <malloc.h>
 #include "env2lib.hh"
 
 char *getaline(FILE *fh) {

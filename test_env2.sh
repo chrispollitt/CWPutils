@@ -16,6 +16,7 @@ fi
 # copy test rc file
 [[ -f ~/.$rc ]] && mv -f ~/.$rc ~/.$rc-ORIG
 cp t/$rc ~/.$rc
+touch ~/.sample_interpreterrc
 
 #############################################
 
@@ -95,6 +96,7 @@ diff t/outsp t/expsp
 
 # restore orig rc file
 [[ -f ~/.$rc-ORIG ]] && mv -f ~/.$rc-ORIG ~/.$rc
+rm ~/.sample_interpreterrc
 
 # Look for test errors
 if [[ $errs != 0 ]]; then echo "**FAIL=$errs**"; exit 1; fi
