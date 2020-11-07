@@ -68,16 +68,22 @@ sub print_args {
   my $i;
   my $found;
   my $fh;
-  my @lines;
+  my $line;
   local $" = " ";
   # get perl args ############################
   push(@pargs, $^X);
-  open($fh, "<", "/proc/self/cmdline");
-  @lines = <$fh>;
-  close($fh);
+  if(-d "/proc" and -f "/proc/self/cmdline") {
+    open($fh, "<", "/proc/self/cmdline");
+    $line = <$fh>;
+    close($fh);
+    $line =~ s/\c@/\cj/g;
+  } else {
+    $line = (`ps -p $$ -o command=`)[0];
+    $line =~ s/ /\cj/g;
+  }
   $i = 1;
   $found=0;
-  for my $a (split /\c@/, "@lines") {
+  for my $a (split /\cj/, $line) {
     if($a =~ /^-/) {
       if($found>1) {
         1;
