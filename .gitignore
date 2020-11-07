@@ -45,6 +45,7 @@ BAK/*
 tmp/*
 
 # Local stuff
+config.hh
 dumpargs
 sample_interpreter
 sample_interpreter?

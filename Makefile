@@ -82,6 +82,9 @@ $(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
 
 # Generic Rules ##############
 
+%.cc: %.hh env2lib.hh config.hh
+	touch $@
+
 %_m.o: %.cc
 	$(CXX) $(CXXFLAGS) -DMAKE_EXE -o $@ -c $<
 
