@@ -1,4 +1,4 @@
-#!/Users/chris/github/chrispollitt/CWPutils/sample_interpreter -a -b -c:foo ~~ -1 -2 -3
+#!/home/chris/github/chrispollitt/CWPutils/sample_interpreter -a -b -c:foo ~~ -1 -2 -3
 # Call from cmd line:
 #   ./sample_interpreter3 '-a -b -c' ./sample_script.si -1 -2 -3
 #   ./sample_interpreter3 -a -b -c ./sample_script.si -1 -2 -3

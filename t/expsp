@@ -2,7 +2,7 @@
 argv[0]=/usr/bin/perl
 argv[1]=-w
 ---inter args---
-argv[0]=/Users/chris/github/chrispollitt/CWPutils/sample_interpreter
+argv[0]=/home/chris/github/chrispollitt/CWPutils/sample_interpreter
 argv[1]=-a -b -c:foo ~~ -1 -2 -3
 ---script args---
 argv[0]=./sample_script.si
@@ -14,7 +14,7 @@ a='1'
 b='1'
 c='foo'
 ====Interpreter
-argv[0]='/Users/chris/github/chrispollitt/CWPutils/sample_interpreter'
+argv[0]='/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
 argv[1]='-a -b -c:foo ~~ -1 -2 -3'
 ====Script
 0='./sample_script.si'
