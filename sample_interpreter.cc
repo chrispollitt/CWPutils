@@ -354,7 +354,7 @@ hash_t my_parse_flags(argv_t a) {
 #if KERNEL_SPLIT == 0
         ;
 #else
-        fprintf(stderr, "%s error: illegal space found in argv[%d] '%s'\n", Argv0, i, a.argv[a]);
+        fprintf(stderr, "%s error: illegal space found in argv[%d] '%s'\n", Argv0, i, a.argv[i]);
         usage(1);
 #endif
       }
