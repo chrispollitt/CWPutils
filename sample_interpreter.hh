@@ -12,6 +12,6 @@ extern void run_bash(argv_t ia, argv_t sa);
 
 #if MAIN_VARIATION == 3
 
-extern hash_t my_parse_flags(char *flags_str);
+extern hash_t my_parse_flags(argv_t a);
 
 #endif
