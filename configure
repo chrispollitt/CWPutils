@@ -1,22 +1,52 @@
 #!/bin/bash
+# -*-Shell-*-
 
-# fix paths
-echo "1. Fixing paths"
-make fixpaths
+#################################################
+#                                               #
+#   Configure script for env2                   #
+#                                               #
+#################################################
 
-# test to see kernel behaviour of #! splitting
-echo "2. Testing kernel #! parsing"
-echo > config.hh
-make dumpargs
-ln -fs dumpargs sample_interpreter
-arg1=$(./sample_script.si | grep '^arg1')
-if   [[ $arg1 == *" -3'" ]]; then
-  echo "config info: kernel does NOT split #! line"
-  echo "#define KERNEL_SPLIT 0" >> config.hh
-elif [[ $arg1 == "'-a'"  ]]; then
-  echo "config info: kernel DOES split #! line"
-  echo "#define KERNEL_SPLIT 1" >> config.hh
-else
-  echo "config error: unexpected result from kernel parsing of #! line"
-  exit 1
-fi
+###################################
+# Prepare the sample_script with the desired #! line
+###################################
+function set_sample_script {
+  local iargs="$1"
+  local inter="$PWD/sample_interpreter"
+  
+  echo "#!$inter $iargs" > sample_script.si
+  cat sample_script.si.template >> sample_script.si
+  chmod 755 sample_script.si
+}
+
+###################################
+# main
+###################################
+function main {
+  # fix paths
+  echo "1. Fixing paths"
+  make fixpaths
+  
+  # test to see kernel behaviour of #! splitting
+  echo "2. Testing kernel #! parsing"
+  > config.hh
+  make dumpargs
+  
+  set_sample_script "-c:'b a r' ~~ -3:'g a r'"
+  script_args="-6:'p a r'"
+
+  ln -fs dumpargs sample_interpreter
+  arg1=$(./sample_script.si $script_args| grep '^arg1')
+  if   [[ $arg1 == *"g a r''" ]]; then
+    echo "config info: kernel does NOT split #! line"
+    echo "#define KERNEL_SPLIT 0" >> config.hh
+  elif [[ $arg1 == "'-a'"  ]]; then
+    echo "config info: kernel DOES split #! line"
+    echo "#define KERNEL_SPLIT 1" >> config.hh
+  else
+    echo "config error: unexpected result from kernel parsing of #! line"
+    echo "$arg1"
+    exit 1
+  fi
+}
+main ${1+"$@"}

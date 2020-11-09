@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 #
 # ln -fs sample_interpreter.pl sample_interpreter;./sample_script.si -4 -5 -6
-# ./sample_interpreter.pl '-a -b -c ~~ -1 -2 -3' ./sample_script.si -4 -5 -6
+# ./sample_interpreter.pl '-a -b -c ~~ -1 -2 -3'  ./sample_script.si -4 -5 -6
 #      
 
 use strict;
