@@ -17,8 +17,8 @@ typedef struct argv {
 // Declare Globals ////////////////
 
 // System vars and functions
-void perror(const char *s);
-int errno;
+extern void perror(const char *s);
+extern int errno;
 
 // env2 functions
 extern int dumpargs(int argc, char **argv);

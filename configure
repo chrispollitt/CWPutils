@@ -54,6 +54,7 @@ LDXXLIBS  =
 _HERE_
       ;;
     SunOS)
+      echo "*** config note: remember to use gmake not make ***"
       cat > config.mk <<'_HERE_'
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
@@ -69,7 +70,7 @@ _HERE_
       cat > config.mk <<'_HERE_'
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
-CXX       = clang
+CXX       = clang++
 CXXFLAGS  = -Wall -g -std=c++14
 LDXX      = $(CXX)
 LDXXFLAGS = 
@@ -90,20 +91,19 @@ _HERE_
   echo "=== 3. Testing kernel #! parsing"
   echo "#pragma once" > config.hh
   make dumpargs
-  set_sample_script "-c:'b a b' ~~ -3:'g a g'"
-  script_args="-6:'p a p'"
+  set_sample_script '-a:b\ c -d'
   ln -fs dumpargs sample_interpreter
-  arg1=$(./sample_script.si $script_args 2>/dev/null| grep '^arg1=')
-  if   [[ $arg1 == *"g a g''" ]]; then
+  arg1=$(./sample_script.si 2>/dev/null| grep '^arg1=')
+  if   [[ $arg1 == *"d'" ]]; then
     echo "config info: kernel does NOT split #! line"
     echo "#define KERNEL_SPLIT 0" >> config.hh
     ks=0
-  elif [[ $arg1 == *"-c:'b'"  ]]; then
-    echo "config info: kernel DOES split #! line but does NOT handle quoted whitespace"
+  elif [[ $arg1 == *"\'" ]]; then
+    echo "config info: kernel DOES split #! line but does NOT handle escaped whitespace"
     echo "#define KERNEL_SPLIT 1" >> config.hh
     ks=1
-  elif [[ $arg1 == *"-c:'b a b''" || $arg1 == *"-c:b a b'" ]]; then
-    echo "config info: kernel DOES split #! line and DOES handle quoted whitespace"
+  elif [[ $arg1 == *" c'" ]]; then
+    echo "config info: kernel DOES split #! line and DOES handle escaped  whitespace"
     echo "#define KERNEL_SPLIT 2" >> config.hh
     ks=2
   else

@@ -1,3 +1,15 @@
+REQUIREMENTS
+
+Gnu Bash shell
+Gnu Make (gmake on Solaris)
+c++ compiler that has c++14 compatability
+Perl (with pod2man in the PATH)
+diff
+
+
+
+STEPS
+
 ./configure
 make
 make check
