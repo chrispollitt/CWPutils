@@ -1,4 +1,4 @@
-argv[0]='/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
+argv[0]='/export/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
 argv[1]='-a'
 argv[2]='-b'
 argv[3]='-c:foo'

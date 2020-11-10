@@ -13,10 +13,11 @@ arg1=$(./sample_script.si | grep '^arg1')
 if   [[ $arg1 == *" -3'" ]]; then
   echo "config info: kernel does NOT split #! line"
   echo "#define KERNEL_SPLIT 0" >> config.hh
-elif [[ $arg1 == "'-a'"  ]]; then
+elif [[ $arg1 == *"'-a'"  ]]; then
   echo "config info: kernel DOES split #! line"
   echo "#define KERNEL_SPLIT 1" >> config.hh
 else
   echo "config error: unexpected result from kernel parsing of #! line"
+  echo "$arg1"
   exit 1
 fi

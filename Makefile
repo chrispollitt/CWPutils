@@ -1,9 +1,12 @@
 # Variables ###########################
 
 # Site cusomizable variables (change as needed)
-PREFIX   = /usr/local
-CXX      = g++
-CXXFLAGS = -Wall -g -std=gnu++17
+PREFIX    = /usr/local
+CXX       = CC
+CXXFLAGS  = -Wall -g -std=c++14 -D_XPG6
+LDXX      = $(CXX)
+LDXXFLAGS = -std=c++14
+LDXXLIBS  = 
 
 # Internal variables (change at your peril)
 PROG1   = env2
@@ -54,7 +57,7 @@ fixpaths:
 
 # PROG1
 $(PROG1): $(PROG1)_m.o $(LIBOBJS)
-	$(CXX) -o $@ $^
+	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 
 $(PROG1).pod: $(PROG1).pod-header $(PROG1).pod-middle $(PROG1).pod-footer
 	cat $^ > $(PROG1).pod
@@ -64,21 +67,21 @@ $(PROG1).pod-middle: $(PROG1)
 
 # PROG2
 $(PROG2): $(PROG2)_m.o
-	$(CXX) -o $@ $^
+	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 
 # SAMPLES
 $(SAMPLE)1.o: $(SAMPLE).cc
 	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=1 -o $@ -c $<
 $(SAMPLE)1: $(SAMPLE)1.o $(LIBOBJS) $(LIBOBJ0)
-	$(CXX) -o $@ $^
+	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 $(SAMPLE)2.o: $(SAMPLE).cc
 	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=2 -o $@ -c $<
 $(SAMPLE)2: $(SAMPLE)2.o $(LIBOBJS) $(LIBOBJ0)
-	$(CXX) -o $@ $^
+	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 $(SAMPLE)3.o: $(SAMPLE).cc
 	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=3 -o $@ -c $<
 $(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
-	$(CXX) -o $@ $^
+	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 
 # Generic Rules ##############
 
@@ -92,7 +95,7 @@ $(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
 	$(CXX) $(CXXFLAGS) -c $<
 
 %: %.o
-	$(CXX) -o $@ $< 
+	$(LDXX) $(LDXXFLAGS) -o $@ $< $(LDXXLIBS)
 
 %.man: %.pod
 	pod2man $< $@
