@@ -1,3 +1,5 @@
+* for dumb splitting kernels, rejoin and split properly!
+
 * add flag for "don't make allowances for non-hashbang calls"
    - right now, if the interpreter flags are pre-split, it is handled
 * change c code to c++

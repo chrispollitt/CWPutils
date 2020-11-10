@@ -3,7 +3,7 @@
 # Site cusomizable variables (change as needed)
 PREFIX   = /usr/local
 CXX      = g++
-CXXFLAGS = -Wall -g -std=gnu++17
+CXXFLAGS = -Wall -g -std=c++14
 
 # Internal variables (change at your peril)
 PROG1   = env2

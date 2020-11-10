@@ -55,12 +55,27 @@ function main {
     exit 1
   fi
 
+  # Add #defines to config.hh
+  echo "=== 3. Add #defines to config.hh"
+  case $(uname) in
+    Linux)
+      ;;
+    CYGWIN_NT*)
+      echo "#define _POSIX_C_SOURCE 201401L" >> config.hh
+      ;;
+    SunOS)
+      echo "#define _XPG6" >> config.hh
+      ;;
+    Darwin)
+      ;;
+  esac
+
   # copy correct test exp to t dir
-  echo "=== 3. Picking test exp files"
+  echo "=== 4. Picking test exp files"
   cp t/ks$ks/* t
 
   # Fix paths ####
-  echo "=== 4. Fixing paths"
+  echo "=== 5. Fixing paths"
   make fixpaths
   
 }
