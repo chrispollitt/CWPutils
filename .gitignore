@@ -45,7 +45,7 @@ BAK/*
 tmp/*
 
 # Local stuff
-config.hh
+config.*
 dumpargs
 sample_script.si
 sample_interpreter

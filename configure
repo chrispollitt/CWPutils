@@ -25,38 +25,9 @@ function set_sample_script {
 function main {
   local ks
 
-  # Clean ####
-  echo "=== 1. Cleaning"
-  make distclean
-
-  # Test to see kernel behaviour of #! splitting #####
-  echo "=== 2. Testing kernel #! parsing"
-  echo "#pragma once" > config.hh
-  make dumpargs
-  set_sample_script "-c:'b a b' ~~ -3:'g a g'"
-  script_args="-6:'p a p'"
-  ln -fs dumpargs sample_interpreter
-  arg1=$(./sample_script.si $script_args 2>/dev/null| grep '^arg1=')
-  if   [[ $arg1 == *"g a g''" ]]; then
-    echo "config info: kernel does NOT split #! line"
-    echo "#define KERNEL_SPLIT 0" >> config.hh
-    ks=0
-  elif [[ $arg1 == *"-c:'b'"  ]]; then
-    echo "config info: kernel DOES split #! line but does NOT handle quoted whitespace"
-    echo "#define KERNEL_SPLIT 1" >> config.hh
-    ks=1
-  elif [[ $arg1 == *"-c:'b a b''" || $arg1 == *"-c:b a b'" ]]; then
-    echo "config info: kernel DOES split #! line and DOES handle quoted whitespace"
-    echo "#define KERNEL_SPLIT 2" >> config.hh
-    ks=2
-  else
-    echo "config error: unexpected result from kernel parsing of #! line"
-    echo "$arg1"
-    exit 1
-  fi
-
   # Create config.mk
-  echo "=== 3. Create config.mk"
+  echo "=== 1. Create config.mk"
+  rm -f config.mk
   case $(uname) in
     Linux)
       cat > config.mk <<'_HERE_'
@@ -110,6 +81,36 @@ _HERE_
       echo "config error: unrecognized platform: $(uname)"
       exit 1
   esac
+
+  # Clean ####
+  echo "=== 2. Cleaning"
+  make distclean
+
+  # Test to see kernel behaviour of #! splitting #####
+  echo "=== 3. Testing kernel #! parsing"
+  echo "#pragma once" > config.hh
+  make dumpargs
+  set_sample_script "-c:'b a b' ~~ -3:'g a g'"
+  script_args="-6:'p a p'"
+  ln -fs dumpargs sample_interpreter
+  arg1=$(./sample_script.si $script_args 2>/dev/null| grep '^arg1=')
+  if   [[ $arg1 == *"g a g''" ]]; then
+    echo "config info: kernel does NOT split #! line"
+    echo "#define KERNEL_SPLIT 0" >> config.hh
+    ks=0
+  elif [[ $arg1 == *"-c:'b'"  ]]; then
+    echo "config info: kernel DOES split #! line but does NOT handle quoted whitespace"
+    echo "#define KERNEL_SPLIT 1" >> config.hh
+    ks=1
+  elif [[ $arg1 == *"-c:'b a b''" || $arg1 == *"-c:b a b'" ]]; then
+    echo "config info: kernel DOES split #! line and DOES handle quoted whitespace"
+    echo "#define KERNEL_SPLIT 2" >> config.hh
+    ks=2
+  else
+    echo "config error: unexpected result from kernel parsing of #! line"
+    echo "$arg1"
+    exit 1
+  fi
 
   # copy correct test exp to t dir
   echo "=== 4. Picking test exp files"

@@ -38,6 +38,7 @@ clean:
 
 distclean: clean
 	-rm -f t/exp* config.hh
+	# Can't rm config.mk as we need it to run
 
 uninstall:
 	-rm -f $(PREFIX)/bin/$(PROG1)
