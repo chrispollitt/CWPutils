@@ -12,9 +12,15 @@
 ###################################
 function set_sample_script {
   local iargs="$1"
-  local inter="$PWD/sample_interpreter"
+  local inter
   
-  echo "#!$inter $iargs" > sample_script.si
+  if [[ $iargs == /* ]]; then
+    inter=""
+  else
+    inter="$PWD/sample_interpreter "
+  fi
+  
+  echo "#!$inter$iargs" > sample_script.si
   cat sample_script.si.template >> sample_script.si
   chmod 755 sample_script.si
 }
@@ -29,6 +35,9 @@ function main {
   rc="${prog}rc"
   rc="${rc##*/}"
   errs=0
+  
+  # make sure . is first in PATH
+  PATH=".:$PATH"
   
   # test prog
   if [[ -z $prog || ! -x $prog ]]; then
@@ -113,6 +122,9 @@ function main {
   done
   
   echo "==Test sp"
+  inter="/usr/bin/env sample_interpreter"
+  set_sample_script "$inter -a -b -c:foo ~~ -1 -2 -3"
+  script_args="-4 -5 -6"
   ln -fs sample_interpreter.pl sample_interpreter
   ./sample_script.si $script_args >& t/outsp
   diff t/outsp t/expsp

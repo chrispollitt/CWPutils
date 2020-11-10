@@ -3,7 +3,7 @@ Debug: bbb mode activated
 Debug: ccc mode activated with 'foo'
 Debug: found: 1
 Debug: nstart: 3
-argv[0]='/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
+argv[0]='/Users/chris/github/chrispollitt/CWPutils/sample_interpreter'
 flag[aaa]='1'
 flag[bbb]='1'
 flag[ccc]='foo'

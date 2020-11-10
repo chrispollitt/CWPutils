@@ -23,30 +23,41 @@ function set_sample_script {
 # main
 ###################################
 function main {
-  # fix paths
-  echo "1. Fixing paths"
-  make fixpaths
-  
-  # test to see kernel behaviour of #! splitting
+  local ks
+
+  # Clean ####
+  echo "1. Cleaning"
+  make clean
+
+  # Test to see kernel behaviour of #! splitting #####
   echo "2. Testing kernel #! parsing"
   > config.hh
   make dumpargs
-  
-  set_sample_script "-c:'b a r' ~~ -3:'g a r'"
-  script_args="-6:'p a r'"
-
+  set_sample_script "-c:'b a b' ~~ -3:'g a g'"
+  script_args="-6:'p a p'"
   ln -fs dumpargs sample_interpreter
-  arg1=$(./sample_script.si $script_args| grep '^arg1')
+  arg1=$(./sample_script.si $script_args 2>/dev/null| grep '^arg1=')
   if   [[ $arg1 == *"g a r''" ]]; then
     echo "config info: kernel does NOT split #! line"
     echo "#define KERNEL_SPLIT 0" >> config.hh
-  elif [[ $arg1 == "'-a'"  ]]; then
-    echo "config info: kernel DOES split #! line"
+    ks=0
+  elif [[ $arg1 == *"-c:'b'"  ]]; then
+    echo "config info: kernel DOES split #! line, but does not handle quoted whitespace"
     echo "#define KERNEL_SPLIT 1" >> config.hh
+    ks=1
   else
     echo "config error: unexpected result from kernel parsing of #! line"
     echo "$arg1"
     exit 1
   fi
+
+  # copy correct test exp to t dir
+  echo "3. Fixing paths"
+  cp t/ks$ks/* t
+
+  # Fix paths ####
+  echo "4. Fixing paths"
+  make fixpaths
+  
 }
 main ${1+"$@"}

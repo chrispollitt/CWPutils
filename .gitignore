@@ -55,3 +55,4 @@ env2
 env2.pod
 env2.pod-middle
 t/out*
+t/exp*
