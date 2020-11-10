@@ -37,7 +37,10 @@ install: build
 clean:
 	-rm -f $(PROG1) $(PROG2) $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3 $(PROG1).pod sample_script.si
 	-rm -f *.man *.o *.exe *~ *.stackdump core
-	-rm -f t/out?
+	-rm -f t/out*
+
+distclean: clean
+	-rm -f t/exp* config.hh
 
 uninstall:
 	-rm -f $(PREFIX)/bin/$(PROG1)

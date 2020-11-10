@@ -26,25 +26,29 @@ function main {
   local ks
 
   # Clean ####
-  echo "1. Cleaning"
-  make clean
+  echo "=== 1. Cleaning"
+  make distclean
 
   # Test to see kernel behaviour of #! splitting #####
-  echo "2. Testing kernel #! parsing"
+  echo "=== 2. Testing kernel #! parsing"
   > config.hh
   make dumpargs
   set_sample_script "-c:'b a b' ~~ -3:'g a g'"
   script_args="-6:'p a p'"
   ln -fs dumpargs sample_interpreter
   arg1=$(./sample_script.si $script_args 2>/dev/null| grep '^arg1=')
-  if   [[ $arg1 == *"g a r''" ]]; then
+  if   [[ $arg1 == *"g a g''" ]]; then
     echo "config info: kernel does NOT split #! line"
     echo "#define KERNEL_SPLIT 0" >> config.hh
     ks=0
   elif [[ $arg1 == *"-c:'b'"  ]]; then
-    echo "config info: kernel DOES split #! line, but does not handle quoted whitespace"
+    echo "config info: kernel DOES split #! line but does NOT handle quoted whitespace"
     echo "#define KERNEL_SPLIT 1" >> config.hh
     ks=1
+  elif [[ $arg1 == *"-c:'b a b''" || $arg1 == *"-c:b a b'" ]]; then
+    echo "config info: kernel DOES split #! line and DOES handle quoted whitespace"
+    echo "#define KERNEL_SPLIT 2" >> config.hh
+    ks=2
   else
     echo "config error: unexpected result from kernel parsing of #! line"
     echo "$arg1"
@@ -52,11 +56,11 @@ function main {
   fi
 
   # copy correct test exp to t dir
-  echo "3. Fixing paths"
+  echo "=== 3. Picking test exp files"
   cp t/ks$ks/* t
 
   # Fix paths ####
-  echo "4. Fixing paths"
+  echo "=== 4. Fixing paths"
   make fixpaths
   
 }

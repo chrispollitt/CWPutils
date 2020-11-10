@@ -30,14 +30,16 @@ function set_sample_script {
 ###################################
 function main {
   # set vars
-  me="$0"
-  prog="${1%.exe}"
-  rc="${prog}rc"
+  local prog="${1%.exe}"
+  local errs=0
+  local ks=""
+  local inter=""
+  local rc="${prog}rc"
   rc="${rc##*/}"
-  errs=0
+  ks=$(perl -lne '/KERNEL_SPLIT (\d+)/ and print $1' config.hh)
   
   # make sure . is first in PATH
-  PATH=".:$PATH"
+  export PATH=".:$PATH"
   
   # test prog
   if [[ -z $prog || ! -x $prog ]]; then
@@ -122,8 +124,17 @@ function main {
   done
   
   echo "==Test sp"
-  inter="/usr/bin/env sample_interpreter"
-  set_sample_script "$inter -a -b -c:foo ~~ -1 -2 -3"
+  # Can #! call #! ???
+  if   [[ $ks == 0 ]]; then
+    # This works on Linux, not sure about others
+    inter=""
+  elif [[ $ks == 1 ]]; then
+    inter="/usr/bin/env sample_interpreter "
+  else
+    echo "error: unhandled ks value: $ks"
+    exit 1
+  fi
+  set_sample_script "${inter}-a -b -c:foo ~~ -1 -2 -3"
   script_args="-4 -5 -6"
   ln -fs sample_interpreter.pl sample_interpreter
   ./sample_script.si $script_args >& t/outsp
