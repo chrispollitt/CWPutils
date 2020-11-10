@@ -1,4 +1,5 @@
 // Includes
+#include "config.hh"
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -123,7 +124,7 @@ int main(int argc, char **argv) {
   }
 
   // Set flags
-  flags["found"]  = "-1";  // E inter found
+  flags["found"]  = "-1";  // E inter found (-1 means inter==o.argv[0])
   flags["nstart"] = "0";   // E after env2 flags
 
   // set flags (S=split_string E=env2 V=vars2)
@@ -198,15 +199,17 @@ void usage(int ret) {
 int main(int argc, char **argv) {
   /// PARSE ARAGS //////////////////////////////////////////////////////////////
   argv_t o, e;
+  o.argc = argc;
+  o.argv = argv;
   int i = 0;
 
   // set global vars
-  Argv0 = argv[0];
+  Argv0 = o.argv[0];
   Debug = 1;
   setvbuf(stdout, NULL, _IONBF, 0);
 
   // make sure we have the right number of args
-  if(argc == 1) {
+  if(o.argc == 1) {
     usage(1);
   }
 
@@ -216,10 +219,13 @@ int main(int argc, char **argv) {
   flags["pre"]    = "";    // S preserve empty
   flags["sbs"]    = "";    // S strip escapes
 
+#if KERNEL_SPLIT == 0
   // split_and_merge()
-  o.argc = argc;
-  o.argv = argv;
   e = split_and_merge(o, NULL, 1);
+#else
+  // kernel already did split
+  e = o;
+#endif
 
   /// DUMP ARAGS //////////////////////////////////////////////////////////////
   for(i=0; i<e.argc; i++) {
@@ -262,7 +268,9 @@ void usage(int ret) {
 }
 
 // * parse_flags ***********************************************
-hash_t my_parse_flags(char *flags_str) { 
+// NOTES:
+//   - Does not handle flag args with embedded spaces, escapes, or quotes
+hash_t my_parse_flags(argv_t a) { 
   int nstart = 0;                        // nargv start element
   int j = 0;
 
@@ -271,78 +279,95 @@ hash_t my_parse_flags(char *flags_str) {
 //      "Debug"                               // turn on debug mode
 //      "Help"                                // show usage
 //      "Version"                             // show version
-  flags["aaa"] = "";                     // aaa flag
-  flags["bbb"] = "";                     // bbb flag
-  flags["ccc"] = "";                     // ccc flag
+  flags["aaa"] = "";                          // aaa flag
+  flags["bbb"] = "";                          // bbb flag
+  flags["ccc"] = "";                          // ccc flag
 
   // strip off args meant for me (from #! line) ////////////////////////////////
-  while(*flags_str != ENDOFSTR) {
-    j=1;
-    // options
-    if        (strcmp(flags_str,"--help")==STRCMP_TRUE) {
-      usage(0);
-    } else if (strcmp(flags_str,"--version")==STRCMP_TRUE) {
-      usage(2);
-    } else if (*flags_str == '-') {
-      while(*(flags_str+j) != ENDOFSTR && *(flags_str+j) != ' ') {
-        int b=0;
-
-        // help
-        if     (*(flags_str+j) == 'h') {
-          usage(0);
-        }
-        // aaa
-        else if(*(flags_str+j) == 'a') {
-          flags["aaa"] = "1";
-          if(Debug) fprintf(stderr, "Debug: aaa mode activated\n");
-        }
-        // bbb
-        else if(*(flags_str+j) == 'b') {
-          flags["bbb"] = "1";
-          if(Debug) fprintf(stderr, "Debug: bbb mode activated\n");
-        }
-        // ccc
-        else if(*(flags_str+j) == 'c') {
-#ifndef F_TAKES_ARG
-          if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
-            char delim[40];
-            long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
-            strncpy(delim, (char *)flags_str+j+2, l); // Segfault!
-            delim[l] = ENDOFSTR;
-            flags["ccc"] = delim;
-            j += l+2;
-            b=1;
-          } else
-#endif
-            flags["ccc"] = (char *) "~~";
-          if(Debug) fprintf(stderr, "Debug: ccc mode activated with '%s'\n", flags["ccc"].c_str());
-          // if delim spec'd, break as this delim string must term with a space
-          if (b) {
-            b=0;
-            break; // from inner while
+  
+  // loop through argv[]
+  for(int i = 1; i< a.argc ;i++) {
+    char *flags_str = a.argv[i];
+    // loop through char flag clusters (sep by space)
+    while(*flags_str != ENDOFSTR) {
+      j=1;
+      // options
+      if        (strcmp(flags_str,"--help")==STRCMP_TRUE) {
+        usage(0);
+      } else if (strcmp(flags_str,"--version")==STRCMP_TRUE) {
+        usage(2);
+      } else if (*flags_str == '-') {
+        // loop through individual char flags (final flag in cluster can have arg [with no embedded spaces])
+        while(
+          *(flags_str+j) != ENDOFSTR &&   // not end of string
+          *(flags_str+j) != ' '           // not a cluster seperating space
+        ) {
+          int b=0;
+  
+          // help
+          if     (*(flags_str+j) == 'h') {
+            usage(0);
           }
-        }
-        // illegal
-        else {
-          fprintf(stderr, "%s error: unrecognized flag %c\n", Argv0, *(flags_str+j));
-          usage(1);
-        }
-        j++;
-      } // while
-      // inc new start position
-      nstart++;
-    } // if -
-    // found a blank
-    else if(*(flags_str) == ' ') {
-      ; // do nothing
-    }
-    // found non-flag argument
-    else {
-      flags["found"] = "1";
-      break; // from outter while
-    }
-    flags_str += j;
-  } // while
+          // aaa
+          else if(*(flags_str+j) == 'a') {
+            flags["aaa"] = "1";
+            if(Debug) fprintf(stderr, "Debug: aaa mode activated\n");
+          }
+          // bbb
+          else if(*(flags_str+j) == 'b') {
+            flags["bbb"] = "1";
+            if(Debug) fprintf(stderr, "Debug: bbb mode activated\n");
+          }
+          // ccc
+          else if(*(flags_str+j) == 'c') {
+#ifndef F_TAKES_ARG
+            if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
+              char delim[40];
+              long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
+              strncpy(delim, (char *)flags_str+j+2, l); // Segfault!
+              delim[l] = ENDOFSTR;
+              flags["ccc"] = delim;
+              j += l+2;
+              b=1;
+            } else
+#endif
+              flags["ccc"] = (char *) "~~";
+            if(Debug) fprintf(stderr, "Debug: ccc mode activated with '%s'\n", flags["ccc"].c_str());
+            // if delim spec'd, break as this delim string must term with a space
+            if (b) {
+              b=0;
+              break; // from inner while
+            }
+          }
+          // illegal
+          else {
+            fprintf(stderr, "%s error: unrecognized flag %c\n", Argv0, *(flags_str+j));
+            usage(1);
+          }
+          j++;
+        } // inner while
+        // inc new start position
+        nstart++;
+      } // if "-"
+      // found a blank
+      else if(*(flags_str) == ' ') {
+        // beginning of new char flag cluster
+#if KERNEL_SPLIT == 0
+        ;
+#else
+        fprintf(stderr, "%s error: illegal space found in argv[%d] '%s'\n", Argv0, i, a.argv[i]);
+        usage(1);
+#endif
+      }
+      // found non-flag argument
+      else {
+        flags["found"] = "1";
+        break; // from outter while
+      }
+      flags_str += j;
+    } // outter while
+    if(flags["found"] == "1") break;
+  } // for
   flags["nstart"] = to_string(nstart);
   if(Debug) fprintf(stderr, "Debug: found: %s\n", flags["found"].c_str());
   if(Debug) fprintf(stderr, "Debug: nstart: %s\n", flags["nstart"].c_str());
@@ -352,33 +377,35 @@ hash_t my_parse_flags(char *flags_str) {
 // * main3 *****************************************************
 int main(int argc, char **argv) {
   /// PARSE ARAGS //////////////////////////////////////////////////////////////
+  argv_t o;
+  o.argc = argc;
+  o.argv = argv;
+  
   // set global vars
-  Argv0 = argv[0];
+  Argv0 = o.argv[0];
   Debug = 1;
   setvbuf(stdout, NULL, _IONBF, 0);
 
   // make sure we have the right number of args
-  if(argc == 1) {
+  if(o.argc == 1) {
     usage(1);
   }
 
   // Parse out my flags
-  flags = my_parse_flags(argv[1]); // xxx what if inter was called from cmd line?
-
-  printf("Debug: nstart='%s'\n",flags["nstart"].c_str());
+  flags = my_parse_flags(o);
   
   /// DUMP ARAGS //////////////////////////////////////////////////////////////
-  printf("argv[0]='%s'\n",argv[0]);
+  printf("argv[0]='%s'\n",o.argv[0]);
   for (auto it = flags.begin(); it != flags.end(); ++it) {
     if(it->first != "found" && it->first != "nstart")
       printf("flag[%s]='%s'\n",it->first.c_str(), it->second.c_str());
   }
   int scr_loc = 0;
-  for(int i=1; i<argc; i++) {
-    if(argv[i][0] == '-') {
-      if(scr_loc) printf("argv[%i]='%s'\n",i,argv[i]);
+  for(int i=1; i < o.argc; i++) {
+    if(o.argv[i][0] == '-') {
+      if(scr_loc) printf("argv[%i]='%s'\n",i,o.argv[i]);
     } else {
-      printf("argv[%i]='%s'\n",i,argv[i]);
+      printf("argv[%i]='%s'\n",i,o.argv[i]);
       scr_loc = i;
     }
   }

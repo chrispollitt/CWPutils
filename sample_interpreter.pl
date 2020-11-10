@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 #
-# ln -fs sample_interpreter.pl sample_interpreter;./sample_script.si -4 -5 -6
-# ./sample_interpreter.pl '-a -b -c ~~ -1 -2 -3' ./sample_script.si -4 -5 -6
+# ln -fs sample_interpreter.pl sample_interpreter;    ./sample_script.si -4 -5 -6
+# ./sample_interpreter.pl '-a -b -c:foo ~~ -1 -2 -3'  ./sample_script.si -4 -5 -6
 #      
 
 use strict;
@@ -57,7 +57,7 @@ C:      for my $c (split //, $b) {
   print "---my flags---\n";
   for my $f (sort keys %flags) {
     print "$f='$flags{$f}'\n";
-  }  
+  }
 }
 
 sub print_args {
@@ -99,7 +99,7 @@ sub print_args {
   $i = 1;
   $found=0;
   for my $a (@ARGV) {
-    if($a =~ /^-/) {
+    if($a =~ /^[-~]/) {
       if($found) {
         push(@sargs, $a);
       } else {
@@ -167,5 +167,4 @@ sub main {
   #### Execute script
   call_bash($iargs, $sargs);
 }
-
 main();

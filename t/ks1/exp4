@@ -1,0 +1,2 @@
+Use of uninitialized value in concatenation (.) or string at -e line 1.
+ARGV="hello four" "goodbye" FAR=""

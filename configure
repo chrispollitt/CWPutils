@@ -1,23 +1,123 @@
 #!/bin/bash
+# -*-Shell-*-
 
-# fix paths
-echo "1. Fixing paths"
-make fixpaths
+#################################################
+#                                               #
+#   Configure script for env2                   #
+#                                               #
+#################################################
 
-# test to see kernel behaviour of #! splitting
-echo "2. Testing kernel #! parsing"
-echo > config.hh
-make dumpargs
-ln -fs dumpargs sample_interpreter
-arg1=$(./sample_script.si | grep '^arg1')
-if   [[ $arg1 == *" -3'" ]]; then
-  echo "config info: kernel does NOT split #! line"
-  echo "#define KERNEL_SPLIT 0" >> config.hh
-elif [[ $arg1 == *"'-a'"  ]]; then
-  echo "config info: kernel DOES split #! line"
-  echo "#define KERNEL_SPLIT 1" >> config.hh
-else
-  echo "config error: unexpected result from kernel parsing of #! line"
-  echo "$arg1"
-  exit 1
-fi
+###################################
+# Prepare the sample_script with the desired #! line
+###################################
+function set_sample_script {
+  local iargs="$1"
+  local inter="$PWD/sample_interpreter"
+  
+  echo "#!$inter $iargs" > sample_script.si
+  cat sample_script.si.template >> sample_script.si
+  chmod 755 sample_script.si
+}
+
+###################################
+# main
+###################################
+function main {
+  local ks
+
+  # Clean ####
+  echo "=== 1. Cleaning"
+  make distclean
+
+  # Test to see kernel behaviour of #! splitting #####
+  echo "=== 2. Testing kernel #! parsing"
+  echo "#pragma once" > config.hh
+  make dumpargs
+  set_sample_script "-c:'b a b' ~~ -3:'g a g'"
+  script_args="-6:'p a p'"
+  ln -fs dumpargs sample_interpreter
+  arg1=$(./sample_script.si $script_args 2>/dev/null| grep '^arg1=')
+  if   [[ $arg1 == *"g a g''" ]]; then
+    echo "config info: kernel does NOT split #! line"
+    echo "#define KERNEL_SPLIT 0" >> config.hh
+    ks=0
+  elif [[ $arg1 == *"-c:'b'"  ]]; then
+    echo "config info: kernel DOES split #! line but does NOT handle quoted whitespace"
+    echo "#define KERNEL_SPLIT 1" >> config.hh
+    ks=1
+  elif [[ $arg1 == *"-c:'b a b''" || $arg1 == *"-c:b a b'" ]]; then
+    echo "config info: kernel DOES split #! line and DOES handle quoted whitespace"
+    echo "#define KERNEL_SPLIT 2" >> config.hh
+    ks=2
+  else
+    echo "config error: unexpected result from kernel parsing of #! line"
+    echo "$arg1"
+    exit 1
+  fi
+
+  # Create config.mk
+  echo "=== 3. Create config.mk"
+  case $(uname) in
+    Linux)
+      cat > config.mk <<'_HERE_'
+# Site cusomizable variables (change as needed)
+PREFIX    = /usr/local
+CXX       = g++
+CXXFLAGS  = -Wall -g -std=c++14
+LDXX      = $(CXX)
+LDXXFLAGS = 
+LDXXLIBS  = 
+
+_HERE_
+      ;;
+    CYGWIN_NT*)
+      cat > config.mk <<'_HERE_'
+# Site cusomizable variables (change as needed)
+PREFIX    = /usr/local
+CXX       = g++
+CXXFLAGS  = -Wall -g -std=c++14 -D_POSIX_C_SOURCE=201401L
+LDXX      = $(CXX)
+LDXXFLAGS = 
+LDXXLIBS  = 
+
+_HERE_
+      ;;
+    SunOS)
+      cat > config.mk <<'_HERE_'
+# Site cusomizable variables (change as needed)
+PREFIX    = /usr/local
+CXX       = CC
+CXXFLAGS  = -Wall -g -std=c++14 -D_XPG6
+LDXX      = $(CXX)
+LDXXFLAGS = -std=c++14
+LDXXLIBS  = 
+
+_HERE_
+      ;;
+    Darwin)
+      cat > config.mk <<'_HERE_'
+# Site cusomizable variables (change as needed)
+PREFIX    = /usr/local
+CXX       = clang
+CXXFLAGS  = -Wall -g -std=c++14
+LDXX      = $(CXX)
+LDXXFLAGS = 
+LDXXLIBS  = 
+
+_HERE_
+      ;;
+    *)
+      echo "config error: unrecognized platform: $(uname)"
+      exit 1
+  esac
+
+  # copy correct test exp to t dir
+  echo "=== 4. Picking test exp files"
+  cp t/ks$ks/* t
+
+  # Fix paths ####
+  echo "=== 5. Fixing paths"
+  make fixpaths
+  
+}
+main ${1+"$@"}

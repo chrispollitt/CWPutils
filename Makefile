@@ -1,12 +1,6 @@
 # Variables ###########################
 
-# Site cusomizable variables (change as needed)
-PREFIX    = /usr/local
-CXX       = CC
-CXXFLAGS  = -Wall -g -std=c++14 -D_XPG6
-LDXX      = $(CXX)
-LDXXFLAGS = -std=c++14
-LDXXLIBS  = 
+include config.mk
 
 # Internal variables (change at your peril)
 PROG1   = env2
@@ -38,9 +32,12 @@ install: build
 	cp $(PROG2).man $(PREFIX)/share/man/man1/$(PROG2).1
 
 clean:
-	-rm -f $(PROG1) $(PROG2) $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3 $(PROG1).pod
+	-rm -f $(PROG1) $(PROG2) $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3 $(PROG1).pod sample_script.si
 	-rm -f *.man *.o *.exe *~ *.stackdump core
-	-rm -f t/out?
+	-rm -f t/out*
+
+distclean: clean
+	-rm -f t/exp* config.hh
 
 uninstall:
 	-rm -f $(PREFIX)/bin/$(PROG1)
@@ -49,9 +46,10 @@ uninstall:
 	-rm -f $(PREFIX)/share/man/man1/$(PROG2).1
 
 fixpaths:
-	@for f in sample_script.si t/exp*; do \
+	@for f in t/exp*; do \
 	perl -lpi~ -e 's,/(.+/CWPutils/)(sample_interpreter),'"$(PWD)"'/$$2,;' $$f; \
 	done
+	@rm t/exp*~
 
 # Real Targets ####################
 

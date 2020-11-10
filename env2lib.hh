@@ -1,8 +1,9 @@
-//#include <bits/stdc++.h>
+#pragma once
+
+#include "config.hh"
 #include <string>
 #include <map>
 #include <exception>
-#include "config.hh"
 
 #define MAX_STR_CONST 255
 #define MAX_LINE_LEN 1024

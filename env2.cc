@@ -12,6 +12,7 @@
  ****************************************************************/
 
 // Includes
+#include "env2lib.hh"
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -19,7 +20,6 @@
 //#include <malloc.h>
 #include <errno.h>
 #include <libgen.h>
-#include "env2lib.hh"
 #ifdef MAKE_EXE
 #include "env2.hh"
 #endif

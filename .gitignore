@@ -47,6 +47,7 @@ tmp/*
 # Local stuff
 config.hh
 dumpargs
+sample_script.si
 sample_interpreter
 sample_interpreter?
 env2
@@ -54,3 +55,4 @@ env2
 env2.pod
 env2.pod-middle
 t/out*
+t/exp*
