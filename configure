@@ -25,12 +25,13 @@ function set_sample_script {
 function main {
   local ks
 
-  # Create config.mk
+  # Create config.mk #######################################
   echo "=== 1. Create config.mk"
   rm -f config.mk
   case $(uname) in
     Linux)
       cat > config.mk <<'_HERE_'
+
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = g++
@@ -43,6 +44,7 @@ _HERE_
       ;;
     CYGWIN_NT*)
       cat > config.mk <<'_HERE_'
+
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = g++
@@ -56,6 +58,7 @@ _HERE_
     SunOS)
       echo "*** config note: remember to use gmake not make ***"
       cat > config.mk <<'_HERE_'
+
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = CC
@@ -68,6 +71,7 @@ _HERE_
       ;;
     Darwin)
       cat > config.mk <<'_HERE_'
+
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = clang++
@@ -83,11 +87,11 @@ _HERE_
       exit 1
   esac
 
-  # Clean ####
+  # Clean #################################################
   echo "=== 2. Cleaning"
   make distclean
 
-  # Test to see kernel behaviour of #! splitting #####
+  # Test to see kernel behaviour of #! splitting ##########
   echo "=== 3. Testing kernel #! parsing"
   echo "#pragma once" > config.hh
   make dumpargs
@@ -112,11 +116,11 @@ _HERE_
     exit 1
   fi
 
-  # copy correct test exp to t dir
+  # copy correct test exp to t dir #########################
   echo "=== 4. Picking test exp files"
   cp t/ks$ks/* t
 
-  # Fix paths ####
+  # Fix paths ##############################################
   echo "=== 5. Fixing paths"
   make fixpaths
   

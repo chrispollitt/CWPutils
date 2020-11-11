@@ -26,7 +26,7 @@ extern char *getaline(FILE *fh);
 extern argv_t env2(argv_t o);
 extern char* join_array(char *strings[], int count, char sep=' ');
 extern argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr);
-extern argv_t split_and_merge(argv_t argvi, char *stri, int at);
+extern argv_t split_and_merge(argv_t argvi, char *stri=NULL, int at=1);
 extern argv_t split_string(char *input);
 extern hash_t vars2();
 

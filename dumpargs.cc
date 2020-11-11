@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 //#include <malloc.h>
 #include "dumpargs.hh"
 
@@ -53,12 +54,18 @@ int dumpargs(int argc, char **argv) {
   printf("------arguments-----\n");
   for(i=0; i<argc; i++) {
     printf("arg%d='%s'",i,argv[i]);
-    if(i>0 && script == NULL && argv[i][0] != '-') {
+    if(
+      (strlen(argv[i]))   &&
+      (i>0)               &&
+      (script == NULL)    &&
+      (argv[i][0] != '-') &&
+      (access( argv[i], F_OK ) != -1)
+    ) {
       script = argv[i];
-      printf(" <-- script\n");
+      printf("\t<-- script\n");
     }
     else if(i == 0) {
-      printf(" <-- interpreter\n");
+      printf("\t<-- interpreter\n");
     }
     else {
       printf("\n");
@@ -66,11 +73,8 @@ int dumpargs(int argc, char **argv) {
   }
   i--;
   if( script != NULL) {
-    if(access( script, F_OK ) != -1) {
-      fh = fopen(script,"r");
-    }
-    else {
-      fprintf(stderr, "warning: script file not found: '%s'\n", script);
+    if((fh = fopen(script,"r")) == NULL) {
+      fprintf(stderr, "warning: script file not readable: '%s'\n", script);
       fh = NULL;
       //exit(1);
     }
