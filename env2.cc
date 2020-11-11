@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <regex>
 //#include <malloc.h>
 #include <errno.h>
 #include <libgen.h>
@@ -48,9 +49,90 @@ hash_t flags;                  // Place for flags xxx
 #define DOUBLEQUOTE   '\"'
 #define BACKSLASH     '\\'
 
+/****************************************************************
+ * read_hashbang - read #! line from script file
+ **************************************************************/
+argv_t read_hashbang(argv_t ia) {
+  char *line        = NULL;
+  char *linep;
+  size_t linesze    = 0;
+  int read          = 0;
+  char *interpreter = NULL;
+  char *script      = NULL;
+  FILE *fh          = NULL;
+  int i             = 0;
+  int j             = 0;
+  int scr_loc       = 0;
+  argv_t oa;
+  regex re1;
+  
+  for(i=0; i < ia.argc; i++) {
+    if(Debug) printf("Debug: arg%d='%s'\n",i,ia.argv[i]);
+    if(
+      (strlen(ia.argv[i]))   &&
+      (i>1)                  &&
+      (interpreter != NULL)  &&
+      (script == NULL)       &&
+      (ia.argv[i][0] != '-') &&
+      (access( ia.argv[i], F_OK ) != -1)
+    ) {
+      script = ia.argv[i];      // <-- script xxx may not be script
+      scr_loc = i;
+    }
+    else if(
+      (strlen(ia.argv[i]))   &&
+      (i>0)                  &&
+      (interpreter == NULL)  &&
+      (ia.argv[i][0] != '-')
+    ) {
+      interpreter = ia.argv[i]; // <-- interpreter (will not be set on Solaris!)
+    }
+    else {
+      ; // flag or arg
+    }
+  }
+  if( script != NULL) {
+    if((fh = fopen(script,"r")) == NULL) {
+      throw StdException("script file not readable: ", script);
+      fh = NULL;
+    }
+  }
+  else {
+    throw StdException("unable to determine script filename");
+    fh = NULL;
+  }
+  if(fh != NULL) {
+    re1 = ( R"(^#!/usr/bin/env2 )" );    // xxx don't hardcode path
+    read = getline(&line, &linesze, fh);
+    if(
+      (read < 3)       ||
+      ( !regex_search(line, re1) )
+    ) {
+      throw StdException("script file #! line not correct: ", script);
+    }
+    fclose(fh);
+  }
+  
+  line += 2; // skip over '#!' chars
+  linep = line+strlen(line)-1;
+  *linep = '\0';
+  if(Debug) printf("Debug: hashbang='%s'\n", line);
+  oa.argc = 0;
+  oa.argv = (char **)calloc(MAX_STR_CONST, sizeof(char *));
+  oa.argv[0] = ia.argv[0];
+  oa.argv[1] = strdup(line);
+  j=2;
+  for(i=scr_loc;i < ia.argc; i++) {
+    oa.argv[j++] = ia.argv[i];
+  }
+  oa.argv[j] = NULL;
+  oa.argc = j;
+  
+  return(oa);
+}
 
 /****************************************************************
- * env2
+ * env2 - construct the correct argv[] array
  **************************************************************/
 argv_t env2(argv_t o) {
   argv_t n = {0, (char **)NULL};
@@ -69,7 +151,17 @@ argv_t env2(argv_t o) {
   if(o.argc == 1) {
     throw StdException("No args found");
   }
-
+  
+#if   KERNEL_SPLIT == 0
+  ;  // nothing extra to do
+#elif KERNEL_SPLIT == 1
+  o = read_hashbang(o);  // get hashbang line from script
+#elif KERNEL_SPLIT == 2
+#error "KERNEL_SPLIT == 2 support not yet written"
+#else
+#error "Must define KERNEL_SPLIT as 0, 1, or 2"
+#endif
+  
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_string(o.argv[1]);
 
@@ -223,7 +315,7 @@ argv_t env2(argv_t o) {
 #ifdef MAKE_EXE
 
 /**************************************************************
- * parse_flags
+ * parse_flags - parse my flags
  **************************************************************/
 hash_t parse_flags(char *flags_str) { 
   int nstart = 0;                            // nargv start element
@@ -342,7 +434,7 @@ hash_t parse_flags(char *flags_str) {
 }
 
 /****************************************************************
- * print usage
+ * usage - print my usage
  **************************************************************/
 void usage(int ret) {
   if(ret==2) {
@@ -396,7 +488,7 @@ void usage(int ret) {
 }
 
 /**************************************************************
- * main
+ * main - main function
  **************************************************************/
 int main(int argc, char **argv) {
   // define local vars

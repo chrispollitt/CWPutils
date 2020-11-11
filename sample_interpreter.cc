@@ -8,13 +8,12 @@
 #include <errno.h>
 #include <libgen.h>
 
-//#if MAIN_VARIATION == 1 || MAIN_VARIATION == 2
+#if MAIN_VARIATION == 1 || MAIN_VARIATION == 2
 #include "env2lib.hh"
-//#endif
+#endif
 #include "sample_interpreter.hh"
 
 // #############################################################################
-
 
 // * load_script *****************************************************
 argv_t load_script(char *scriptname) {
@@ -83,6 +82,8 @@ void run_bash(argv_t ia, argv_t sa) {
   }
   pclose(shell);
 }
+
+// #############################################################################
 
 #if MAIN_VARIATION == 1
 
@@ -219,12 +220,11 @@ int main(int argc, char **argv) {
   flags["pre"]    = "";    // S preserve empty
   flags["sbs"]    = "";    // S strip escapes
 
-#if KERNEL_SPLIT == 0
-  // split_and_merge()
-  e = split_and_merge(o, NULL, 1);
-#else
-  // kernel already did split
-  e = o;
+#if KERNEL_SPLIT == 1
+  o = read_hashbang(o);    // get hashbang line from script
+#endif
+#if KERNEL_SPLIT != 2
+  e = split_and_merge(o);  // split up argv[1]
 #endif
 
   /// DUMP ARAGS //////////////////////////////////////////////////////////////
@@ -233,7 +233,7 @@ int main(int argc, char **argv) {
   }
 
   /// PARSE SCRIPT //////////////////////////////////////////////////////////////
-  //xxx
+  //run_bash(ia, sa);
 
   return(0);
 }
@@ -257,7 +257,7 @@ int main(int argc, char **argv) {
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t flags;                  // Place for my_flags (xxx move to private var)
+hash_t flags;                  // Place for flags (xxx move to private var)
 
 using namespace std;
 
@@ -269,19 +269,20 @@ void usage(int ret) {
 
 // * parse_flags ***********************************************
 // NOTES:
-//   - Does not handle flag args with embedded spaces, escapes, or quotes
+//   - Does not handle flag args with embedded spaces xxx
 hash_t my_parse_flags(argv_t a) { 
+  hash_t my_flags;                  // Place for my_flags 
   int nstart = 0;                        // nargv start element
   int j = 0;
 
-  flags["found"]    = "0";                    // [internal] a found non-flag arg
-  flags["nstart"]   = "0";                    // [internal] end of env2 args
+  my_flags["found"]    = "0";                    // [internal] a found non-flag arg
+  my_flags["nstart"]   = "0";                    // [internal] end of env2 args
 //      "Debug"                               // turn on debug mode
 //      "Help"                                // show usage
 //      "Version"                             // show version
-  flags["aaa"] = "";                          // aaa flag
-  flags["bbb"] = "";                          // bbb flag
-  flags["ccc"] = "";                          // ccc flag
+  my_flags["aaa"] = "";                          // aaa flag
+  my_flags["bbb"] = "";                          // bbb flag
+  my_flags["ccc"] = "";                          // ccc flag
 
   // strip off args meant for me (from #! line) ////////////////////////////////
   
@@ -310,12 +311,12 @@ hash_t my_parse_flags(argv_t a) {
           }
           // aaa
           else if(*(flags_str+j) == 'a') {
-            flags["aaa"] = "1";
+            my_flags["aaa"] = "1";
             if(Debug) fprintf(stderr, "Debug: aaa mode activated\n");
           }
           // bbb
           else if(*(flags_str+j) == 'b') {
-            flags["bbb"] = "1";
+            my_flags["bbb"] = "1";
             if(Debug) fprintf(stderr, "Debug: bbb mode activated\n");
           }
           // ccc
@@ -326,13 +327,13 @@ hash_t my_parse_flags(argv_t a) {
               long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
               strncpy(delim, (char *)flags_str+j+2, l); // Segfault!
               delim[l] = ENDOFSTR;
-              flags["ccc"] = delim;
+              my_flags["ccc"] = delim;
               j += l+2;
               b=1;
             } else
 #endif
-              flags["ccc"] = (char *) "~~";
-            if(Debug) fprintf(stderr, "Debug: ccc mode activated with '%s'\n", flags["ccc"].c_str());
+              my_flags["ccc"] = (char *) "~~";
+            if(Debug) fprintf(stderr, "Debug: ccc mode activated with '%s'\n", my_flags["ccc"].c_str());
             // if delim spec'd, break as this delim string must term with a space
             if (b) {
               b=0;
@@ -351,31 +352,26 @@ hash_t my_parse_flags(argv_t a) {
       } // if "-"
       // found a blank
       else if(*(flags_str) == ' ') {
-        // beginning of new char flag cluster
-#if KERNEL_SPLIT == 0
-        ;
-#else
-        fprintf(stderr, "%s error: illegal space found in argv[%d] '%s'\n", Argv0, i, a.argv[i]);
-        usage(1);
-#endif
+        ; // beginning of new char flag cluster
       }
       // found non-flag argument
       else {
-        flags["found"] = "1";
+        my_flags["found"] = "1";
         break; // from outter while
       }
       flags_str += j;
     } // outter while
-    if(flags["found"] == "1") break;
+    if(my_flags["found"] == "1") break;
   } // for
-  flags["nstart"] = to_string(nstart);
-  if(Debug) fprintf(stderr, "Debug: found: %s\n", flags["found"].c_str());
-  if(Debug) fprintf(stderr, "Debug: nstart: %s\n", flags["nstart"].c_str());
-  return flags;
+  my_flags["nstart"] = to_string(nstart);
+  if(Debug) fprintf(stderr, "Debug: found: %s\n", my_flags["found"].c_str());
+  if(Debug) fprintf(stderr, "Debug: nstart: %s\n", my_flags["nstart"].c_str());
+  return my_flags;
 }
 
 // * main3 *****************************************************
 int main(int argc, char **argv) {
+  hash_t my_flags;                  // Place for my_flags 
   /// PARSE ARAGS //////////////////////////////////////////////////////////////
   argv_t o;
   o.argc = argc;
@@ -384,6 +380,7 @@ int main(int argc, char **argv) {
   // set global vars
   Argv0 = o.argv[0];
   Debug = 1;
+
   setvbuf(stdout, NULL, _IONBF, 0);
 
   // make sure we have the right number of args
@@ -392,11 +389,11 @@ int main(int argc, char **argv) {
   }
 
   // Parse out my flags
-  flags = my_parse_flags(o);
+  my_flags = my_parse_flags(o);
   
   /// DUMP ARAGS //////////////////////////////////////////////////////////////
   printf("argv[0]='%s'\n",o.argv[0]);
-  for (auto it = flags.begin(); it != flags.end(); ++it) {
+  for (auto it = my_flags.begin(); it != my_flags.end(); ++it) {
     if(it->first != "found" && it->first != "nstart")
       printf("flag[%s]='%s'\n",it->first.c_str(), it->second.c_str());
   }
@@ -411,7 +408,7 @@ int main(int argc, char **argv) {
   }
 
   /// PARSE SCRIPT //////////////////////////////////////////////////////////////
-  //xxx
+  //run_bash(ia, sa);
 
   return(0);
 }

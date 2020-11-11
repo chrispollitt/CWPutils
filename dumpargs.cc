@@ -71,7 +71,6 @@ int dumpargs(int argc, char **argv) {
       printf("\n");
     }
   }
-  i--;
   if( script != NULL) {
     if((fh = fopen(script,"r")) == NULL) {
       fprintf(stderr, "warning: script file not readable: '%s'\n", script);
