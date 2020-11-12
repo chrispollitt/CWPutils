@@ -12,6 +12,7 @@
 ###################################
 function set_sample_script {
   local iargs="$1"
+  local body="$2"
   local inter
   
   if [[ $iargs == /* ]]; then
@@ -21,7 +22,11 @@ function set_sample_script {
   fi
   
   echo "#!$inter$iargs" > sample_script.si
-  cat sample_script.si.template >> sample_script.si
+  if [[ -n $body ]]; then
+    echo "$body" >> sample_script.si
+  else
+    cat sample_script.si.template >> sample_script.si
+  fi
   chmod 755 sample_script.si
 }
 
@@ -50,11 +55,13 @@ function main {
   # copy test rc file
   [[ -f ~/.$rc ]] && mv -f ~/.$rc ~/.$rc-ORIG
   cp t/$rc ~/.$rc
-  touch ~/.sample_interpreterrc
+  cp t/$rc ~/.sample_interpreterrc
   
   #############################################
   
   ### no args OR help ######
+
+  ln -fs $prog sample_interpreter
   
   # Run Test 0 - [no args]
   echo "==Test 0"
@@ -72,19 +79,25 @@ function main {
   
   # Run Test 2 - debug, emit, delim
   echo "==Test 2"
-  $prog '-d -ef perl -le ~~ "" "hello\\ two"' '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/' 'goodbye' >& t/out2
+  set_sample_script '-d -pef perl -l ~~ "" "hello\\ two"' '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/'
+  script_args='goodbye'
+  ./sample_script.si $script_args >& t/out2
   diff t/out2 t/exp2
   [[ $? != 0 ]] && (( errs = errs + 1 ))
   
   # Run Test 3 - +strip
   echo "==Test 3"
-  $prog '-defs perl -le ~~ "hello\\ three"' '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/' 'goodbye' >& t/out3
+  set_sample_script '-defs perl -l ~~ "hello\\ three"' '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/'
+  script_args='goodbye'
+  ./sample_script.si $script_args >& t/out3
   diff t/out3 t/exp3
   [[ $? != 0 ]] && (( errs = errs + 1 ))
   
   # Run Test 4 - [no flags]
   echo "==Test 4"
-  $prog 'perl -le' '$"=q/" "/;print qq/ARGV="@ARGV" FAR="$ENV{FAR}"/' 'hello four' 'goodbye' >& t/out4
+  set_sample_script 'perl -l' '$"=q/" "/;print qq/ARGV="@ARGV" FAR="$ENV{FAR}"/'  
+  script_args='hello four'
+  ./sample_script.si $script_args >& t/out4
   diff t/out4 t/exp4
   [[ $? != 0 ]] && (( errs = errs + 1 ))
   
@@ -92,19 +105,25 @@ function main {
   
   # Run Test 5 - debug, expand
   echo "==Test 5"
-  $prog '-dxf   bash -c ~~ "tab\ttab"' 'echo -E "Hi from 5 $0"' >& t/out5
+  set_sample_script '-dxf   bash ~~ "tab\ttab"' 'echo -E "Hi from 5 $1"'
+  script_args=''
+  ./sample_script.si $script_args >& t/out5
   diff t/out5 t/exp5
   [[ $? != 0 ]] && (( errs = errs + 1 ))
   
   # Run Test 6 - debug, norc 
   echo "==Test 6"
-  $prog '-dnf  bash -x -c ~~ "tab\ttab"' 'echo -E "Hi from 6 $0"' >& t/out6
+  set_sample_script '-dnf  bash -x ~~ "tab\ttab"' 'echo -E "Hi from 6 $1"'
+  script_args=''
+  ./sample_script.si $script_args >& t/out6
   diff t/out6 t/exp6
   [[ $? != 0 ]] && (( errs = errs + 1 ))
   
   # Run Test 7 - debug, norc, comment
   echo "==Test 7"
-  $prog '-dnc bash -x -c # comment' 'echo "Hi from 7"' >& t/out7
+  set_sample_script '-dnc bash -x # comment' 'echo "Hi from 7" $1' 
+  script_args=''
+  ./sample_script.si $script_args >& t/out7
   diff t/out7 t/exp7
   [[ $? != 0 ]] && (( errs = errs + 1 ))
   
@@ -125,14 +144,11 @@ function main {
   
   echo "==Test sp"
   # Can #! call #! ???
-  if   [[ $ks == 0 ]]; then
+  if [[ $(uname) == Linux || $(uname) == CYGWIN_NT* ]]; then
     # This works on Linux, not sure about others
     inter=""
-  elif [[ $ks == 1 ]]; then
-    inter="/usr/bin/env sample_interpreter "
   else
-    echo "error: unhandled ks value: $ks"
-    exit 1
+    inter="$PWD/$prog sample_interpreter "
   fi
   set_sample_script "${inter}-a -b -c:foo ~~ -1 -2 -3"
   script_args="-4 -5 -6"

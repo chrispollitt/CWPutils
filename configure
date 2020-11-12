@@ -35,7 +35,7 @@ function main {
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = g++
-CXXFLAGS  = -Wall -g -std=c++14
+CXXFLAGS  = -Wall -g -std=c++14 -DUNAME=Linux
 LDXX      = $(CXX)
 LDXXFLAGS = 
 LDXXLIBS  = 
@@ -48,7 +48,7 @@ _HERE_
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = g++
-CXXFLAGS  = -Wall -g -std=c++14 -D_POSIX_C_SOURCE=201401L
+CXXFLAGS  = -Wall -g -std=c++14 -D_POSIX_C_SOURCE=201401L -DUNAME=CYGWIN_NT
 LDXX      = $(CXX)
 LDXXFLAGS = 
 LDXXLIBS  = 
@@ -62,7 +62,7 @@ _HERE_
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = CC
-CXXFLAGS  = -Wall -g -std=c++14 -D_XPG6
+CXXFLAGS  = -Wall -g -std=c++14 -D_XPG6 -DUNAME=SunOS
 LDXX      = $(CXX)
 LDXXFLAGS = -std=c++14
 LDXXLIBS  = 
@@ -75,7 +75,7 @@ _HERE_
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = clang++
-CXXFLAGS  = -Wall -g -std=c++14
+CXXFLAGS  = -Wall -g -std=c++14 -DUNAME=Darwin
 LDXX      = $(CXX)
 LDXXFLAGS = 
 LDXXLIBS  = 

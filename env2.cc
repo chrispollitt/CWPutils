@@ -65,12 +65,24 @@ argv_t read_hashbang(argv_t ia) {
   int scr_loc       = 0;
   argv_t oa;
   regex re1;
+  int start;
+  
+#ifdef MAKE_EXE
+  start=1;
+#if UNAME == SunOS
+  if(ia.argv[1][0] == '-') {
+    interpreter = (char *)"found";
+  }
+#endif
+#else
+  start=0;
+#endif
   
   for(i=0; i < ia.argc; i++) {
     if(Debug) printf("Debug: arg%d='%s'\n",i,ia.argv[i]);
     if(
       (strlen(ia.argv[i]))   &&
-      (i>1)                  &&
+      (i>=start+1)                  &&
       (interpreter != NULL)  &&
       (script == NULL)       &&
       (ia.argv[i][0] != '-') &&
@@ -81,11 +93,11 @@ argv_t read_hashbang(argv_t ia) {
     }
     else if(
       (strlen(ia.argv[i]))   &&
-      (i>0)                  &&
+      (i>=start)                  &&
       (interpreter == NULL)  &&
       (ia.argv[i][0] != '-')
     ) {
-      interpreter = ia.argv[i]; // <-- interpreter (will not be set on Solaris!)
+      interpreter = ia.argv[i]; // <-- interpreter (may not be set on Solaris!)
     }
     else {
       ; // flag or arg
@@ -144,7 +156,7 @@ argv_t env2(argv_t o) {
   int scr_loc = 0;           // script      nargv location
   int oscr_loc = 0;
   string interpreter_base;   // basename of interpreter
-  int nstart = stoi(flags["nstart"]);
+  int nstart;
   hash_t add_args;
 
   // main() should check for this - make sure we have the right number of args
@@ -166,6 +178,14 @@ argv_t env2(argv_t o) {
   n = split_string(o.argv[1]);
 
   // check that we have an interpreter from #! /////////////////////////////////
+#ifdef MAKE_EXE
+  ;
+#else
+  // Set flags for lib call
+  flags["found"]  = "-1";  // E inter found (-1 means inter==o.argv[0])
+  flags["nstart"] = "0";   // E after env2 flags
+#endif
+  nstart = stoi(flags["nstart"]);
   if(stoi(flags["found"]) == 1) {
     int_loc = nstart;
     oscr_loc = 2;

@@ -124,10 +124,6 @@ int main(int argc, char **argv) {
     usage(1);
   }
 
-  // Set flags
-  flags["found"]  = "-1";  // E inter found (-1 means inter==o.argv[0])
-  flags["nstart"] = "0";   // E after env2 flags
-
   // set flags (S=split_string E=env2 V=vars2)
   flags["cmt"]    = "";    // S comments
   flags["delim"]  = "~~";  // E search
@@ -220,12 +216,20 @@ int main(int argc, char **argv) {
   flags["pre"]    = "";    // S preserve empty
   flags["sbs"]    = "";    // S strip escapes
 
+  try {
 #if KERNEL_SPLIT == 1
   o = read_hashbang(o);    // get hashbang line from script
 #endif
 #if KERNEL_SPLIT != 2
   e = split_and_merge(o);  // split up argv[1]
 #endif
+  } catch (StdException &exc) {
+    fprintf(stderr, "%s error: %s\n", Argv0, exc.what());
+    usage(1);
+  } catch (...) {
+    fprintf(stderr, "%s error: caught unknown exception\n", Argv0);
+    exit(1);
+  }
 
   /// DUMP ARAGS //////////////////////////////////////////////////////////////
   for(i=0; i<e.argc; i++) {

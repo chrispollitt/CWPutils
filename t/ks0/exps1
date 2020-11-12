@@ -1,4 +1,14 @@
 Debug: oscr_loc: 2
+Debug: setenv: FOO="\"BABBLE\" 'MUTTER'"
+Debug: add_args: perl=-w -I"/foo bar"
+Debug: add_args: bash=-x
+Debug: add_args: sh=-x -v
+Debug: setenv: BOO=BABBLE MUTTER
+Debug: setenv: BAR=
+Debug: unsetenv: BAZ
+Debug: add_args: boo=-s
+Debug: add_args: bar=
+Debug: set_args: baz=-le
 Debug: interpreter_base: sample_interpreter
 Debug: hashbang=-a -b -c:foo ~~ -1 -2 -3
 Debug: argv[0]='-a'

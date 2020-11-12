@@ -1,2 +1,2 @@
-Use of uninitialized value in concatenation (.) or string at -e line 1.
-ARGV="hello four" "goodbye" FAR=""
+Use of uninitialized value in concatenation (.) or string at ./sample_script.si line 2.
+ARGV="hello" "four" FAR=""
