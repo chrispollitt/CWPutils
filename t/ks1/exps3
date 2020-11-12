@@ -1,2 +1,13 @@
 Debug: aaa mode activated
 Debug: bbb mode activated
+Debug: ccc mode activated with 'foo'
+Debug: found: 1
+Debug: nstart: 3
+argv[0]='/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
+flag[aaa]='1'
+flag[bbb]='1'
+flag[ccc]='foo'
+argv[2]='./sample_script.si'
+argv[3]='-4'
+argv[4]='-5'
+argv[5]='-6'

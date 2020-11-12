@@ -41,21 +41,20 @@ class StdException: public std::exception {
 public:
   // constructors
   StdException (const char *m) noexcept {
-    std::string msg = std::string(m);
-    message = msg.c_str();
+    message = std::string(m);
   }
   StdException (const char *m, const char *a) noexcept {
-    std::string msg = std::string(m) + std::string(a);
-    message = msg.c_str();
+    message = std::string(m) + std::string(a);
   }
   StdException (const std::string m) noexcept {
-    message = m.c_str();
+    message = m;
   }
   // methods
   virtual const char* what() const throw() {
-    return message;
+    return message.c_str();
   }
 
 private:
-  const char *message;
+  std::string message;
 };
+

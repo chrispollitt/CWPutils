@@ -16,11 +16,10 @@ Debug: add_args: bar=
 Debug: set_args: baz=-le
 Debug: interpreter_base: bash
 Debug: adding cfg interprter arg: -x
-Debug: hashbang=-dxf   bash -c ~~ "tab\ttab"
+Debug: hashbang=-dxf   bash ~~ "tab\ttab"
 Debug: argv[0]='bash'
 Debug: argv[1]='-x'
-Debug: argv[2]='-c'
-Debug: argv[3]='echo -E "Hi from 5 $0"'
-Debug: argv[4]='tab	tab'
+Debug: argv[2]='./sample_script.si'
+Debug: argv[3]='tab	tab'
 + echo -E 'Hi from 5 tab	tab'
 Hi from 5 tab	tab

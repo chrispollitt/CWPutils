@@ -64,7 +64,6 @@ argv_t read_hashbang(argv_t ia) {
   int j             = 0;
   int scr_loc       = 0;
   argv_t oa;
-  regex re1;
   int start;
   
 #ifdef MAKE_EXE
@@ -114,18 +113,17 @@ argv_t read_hashbang(argv_t ia) {
     fh = NULL;
   }
   if(fh != NULL) {
-    re1 = ( R"(^#!/usr/bin/env2 )" );    // xxx don't hardcode path
     read = getline(&line, &linesze, fh);
     if(
-      (read < 3)       ||
-      ( !regex_search(line, re1) )
+      (read < 5)                      ||
+      ( strncmp(line, "#!/", 3) != 0 )
     ) {
       throw StdException("script file #! line not correct: ", script);
     }
     fclose(fh);
   }
   
-  line += 2; // skip over '#!' chars
+  line = strchr(line, ' ')+1; // skip over interpreter
   linep = line+strlen(line)-1;
   *linep = '\0';
   if(Debug) printf("Debug: hashbang='%s'\n", line);

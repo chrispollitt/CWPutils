@@ -2,7 +2,7 @@
 argv[0]=/usr/bin/perl
 argv[1]=-w
 ---inter args---
-argv[0]=./sample_interpreter
+argv[0]=/home/chris/github/chrispollitt/CWPutils/sample_interpreter
 argv[1]=-a
 argv[2]=-b
 argv[3]=-c:foo
@@ -20,7 +20,7 @@ a='1'
 b='1'
 c='foo'
 ====Interpreter
-argv[0]='./sample_interpreter'
+argv[0]='/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
 argv[1]='-a'
 argv[2]='-b'
 argv[3]='-c:foo'

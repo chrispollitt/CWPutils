@@ -79,7 +79,7 @@ function main {
   
   # Run Test 2 - debug, emit, delim
   echo "==Test 2"
-  set_sample_script '-d -pef perl -l ~~ "" "hello\\ two"' '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/'
+  set_sample_script '-dpef perl -l ~~ "" "hello\\ two"' '$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/'
   script_args='goodbye'
   ./sample_script.si $script_args >& t/out2
   diff t/out2 t/exp2
@@ -105,7 +105,7 @@ function main {
   
   # Run Test 5 - debug, expand
   echo "==Test 5"
-  set_sample_script '-dxf   bash ~~ "tab\ttab"' 'echo -E "Hi from 5 $1"'
+  set_sample_script '-dxf bash ~~ "tab\ttab"' 'echo -E "Hi from 5 $1"'
   script_args=''
   ./sample_script.si $script_args >& t/out5
   diff t/out5 t/exp5
@@ -113,7 +113,7 @@ function main {
   
   # Run Test 6 - debug, norc 
   echo "==Test 6"
-  set_sample_script '-dnf  bash -x ~~ "tab\ttab"' 'echo -E "Hi from 6 $1"'
+  set_sample_script '-dnf bash -x ~~ "tab\ttab"' 'echo -E "Hi from 6 $1"'
   script_args=''
   ./sample_script.si $script_args >& t/out6
   diff t/out6 t/exp6
