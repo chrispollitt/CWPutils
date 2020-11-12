@@ -1,20 +1,24 @@
 Usage:                                                                  
-  #!./env2 [flags] <interpreter> [<interpreter_args>]                     
-  #!./env2 [flags] -f <interpreter> [<interpreter_args>] ~~ <script_args> 
-Where [flags] are one or more of:                                       
-  -c     : comments mode                                                
-  -d     : debug mode                                                   
-  -e     : emit (dump) mode                                             
-  -f     : find script opts separated by delimiter ~~                   
-  -n     : no rc file                                                   
-  -p     : preserve empty args                                          
-  -s     : strip backslashes                                            
-  -x     : expand standard backslash-escaped characters                 
-  -h     : this help                                                    
+  #!/usr/local/env2 [-flags] <interpreter> [<interpreter_args>]                    
+  #!/usr/local/env2 -[flags]f <interpreter> [<interpreter_args>] ~~ <script_args>  
+
+Where flags are one or more of:                                         
+  a     : Allow ~ to mark non-dashed flag AND allow space sep flag args 
+  c     : Comments mode (stuff after # is discarded)                    
+  d     : Debug mode (repeat for more)                                  
+  e     : Emit mode (call dumpargs)                                     
+  f     : Find script opts separated by delimiter ~~                    
+  n     : No rc file read                                               
+  p     : Preserve empty args                                           
+  s     : Strip backslashes                                             
+  x     : eXpand standard backslash-escaped characters                  
+  v     : print the Version of this program                             
+  h     : this Help                                                     
+
 Notes:                                                                  
-  * flags can be combined in one string                                 
-  * all flags are off by default                                        
+  * all flags must be combined into one string                          
+
 Examples:                                                               
-  #!./env2 -s -n perl -w                                                  
-  #!./env2 bash -x -v                                                     
-  #!./env2 -c python # -*-Python-*-                                       
+  #!/usr/local/env2 -sn perl -w                                                    
+  #!/usr/local/env2 bash -x -v                                                     
+  #!/usr/local/env2 -c python # -*-Python-*-                                       
