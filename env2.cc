@@ -18,7 +18,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <regex>
-//#include <malloc.h>
 #include <errno.h>
 #include <libgen.h>
 #ifdef MAKE_EXE
@@ -177,36 +176,23 @@ argv_t env2(argv_t o) {
 
   // check that we have an interpreter from #! /////////////////////////////////
 #ifdef MAKE_EXE
-  ;
+  // Set flags for exe call  zzz
+  nstart           = stoi(flags["nstart"]);  // after env2 flags
+  int_loc          = nstart;                 // interpreter
+  oscr_loc         = 2;                      // first possible place for script
+  interpreter_base = basename(n.argv[int_loc]);
 #else
   // Set flags for lib call
-  flags["found"]  = "-1";  // E inter found (-1 means inter==o.argv[0])
-  flags["nstart"] = "0";   // E after env2 flags
+  flags["found"]   = "-1";                   // E inter found (-1 means inter==o.argv[0])
+  flags["nstart"]  = "0";                    // E after env2 flags
+  nstart           = stoi(flags["nstart"]);  // after env2 flags
+  int_loc          = nstart;                 // interpreter
+  oscr_loc         = 1;                      // first possible place for script
+  interpreter_base = basename(o.argv[int_loc]);
 #endif
-  nstart = stoi(flags["nstart"]);
-  if(stoi(flags["found"]) == 1) {
-    int_loc = nstart;
-    oscr_loc = 2;
-    interpreter_base = basename(n.argv[int_loc]);
-  } else if(stoi(flags["found"]) == -1) {
-    int_loc = 0;
-    oscr_loc = 1;
-    interpreter_base = basename(o.argv[int_loc]);
-  } else {
-    // find int location in o.argv
-    int_loc = 1;
-    while(int_loc<o.argc && o.argv[int_loc][0] == '-') {
-      int_loc++;
-    }
-    if(int_loc == o.argc || o.argv[int_loc][0] == '-') {
-      throw StdException("No interpreter found");
-    } else {
-      interpreter_base = basename(o.argv[int_loc]);
-    }
-  }
 
   // look for args meant for script, not interpreter ///////////////////////////
-  flags["found"] = "0";
+  flags["found"] = "0";  // reuse this flag, now for 
   if(flags["delim"].length()) {
     for(i=nstart; i < n.argc; i++) {
       // options
