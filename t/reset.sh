@@ -1,9 +1,13 @@
 #!/bin/bash
 
+ks=$(perl -lne '/KERNEL_SPLIT (\d+)/ and print $1' ../config.hh)
+
 read -p "Are you sure? " ans
 if [[ $ans == YES ]]; then
+  rm -f *~
   echo "OK then"
-  for i in 0 1 2 3 4 5 6 7 s1 s2 s3 sp; do
+  for i in exp*; do
+    i=${i#exp}
     if [[ -f out$i && -s out$i ]]; then
       mv out$i exp$i
     else
@@ -11,6 +15,10 @@ if [[ $ans == YES ]]; then
       exit 1
     fi
   done
+  read -p "Copy to ks$ks? " ans
+  if [[ $ans == YES ]]; then
+    cp exp* ks$ks
+  fi
 else
   echo "Didn't think so"
 fi
