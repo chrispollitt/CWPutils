@@ -70,6 +70,7 @@ argv_t read_hashbang(argv_t ia) {
 #if UNAME == SunOS
   if(ia.argv[1][0] == '-') {
     interpreter = (char *)"found";
+    if(Debug>=2) printf("Debug: Solaris stripped interpreter\n");
   }
 #endif
 #else
@@ -77,7 +78,7 @@ argv_t read_hashbang(argv_t ia) {
 #endif
   
   for(i=0; i < ia.argc; i++) {
-    if(Debug) printf("Debug: arg%d='%s'\n",i,ia.argv[i]);
+    if(Debug>=2) printf("Debug: arg%d='%s'\n",i,ia.argv[i]);
     if(
       (strlen(ia.argv[i]))   &&
       (i>=start+1)                  &&
@@ -125,7 +126,7 @@ argv_t read_hashbang(argv_t ia) {
   line = strchr(line, ' ')+1; // skip over interpreter
   linep = line+strlen(line)-1;
   *linep = '\0';
-  if(Debug) printf("Debug: hashbang='%s'\n", line);
+  if(Debug>=2) printf("Debug: hashbang='%s'\n", line);
   oa.argc = 0;
   oa.argv = (char **)calloc(MAX_STR_CONST, sizeof(char *));
   oa.argv[0] = ia.argv[0];
@@ -361,7 +362,7 @@ hash_t parse_flags(char *flags_str) {
         }
         // debug
         else if(*(flags_str+j) == 'd') {
-          Debug = 1;
+          Debug++;
           if(Debug) fprintf(stderr, "Debug: Debug mode activated\n");
         }
         // emit (dump)
