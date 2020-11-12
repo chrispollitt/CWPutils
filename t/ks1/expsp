@@ -1,5 +1,5 @@
 ---perl args---
-argv[0]=/usr/bin/perl
+argv[0]=/usr/perl5/5.22/bin/perl
 argv[1]=-w
 ---inter args---
 argv[0]=./sample_interpreter

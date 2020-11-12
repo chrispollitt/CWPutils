@@ -3,10 +3,6 @@ Debug: Expand mode activated
 Debug: Delim mode activated with '~~'
 Debug: found: 0
 Debug: nstart: 1
-Debug: arg0='/export/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
-Debug: arg1='-dxf'
-Debug: arg2='./sample_script.si'
-Debug: hashbang='-dxf bash ~~ "tab\ttab"'
 Debug: oscr_loc: 2
 Debug: setenv: FOO="\"BABBLE\" 'MUTTER'"
 Debug: add_args: perl=-w -I"/foo bar"
@@ -20,7 +16,7 @@ Debug: add_args: bar=
 Debug: set_args: baz=-le
 Debug: interpreter_base: bash
 Debug: adding cfg interprter arg: -x
-Debug: hashbang=-dxf bash ~~ "tab\ttab"
+Debug: hashbang=-dxf bash ~~ "tab	tab"
 Debug: argv[0]='bash'
 Debug: argv[1]='-x'
 Debug: argv[2]='./sample_script.si'
