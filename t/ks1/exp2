@@ -23,7 +23,7 @@ Debug: set_args: baz=-le
 Debug: interpreter_base: perl
 Debug: adding cfg interprter arg: -w
 Debug: adding cfg interprter arg: -I/foo bar
-Debug: hashbang=-dpef perl -l ~~ "" "hello\ two"
+Debug: hashbang=-dpef perl -l ~~ "" "hello\\ two"
 ------env-----
 arg0='/export/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
 arg1='-dpef'
@@ -34,10 +34,10 @@ arg2='-I/foo bar'
 arg3='-l'
 arg4='./sample_script.si'	<-- script
 arg5=''
-arg6='hello\ two'
+arg6='hello\\ two'
 arg7='goodbye'
 ------input-----
-line0='#!/export/home/chris/github/chrispollitt/CWPutils/sample_interpreter -dpef perl -l ~~ "" "hello\ two"'
+line0='#!/home/chris/github/chrispollitt/CWPutils/sample_interpreter -dpef perl -l ~~ "" "hello\\ two"'
 line1='$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/'
 ------output-----
-ARGV="" "hello\ two" "goodbye" FOO=""\"BABBLE\" 'MUTTER'""
+ARGV="" "hello\\ two" "goodbye" FOO=""\"BABBLE\" 'MUTTER'""
