@@ -1,8 +1,12 @@
 Debug: Debug mode activated
 Debug: No rc file mode activated
 Debug: Delim mode activated with '~~'
-Debug: found: 1
+Debug: found: 0
 Debug: nstart: 1
+Debug: arg0='/export/home/chris/github/chrispollitt/CWPutils/sample_interpreter'
+Debug: arg1='-dnf'
+Debug: arg2='./sample_script.si'
+Debug: hashbang='-dnf bash -x ~~ "tab	tab"'
 Debug: oscr_loc: 2
 Debug: hashbang=-dnf bash -x ~~ "tab\ttab"
 Debug: argv[0]='bash'
