@@ -101,6 +101,7 @@ hash_t vars2() {
         // Only interpeter args
       } else if(sep == ";") {
         if(Debug) fprintf(stderr, "Debug: set_args: %s=%s\n", var.c_str(), val.c_str());
+        // prepend special marker ~~ to let env2() know this is a set, not add
         add_args[var] = "~~"+val;
         // Impossible!
       } else {

@@ -2,11 +2,12 @@ Usage:
   #!./env2 [flags] <interpreter> [<interpreter_args>]                     
   #!./env2 [flags] -f <interpreter> [<interpreter_args>] ~~ <script_args> 
 Where [flags] are one or more of:                                       
-  -c     : comments mode                                                
-  -d     : debug mode                                                   
-  -e     : emit (dump) mode                                             
+  -a     : allow ~ to mark non-dashed flag AND allow space sep flag args
+  -c     : comments mode (stuff after # is discarded)                   
+  -d     : debug mode (repeat for more)                                 
+  -e     : emit (dump) mode (call dumpargs)                             
   -f     : find script opts separated by delimiter ~~                   
-  -n     : no rc file                                                   
+  -n     : no rc file read                                              
   -p     : preserve empty args                                          
   -s     : strip backslashes                                            
   -x     : expand standard backslash-escaped characters                 

@@ -125,13 +125,8 @@ int main(int argc, char **argv) {
   }
 
   // set flags (S=split_string E=env2 V=vars2)
-  flags["cmt"]    = "";    // S comments
+  init_flags();
   flags["delim"]  = "~~";  // E search
-  flags["dump"]   = "";    // E dump
-  flags["exp"]    = "";    // S expand
-  flags["norc"]   = "";    // V no rc
-  flags["pre"]    = "";    // S preserve empty
-  flags["sbs"]    = "";    // S strip escapes
 
   // Call the main env2() function
   try {
@@ -211,10 +206,7 @@ int main(int argc, char **argv) {
   }
 
   // set flags (S=split_string E=env2 V=vars2)
-  flags["cmt"]    = "";    // S comments
-  flags["exp"]    = "";    // S expand
-  flags["pre"]    = "";    // S preserve empty
-  flags["sbs"]    = "";    // S strip escapes
+  init_flags();
 
   try {
 #if KERNEL_SPLIT == 1

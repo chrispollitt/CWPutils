@@ -59,7 +59,7 @@ $(PROG1): $(PROG1)_m.o $(LIBOBJS)
 	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 
 $(PROG1).pod: $(PROG1).pod-header $(PROG1).pod-middle $(PROG1).pod-footer
-	cat $^ > $(PROG1).pod
+	cat $^|perl -lpe 's,PREFIX,'"$(PREFIX)"',g' $^ > $(PROG1).pod
 
 $(PROG1).pod-middle: $(PROG1)
 	./$< -h > $(PROG1).pod-middle

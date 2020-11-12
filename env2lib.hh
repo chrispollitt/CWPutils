@@ -24,6 +24,7 @@ extern int errno;
 extern int dumpargs(int argc, char **argv);
 extern argv_t env2(argv_t o);
 extern char *getaline(FILE *fh);
+extern void init_flags(int found=0, int nstart=0);
 extern char* join_array(char *strings[], int count, char sep=' ');
 extern argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr);
 extern argv_t read_hashbang(argv_t i);

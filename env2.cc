@@ -17,9 +17,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <regex>
 #include <errno.h>
 #include <libgen.h>
+#include <iterator>
+#include <regex>
 #ifdef MAKE_EXE
 #include "env2.hh"
 #endif
@@ -33,9 +34,17 @@ int   Debug;                   // Debug flag
 hash_t flags;                  // Place for flags xxx
 #endif
 
+#define DEF_TO_STR2(s) #s
+#define DEF_TO_STR(s) DEF_TO_STR2(s)
+
 // Constants
 #define VERSION   "1.1"
 #define YEAR      "2020"
+
+#ifndef PREFIX
+#define PREFIX /usr/local
+#endif
+#define PREFIX_S DEF_TO_STR(PREFIX)
 
 #define STRCMP_TRUE    0
 #define COMMENT       '#'
@@ -47,6 +56,21 @@ hash_t flags;                  // Place for flags xxx
 #define SINGLEQUOTE   '\''
 #define DOUBLEQUOTE   '\"'
 #define BACKSLASH     '\\'
+
+/****************************************************************
+ * set_dash - set the dash regular expression depending on flags["allow"] - PRIVATE
+ **************************************************************/
+regex set_dash() {
+  regex dash;
+  
+  if(flags["allow"].length()) { 
+     dash= regex( R"(^['"]?[-~])" );
+  } else {
+     dash= regex( R"(^['"]?-)" );
+  }
+  
+  return(dash);
+}
 
 /****************************************************************
  * read_hashbang - read #! line from script file
@@ -64,11 +88,13 @@ argv_t read_hashbang(argv_t ia) {
   int scr_loc       = 0;
   argv_t oa;
   int start;
+  regex dash        = set_dash();
   
 #ifdef MAKE_EXE
   start=1;
 #if UNAME == SunOS
-  if(ia.argv[1][0] == '-') {
+  // Solaris strips off interpreter args past the first one
+  if(regex_search(ia.argv[1], dash)) {
     interpreter = (char *)"found";
     if(Debug>=2) printf("Debug: Solaris stripped interpreter\n");
   }
@@ -84,7 +110,7 @@ argv_t read_hashbang(argv_t ia) {
       (i>=start+1)                  &&
       (interpreter != NULL)  &&
       (script == NULL)       &&
-      (ia.argv[i][0] != '-') &&
+      (!regex_search(ia.argv[i], dash)) &&
       (access( ia.argv[i], F_OK ) != -1)
     ) {
       script = ia.argv[i];      // <-- script xxx may not be script
@@ -94,7 +120,7 @@ argv_t read_hashbang(argv_t ia) {
       (strlen(ia.argv[i]))   &&
       (i>=start)                  &&
       (interpreter == NULL)  &&
-      (ia.argv[i][0] != '-')
+      (!regex_search (ia.argv[i], dash))
     ) {
       interpreter = ia.argv[i]; // <-- interpreter (may not be set on Solaris!)
     }
@@ -145,18 +171,61 @@ argv_t read_hashbang(argv_t ia) {
  * env2 - construct the correct argv[] array
  **************************************************************/
 argv_t env2(argv_t o) {
-  argv_t n = {0, (char **)NULL};
-  argv_t c = {0, (char **)NULL};
-  argv_t e = {0, (char **)NULL};
-  int i, j, k;               // Loop counters
-  int set;                   // cnf args set or add
-  int int_loc = 0;           // interpreter nargv location
-  int scr_loc = 0;           // script      nargv location
+  argv_t n     = {0, (char **)NULL};
+  argv_t c     = {0, (char **)NULL};
+  argv_t e     = {0, (char **)NULL};
+  int set      = 0;           // cnf args set or add
+  int int_loc  = 0;           // interpreter nargv location
+  int scr_loc  = 0;           // script      nargv location
   int oscr_loc = 0;
-  string interpreter_base;   // basename of interpreter
+  int i, j, k;               // Loop counters
   int nstart;
+  string interpreter_base;   // basename of interpreter
   hash_t add_args;
-
+  regex dash   = set_dash();
+  
+  /****************************************
+   * inline helper function to reduce duplicated code for splitting args on '~'
+   ****************************************/
+  auto split_sc = [&](int cfg) {
+    char *arg;
+    char *pos;
+    char *arg1;
+    char *arg2;
+    
+    // cfg=1 use c (config)
+    if(cfg) {
+      arg = c.argv[k++];
+    // cfg=0 use n (new)
+    } else {
+      arg = n.argv[i++];
+    }
+    
+    // if arg has embedded '~' then split into two args
+    // Allow for interpreter flags to have args seperated by space, not just = or :
+    // e.g. -a~foo   becomes -a foo  (now 2 seperate args)
+    //      -a:foo   no-chng
+    //      -a=foo   no-chng
+    // Or allow non-dashed prefixed flag
+    // e.g. ~arg     becomes arg
+    pos = strchr(arg, '~');
+    if(flags["allow"].length() && pos) {
+      // ~ is ghost flag marker
+      if(pos == arg) {
+        e.argv[j++] = arg+1;
+      // ~ is split maker
+      } else {
+        *pos = '\0';
+        arg1 = arg;
+        arg2 = pos+1;
+        e.argv[j++] = arg1;
+        e.argv[j++] = arg2;
+      }
+    } else {
+      e.argv[j++] = arg;
+    }
+  };
+  
   // main() should check for this - make sure we have the right number of args
   if(o.argc == 1) {
     throw StdException("No args found");
@@ -197,7 +266,7 @@ argv_t env2(argv_t o) {
   if(flags["delim"].length()) {
     for(i=nstart; i < n.argc; i++) {
       // options
-      if(strncmp(n.argv[i], flags["delim"].c_str(), MAX_STR_CONST-1 )==STRCMP_TRUE) {
+      if(strcmp(n.argv[i], flags["delim"].c_str())==STRCMP_TRUE) {
         flags["found"] = to_string(i+1);
         break;
       }
@@ -206,10 +275,16 @@ argv_t env2(argv_t o) {
 
   // check that we have a script next //////////////////////////////////////////
   // find script location
-  while(oscr_loc<o.argc && o.argv[oscr_loc][0] == '-') {
+  while( 
+    (oscr_loc < o.argc) && 
+    regex_search(o.argv[oscr_loc], dash)
+  ) {
     oscr_loc++;
   }
-  if((oscr_loc == o.argc) || (o.argv[oscr_loc][0] == '-')) {
+  if(
+    (oscr_loc == o.argc) || 
+    regex_search(o.argv[oscr_loc], dash)
+  ) {
     throw StdException("No script found");
   }
   if(Debug) fprintf(stderr, "Debug: oscr_loc: %d\n", oscr_loc);
@@ -257,23 +332,24 @@ argv_t env2(argv_t o) {
   // add interpreter
   e.argv[j++] = n.argv[i++];
   // add remaining args
-  set = 0;
+  set = 0;  // set=1 or add=0
   while(j < e.argc) {
     // add config args ////////////////////////////////////
     if(c.argc && k<c.argc) {
-      // if set_arg
+      // if set_arg - vars2() prepends special marker ~~ to let us know this is a set, not add
       if(strncmp(c.argv[k],"~~",2)==STRCMP_TRUE) {
-        set = 1;
+        set = 1;         // this is a set, not append
+        c.argv[k] += 2;  // skip over special marker
         // if empty string
-        if (!strlen(c.argv[k]+2) && !flags["pre"].length()) {
+        if (!strlen(c.argv[k]) && !flags["pre"].length()) {
           if(Debug) fprintf(stderr, "Debug: skipping empty cfg interprter arg at %d\n", k);
           k++;
           // set it
         } else {
-          if(Debug) fprintf(stderr, "Debug: setting cfg interprter arg: %s\n", c.argv[k]+2);
-          e.argv[j++] = c.argv[k++]+2;
+          if(Debug) fprintf(stderr, "Debug: setting cfg interprter arg: %s\n", c.argv[k]);
+          split_sc(1);
         }
-        // else add_arg
+      // else add_arg
       } else {
         // if empty string
         if (!strlen(c.argv[k]) && !flags["pre"].length()) {
@@ -282,16 +358,16 @@ argv_t env2(argv_t o) {
           // add it
         } else {
           if(Debug) fprintf(stderr, "Debug: adding cfg interprter arg: %s\n", c.argv[k]);
-          e.argv[j++] = c.argv[k++];
+          split_sc(1);
         }
       }
-      // add nargv args //////////////////////////////////////
+    // add nargv args //////////////////////////////////////
     } else {
       if(set && i < scr_loc ) {
         if(Debug) fprintf(stderr, "Debug: skipping nargv interprter arg: %s\n", n.argv[i]);
         i++;
       } else {
-        e.argv[j++] = n.argv[i++];
+        split_sc(0);
       }
     }
   }
@@ -315,6 +391,19 @@ argv_t env2(argv_t o) {
   return(e);
 }
 
+void init_flags(int found, int nstart) {
+  flags["found"]    = to_string(found);       // [internal] a found non-flag arg
+  flags["nstart"]   = to_string(nstart);      // [internal] end of env2 args
+  flags["cmt"]      = "";                     // allow comments
+  flags["delim"]    = "";                     // Delimiter to sep interpreter args from script args
+  flags["dump"]     = "";                     // Dump args flag
+  flags["exp"]      = "";                     // Expand standard backslash-escaped characters
+  flags["norc"]     = "";                     // Do not read rc file
+  flags["pre"]      = "";                     // preserve empty args
+  flags["sbs"]      = "";                     // Strip backslashes
+  flags["allow"]    = "";                     // Split on embedded ';'
+}
+
 // #############################################################################
 
 #ifdef MAKE_EXE
@@ -326,18 +415,7 @@ hash_t parse_flags(char *flags_str) {
   int nstart = 0;                            // nargv start element
   int j = 0;
 
-  flags["found"]    = "0";                    // [internal] a found non-flag arg
-  flags["nstart"]   = "0";                    // [internal] end of env2 args
-//      "Debug"                               // turn on debug mode
-//      "Help"                                // show usage
-//      "Version"                             // show version
-  flags["cmt"]      = "";                     // allow comments
-  flags["delim"]    = "";                     // Delimiter to sep interpreter args from script args
-  flags["dump"]     = "";                     // Dump args flag
-  flags["exp"]      = "";                     // Expand standard backslash-escaped characters
-  flags["norc"]     = "";                     // Do not read rc file
-  flags["pre"]      = "";                     // preserve empty args
-  flags["sbs"]      = "";                     // Strip backslashes
+  init_flags();
 
   // strip off args meant for me (from #! line) ////////////////////////////////
   while(*flags_str != ENDOFSTR) {
@@ -355,6 +433,11 @@ hash_t parse_flags(char *flags_str) {
         if     (*(flags_str+j) == 'h') {
           usage(0);
         }
+        // allow split on '~' and allow ~ as non-dashed flag prefix marker
+        else if(*(flags_str+j) == 'a') {
+          flags["allow"] = "1";
+          if(Debug) fprintf(stderr, "Debug: Allow split on '~' activated\n");
+        }
         // comment
         else if(*(flags_str+j) == 'c') {
           flags["cmt"] = "1";
@@ -365,7 +448,7 @@ hash_t parse_flags(char *flags_str) {
           Debug++;
           if(Debug) fprintf(stderr, "Debug: Debug mode activated\n");
         }
-        // emit (dump)
+        // emit (dump) - this is really a debug thing
         else if(*(flags_str+j) == 'e' || *(flags_str+j) == 'D' ) {
           flags["dump"] = "1";
           if(Debug) fprintf(stderr, "Debug: Dump mode activated\n");
@@ -396,12 +479,12 @@ hash_t parse_flags(char *flags_str) {
           flags["norc"] = "1";
           if(Debug) fprintf(stderr, "Debug: No rc file mode activated\n");
         }
-        // preserve empty args
+        // preserve empty args (why on earth?) -- feature overload
         else if(*(flags_str+j) == 'p') {
           flags["pre"] = "1";
           if(Debug) fprintf(stderr, "Debug: Perserve empty args mode activated\n");
         }
-        // strip backslashes
+        // strip backslashes (why not by default?) -- feature overload
         else if(*(flags_str+j) == 's' ) {
           flags["sbs"] = "1";
           if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
@@ -425,7 +508,7 @@ hash_t parse_flags(char *flags_str) {
     else if(*(flags_str) == ' ') {
       ; // do nothing
     }
-    // found non-flag argument
+    // found non-flag argument (may not find in Solaris)
     else {
       flags["found"] = "1";
       break; // from outter while
@@ -457,36 +540,40 @@ void usage(int ret) {
     exit(0);
   } else {
     FILE *out;
+    char Argv0I[MAX_STR_CONST];
+    
+    snprintf(Argv0I, MAX_STR_CONST-1, "%s/%s", PREFIX_S, basename(Argv0));
     out = ret==0 ? stdout : stderr;
     fprintf(out,
             "Usage:                                                                  \n"
-            "  #!%1$s [flags] <interpreter> [<interpreter_args>]                     \n"
-            "  #!%1$s [flags] -f <interpreter> [<interpreter_args>] ~~ <script_args> \n"
-            "Where [flags] are one or more of:                                       \n"
-            "  -c     : comments mode                                                \n"
-            "  -d     : debug mode                                                   \n"
-            "  -e     : emit (dump) mode                                             \n"
+            "  #!%1$s [-flags] <interpreter> [<interpreter_args>]                    \n"
+            "  #!%1$s -[flags]f <interpreter> [<interpreter_args>] ~~ <script_args>  \n\n"
+            "Where flags are one or more of:                                         \n"
+            "  a     : Allow ~ to mark non-dashed flag AND allow space sep flag args \n"
+            "  c     : Comments mode (stuff after # is discarded)                    \n"
+            "  d     : Debug mode (repeat for more)                                  \n"
+            "  e     : Emit mode (call dumpargs)                                     \n"
 #ifdef F_TAKES_ARG
-            "  -f[=S] : find (delim) mode using opt string S (S=~~ if not specified) \n"
+            "  f[=S] : Find script opts separated by delim (S=~~ if not specified)   \n"
 #else
-            "  -f     : find script opts separated by delimiter ~~                   \n"
+            "  f     : Find script opts separated by delimiter ~~                    \n"
 #endif
-            "  -n     : no rc file                                                   \n"
-            "  -p     : preserve empty args                                          \n"
-            "  -s     : strip backslashes                                            \n"
-            "  -x     : expand standard backslash-escaped characters                 \n"
-            "  -h     : this help                                                    \n"
+            "  n     : No rc file read                                               \n"
+            "  p     : Preserve empty args                                           \n"
+            "  s     : Strip backslashes                                             \n"
+            "  x     : eXpand standard backslash-escaped characters                  \n"
+            "  v     : print the Version of this program                             \n"
+            "  h     : this Help                                                     \n\n"
             "Notes:                                                                  \n"
-            "  * flags can be combined in one string                                 \n"
-            "  * all flags are off by default                                        \n"
+            "  * all flags must be combined into one string                          \n\n"
             "Examples:                                                               \n"
-            "  #!%1$s -s -n perl -w                                                  \n"
+            "  #!%1$s -sn perl -w                                                    \n"
             "  #!%1$s bash -x -v                                                     \n"
 #ifdef F_TAKES_ARG
             "  #!%1$s -def=@@ python @@ -sf                                          \n"
 #endif
             "  #!%1$s -c python # -*-Python-*-                                       \n",
-            Argv0
+            Argv0I
            );
     exit(ret);
   }

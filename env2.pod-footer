@@ -3,109 +3,213 @@
 
 =head2 Advantages
 
-    The env utility is often used as the interpreter on the first line of interpreted 
-    scripts, as described in execve(2).
+The env utility is often used as the interpreter on the first line of interpreted 
+scripts, as described in execve(2).
 
-    There are several advantages to doing so:
-    
-    * The path to the interpreter does not need to be hardcoded. Not all systems
-    have perl in /usr/bin/perl for example. With env2, as long as perl is in the
-    PATH, it will be found and executed.
-    
-    * Normally the interpreter needs to be an executable, not another script. With
-    env2, this restriction is removed.
-    
-    * Without env2, the interpreter arguments are all treated as one string. This
-    will cause problems if there are multiple arguments that are seperated by
-    spaces that need to be passed in as seperate arguments.  See the next sub-section
-    titled '''Splitting out the interpreter argument string'''.
+There are several advantages to doing so:
 
-=head2 Splitting out the interpreter argument string
+* The path to the interpreter does not need to be hard-coded. Not all systems
+have perl in /usr/bin/perl for example. With env2, as long as perl is in the
+PATH, it will be found and executed.
 
-    The way the Linux kernel parses the `#!' (first line) of an interpreted 
-    script is to treat all the interpreter args as a single string. So, if a
-    script named /usr/bin/someport had a first line of:
+* Normally the interpreter needs to be an executable, not another script. With
+env2, this restriction is removed. (Although Linux does not have this restriction.)
 
-    #!/usr/bin/php -n -q -dsafe_mode=0
+* Without env2, the interpreter arguments are treated differently on each platform. This
+will cause problems when there are multiple arguments that are separated by
+spaces that need to be passed in as separate arguments.  See the next sub-section
+titled '''Splitting out the interpreter argument string'''.
 
-    then the /usr/bin/php program be started with the arguments of:
+=head2 Splitting out the interpreter arguments string
+
+Each UN*X platform handles the interpreter arguments in their own unique (and broken) way.
+
+On B<Linux>, the entire string following the interpreter name is passed as a single argument
+to  the interpreter, and this string can include white space.
+
+On B<Solaris>, the first white space to terminate the args. Subsequent args
+are silently discarded.
+
+On B<macOS> an interpreter script can have multiple arguments, and white spaces
+are used to delimit the arguments. This is a blind split and does not account for
+single or double quoted or backslash escaped whitespace.
+
+See the B<A BIT OF HISTORY> section for more.
+
+=head2 Important note about the examples below
+
+Because UN*X platforms may pre-split the args before the interpreter sees them,
+it can be difficult for the script argument to be properly determined. This is especially
+true if there are flags which do not start with a dash or if a flag takes an argument
+that is separated from the flag by a space.  Because of this, env2 has a special
+way to avoid this confusion. Use the -a (Allow) flag of env2 along with
+the insertion of the B<~> character where needed.  For example, change:
+
+    #!/usr/bin/env2 inter no_dash_arg -c c_arg
+
+To
+
+    #!/usr/bin/env2 -a inter ~no_dash_arg -c~c_arg
+
+And the B<~> character will prevent the non-dashed argument from becoming the script
+and shield the split on whitespace.  The B<~> is removed in the first instance
+and replaced with a space in the second.
+
+Also note that flags to env2 must all be grouped together:
+
+  env2 -acdefnpsx
+  
+The following will cause problems on some platforms:
+
+  env2 -a -c -e
+
+=head2 Linux
+
+The way the B<Linux> kernel parses the `#!' (first line) of an interpreted 
+script is to treat all the interpreter args as a single string. So, if a
+script named /usr/bin/script had a first line of:
+
+    #!/usr/bin/php -n -q -d error_prepend_string="<span style='color: #ff0000'>"
+
+then the /usr/bin/php program be started with the arguments of:
 
     arg[0] = '/usr/bin/php'
-    arg[1] = '-n -q -dsafe_mode=0'
-    arg[2] = '/usr/bin/someport'
+    arg[1] = '-n -q -d error_prepend_string="<span style='color: #ff0000'>"'
+    arg[2] = '/usr/bin/script'
 
-    which will not work as php will not be able to parse arg[1].
-    However, when the first line is changed to use this program first:
+which will not work as php will not be able to parse arg[1].
+However, when the first line is changed to use this program first:
 
-    #!/usr/bin/env2 php -n -q -dsafe_mode=0
+    #!/usr/bin/env2 -a php -n -q -d~error_prepend_string="<span style='color: #ff0000'>"
 
-    then the /usr/bin/php program be started with the arguments of:
+then the /usr/bin/php program be started with the arguments of:
 
     arg[0] = '/usr/bin/php'
     arg[1] = '-n'
     arg[2] = '-q'
-    arg[3] = '-dsafe_mode=0'
-    arg[4] = '/usr/bin/someport'
+    arg[3] = '-d'
+    arg[4] = 'error_prepend_string="<span style='color: #ff0000'>"'
+    arg[5] = '/usr/bin/script'
 
-    (plus any arguments the user specified when executing someport.) This will work
-    as expected.
+(plus any arguments the user specified when executing script.) This will work
+as expected.
 
-   See the "A BIT OF HISTORY" section for more on why this is.
+=head2 Solaris
+
+The way the B<Solaris> kernel parses the `#!' (first line) of an interpreted 
+script is to silently discard all the interpreter args after the first one. So, if a
+script named /usr/bin/script had a first line of:
+
+    #!/usr/bin/php -n -q -d error_prepend_string="<span style='color: #ff0000'>"
+
+then the /usr/bin/php program be started with the arguments of:
+
+    arg[0] = '/usr/bin/php'
+    arg[1] = '-n'
+    arg[2] = '/usr/bin/script'
+
+which will NOT give the desired result.
+However, when the first line is changed to use this program first:
+
+    #!/usr/bin/env2 -a php -n -q -d~error_prepend_string="<span style='color: #ff0000'>"
+
+then the /usr/bin/php program be started with the arguments of:
+
+    arg[0] = '/usr/bin/php'
+    arg[1] = '-n'
+    arg[2] = '-q'
+    arg[3] = '-d'
+    arg[4] = 'error_prepend_string="<span style='color: #ff0000'>"'
+    arg[5] = '/usr/bin/script'
+
+(plus any arguments the user specified when executing script.) This will work
+as expected.
+
+=head2 macOS
+
+The way the B<macOS> kernel parses the `#!' (first line) of an interpreted 
+script is to blindly split the interpreter args on whitespace. So, if a
+script named /usr/bin/script had a first line of:
+
+    #!/usr/bin/php -n -q -d error_prepend_string="<span style='color: #ff0000'>"
+
+then the /usr/bin/php program be started with the arguments of:
+
+    arg[0] = '/usr/bin/php'
+    arg[1] = '-n'
+    arg[2] = '-q'
+    arg[3] = '-d'
+    arg[4] = 'error_prepend_string="<span'
+    arg[5] = 'style='color:'
+    arg[6] = '#ff0000'>"'
+    arg[7] = '/usr/bin/script'
+
+which will NOT give the desired result.
+However, when the first line is changed to use this program first:
+
+    #!/usr/bin/env2 -a php -n -q -d~error_prepend_string="<span style='color: #ff0000'>"
+
+then the /usr/bin/php program be started with the arguments of:
+
+    arg[0] = '/usr/bin/php'
+    arg[1] = '-n'
+    arg[2] = '-q'
+    arg[3] = '-d'
+    arg[4] = 'error_prepend_string="<span style='color: #ff0000'>"'
+    arg[5] = '/usr/bin/script'
+
+(plus any arguments the user specified when executing script.) This will work
+as expected.
 
 =head1 CONFIG FILE
 
-    If a configureation file is found ($HOME/.env2rc) then it is parsed as follows:
+If a configuration file is found ($HOME/.env2rc) then it is parsed as follows:
 
     # These are environment variables           - this is a comment line
-    VARIABLE1=foo                               - set VARIABLE1
-    VARIABLE2="with embedded spaces"            - set VARIABLE2 
-    VARIABLE3+additional                        - append to VARIABLE3
-    VARIABLE4!                                  - unset VARIABLE4
+    VARIABLE1 = foo                             - set VARIABLE1
+    VARIABLE2 = "with embedded spaces"          - set VARIABLE2 
+    VARIABLE3 + additional                      - append to VARIABLE3
+    VARIABLE4 !                                 - unset VARIABLE4
                                                 - blank lines are ignored
     # These are program arguments               - another comment
-    prog1:-flag1                                - append flag to prog1
-    prog2:-flag1 -arg2="val with spaces"        - append flags to prog2
-    prog3;-opt1                                 - override flags with ones listed here
+    prog1 : -flag1                              - prepend -flag to prog1
+    prog2 : -flag1 -arg2="val with spaces"      - prepend -flags to prog2
+    prog3 ; -opt1                               - override flags with ones listed here
 
 =head1 A BIT OF HISTORY
-
-The  semantics  of  the optional-arg argument of an interpreter script vary across implementations
-On Linux, the entire string following the interpreter name is passed as a single argument
-to  the interpreter, and this string can include white space.  However, behavior differs
-on some other systems.  Some systems use the first white space to terminate optional-arg.   On
-some systems, an interpreter script can have multiple arguments, and white spaces in 
-optional-arg are used to delimit the arguments.
 
 From 1993 to mid-2005, FreeBSD parsed out the tokens as
 found on the first line of the script, and setup each token as a separate
 value in arg[].  This extra processing did not match the behavior of other
-OS's, and caused a few subtle problems.  For one, it meant the kernel was
-deciding how those values should be parsed (wrt characters for quoting or
-comments, etc), while the interpreter might have other rules for parsing.
-It also meant the interpreter had no way of knowing which arguments came
-from the first line of the shell script, and which arguments were specified
-by the user on the command line.
+OS's, and caused a few subtle problems.
 
-In 2005, the BSD version of env(1) added the -S string option to split out the interprter arg line.
+In 2005, the BSD version of env(1) added the -S string option to split out the
+interpreter arg line. This program DOES handle single and double quoted and backslash
+escaped whitespace. It does NOT however reparse the arguments if 
+they were pre-split by the kernel as is done on Solaris and macOS.
 
-In 2018, the GNU version on env(1) added the same flag.
+In 2018, the GNU version on env(1) added the same flag with slightly different
+behaviour. This program DOES handle
+single and double quoted whitespace. It does NOT handle backslash escaped whitespace.
+It also does NOT reparse the arguments if they were pre-split
+by the kernel as is done on Solaris and macOS.
 
 =head1 BUGS
 
-    Code has hard limits for string sizes (255).
-    Code uses a strange mix of C and C++.
-    Please report all Bugs to the author.
+Code has hard limits for string sizes (255).
+Code uses a strange mix of C and C++.
+Please report all Bugs to the author.
 
 =head1 REPOSITORY
 
-    https://github.com/chrispollitt/CWPutils
+https://github.com/chrispollitt/CWPutils
 
 =head1 AUTHORS
 
-    Chris Pollitt [ chris.pollitt@gmail.com ]
+Chris Pollitt [ chris.pollitt@gmail.com ]
 
 =head1 SEE ALSO
 
-    GNU env(1)
-    BSD env(1) [https://www.freebsd.org/cgi/man.cgi?env]
-    dumpargs(1)
+GNU env(1)
+BSD env(1) [https://www.freebsd.org/cgi/man.cgi?env]
+dumpargs(1)
