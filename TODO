@@ -1,4 +1,3 @@
-* for dumb splitting kernels, rejoin and split properly!
 
 * add flag for "don't make allowances for non-hashbang calls"
    - right now, if the interpreter flags are pre-split, it is handled
@@ -10,6 +9,4 @@
    - other?
 * use namespace cwputils
 * flags doen't need to be global either
-* fix man page:
-  - autoformat middle in Makefile
-  - manually format head and foot
+
