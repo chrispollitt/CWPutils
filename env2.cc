@@ -38,7 +38,7 @@ hash_t flags;                  // Place for flags xxx
 #define DEF_TO_STR(s) DEF_TO_STR2(s)
 
 // Constants
-#define VERSION   "1.1"
+#define VERSION   "1.2"
 #define YEAR      "2020"
 
 #ifndef PREFIX
