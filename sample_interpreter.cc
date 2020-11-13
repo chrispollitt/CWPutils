@@ -320,11 +320,8 @@ hash_t my_parse_flags(argv_t a) {
 #ifndef F_TAKES_ARG
             if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
               char delim[40];
-              long l = (long) (strchr((char *)flags_str+j+2,' ') - (flags_str+j+2));
-              strncpy(delim, (char *)flags_str+j+2, l); // Segfault!
-              delim[l] = ENDOFSTR;
+              strcpy(delim, (char *)flags_str+j+2); 
               my_flags["ccc"] = delim;
-              j += l+2;
               b=1;
             } else
 #endif
