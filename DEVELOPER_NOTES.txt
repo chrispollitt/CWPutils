@@ -1,33 +1,6 @@
 Convert enum elements to strings
   https://stackoverflow.com/questions/5093460/how-to-convert-an-enum-type-variable-to-a-string
 
---------
 
-g++ -Wall -g -std=gnu++17 -DMAIN_VARIATION=1 -DRUN_BASH -o sample_interpreter1.o -c sample_interpreter.cc
-g++ -o sample_interpreter1 sample_interpreter1.o dumpargs.o merge_arrays.o vars2.o env2.o
-./sample_interpreter1 -a -b -c ./sample_script.si -1 -2 -3
-
-cgdb ./sample_interpreter1
-break main
-run '-a -b -c ~~ -1 -2 -3' ./sample_script.si -4 -5 -6
-
---------
-
-* make flags non-global
-* make flags char **
-* make flags enum
-
---------
-
-==> t/exps3 <== WHERE IS -1 -2 -3
-argv[3]='-4'
-argv[4]='-5'
-argv[5]='-6'
-
--------
-
-cgdb ./sample_interpreter1 -ex "b main" -ex "run ./sample_script.si"
-
-------
-
-https://stackoverflow.com/questions/691719/c-display-stack-trace-on-exception
+Display stack trace on exception
+  https://stackoverflow.com/questions/691719/c-display-stack-trace-on-exception
