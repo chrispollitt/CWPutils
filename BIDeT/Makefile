@@ -1,6 +1,8 @@
 SHELL  = /bin/bash
 PREFIX = /usr/local
 
+DEBIAN = $(shell cat /etc/os-release 2>/dev/null|grep -i debian)
+
 build all: man
 
 man:
@@ -12,7 +14,11 @@ test check:
 clean:
 	-rm -f BIDeT.man
 
+# Run as root
 install: build
+ifneq ($(DEBIAN),)
+	@echo "*** NOTE! You may want to run: sudo make fixnetpbm"
+endif
 	mkdir -p $(PREFIX)/share/BIDeT
 	mkdir -p $(PREFIX)/share/man/man1
 	mkdir -p $(PREFIX)/bin
@@ -23,5 +29,23 @@ install: build
 	cp netpbm_rgb.txt  PostScript_Simple.pm $(PREFIX)/share/BIDeT
 	[[ $$(uname) != CYGWIN* ]] || cp netpbm.sh /etc/profile.d
 
-.PHONY: build all man test check clean install
+# Run Once, as root
+ifneq ($(DEBIAN),)
+fixnetpbm:
+	apt remove netpbm
+	wget -O netpbm-sf-10.73.33_amd64.deb https://sourceforge.net/projects/netpbm/files/super_stable/10.73.33/netpbm-sf-10.73.33_amd64.deb/download
+	apt install libpng16-16
+	dpkg -i ./netpbm-sf-10.73.33_amd64.deb
+	chown -R root.root /usr/share/netpbm
+	chmod -R ugo+rX /usr/share/netpbm
+endif
+
+help:
+	@echo "Targets are:"
+	@echo "  build       - build objects"
+	@echo "  test        - test program"
+	@echo "  install     - install program"
+	@echo "  fixnetpbm   - fix netpbm on Ubuntu/Debian"
+
+.PHONY: build all man test check clean install fixnetpbm
 

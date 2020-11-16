@@ -138,11 +138,7 @@ use IO::Select;
 use Pod::Usage;
 use File::Basename;
 
-# /etc/X11/rgb.txt
-# /usr/share/X11/rgb.txt
-# /usr/share/emacs/26.3/etc/rgb.txt
-# /usr/share/netpbm/rgb.txt
-# /usr/share/vim/vim82/rgb.txt
+our $file       = "/dev/shm/$ENV{USER}/bidet_tmp";
 
 # Usage ####################################################
 sub usage {
@@ -160,7 +156,7 @@ sub usage {
 
 # See if we have input on stdin ###########################
 sub test_stdin {
-  my $timeout = 0.1;        # slight risk of premature timeout on busy/slow systems
+  my $timeout = 0.3;  # Best to use "-" as filename to force STDIN
   my $s = IO::Select->new();
   
   $s->add(\*STDIN);
@@ -220,7 +216,6 @@ sub test_font {
 
 # Ensure colours are valid #################################
 sub test_colours {
-  no warnings 'once';
   my($colour, $background) = @_;
   my(@backgrounds, @both);
   my $fh;
@@ -282,6 +277,19 @@ sub test_colours {
   return($colour, $background);
 }
 
+# runprog ###################################################
+
+sub runprog {
+  my($cmd) = @_;
+  
+  system("$cmd 2>> $file.log");
+  if(-s "$file.log") {
+    print STDERR "error: system call failed: $cmd\n";
+    system("cat $file.log");
+    exit 1;
+  }
+}
+
 # main ######################################################
 sub main {
   # User settable params with default values
@@ -294,7 +302,6 @@ sub main {
   my $size       = '65';
   my $width      = 20;
   # Internal variables
-  my $file       = "/dev/shm/$ENV{USER}/bidet_tmp"; # slight risk of clobber on multi-user systems
   my $help       = 0;
   my $i          = 0;
   my $iso        = 0;  # Latin1
@@ -419,7 +426,7 @@ sub main {
   # remove log
   unlink("$file.log");
   # ps -> ppm
-  system("(gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH $file.ps | pnmcrop| pnmmargin -white 10 ) > $file.ppm 2> $file.log");
+  runprog("(gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH $file.ps | pnmcrop| pnmmargin -white 10 ) > $file.ppm");
   # do we have the crappy Debian netpbm?
   my $debian = `type pamcomp 2>/dev/null`;
   if($debian !~ /pamcomp/) {
@@ -427,19 +434,19 @@ sub main {
   } else {
     # rotate
     if($rotate) {
-      system("(pnmrotate -background white -90 < ${file}.ppm | sponge ${file}.ppm) 2>> $file.log");
+      runprog("(pnmrotate -background white -90 < ${file}.ppm | sponge ${file}.ppm)");
     } 
   }
   # ppm -> six
   if($background eq 'white') {
-    system("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six 2>> $file.log");
+    runprog("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six");
   } elsif ($background eq 'transparent' or $debian !~ /pamcomp/) {
-    system("(cat $file.ppm | pnmtopng -transparent=white -background=black | img2sixel -I) > $file.six 2>> $file.log");
+    runprog("(cat $file.ppm | pnmtopng -transparent=white -background=black | img2sixel -I) > $file.six");
   } else {
     # change background
-    system("(cat $file.ppm | ppmchange white $background | sponge ${file}.ppm) 2>> $file.log");
+    runprog("(cat $file.ppm | ppmchange white $background | sponge ${file}.ppm)");
     # ppm -> six
-    system("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six 2>> $file.log");
+    runprog("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six");
   }
   # output result
   system("cat $file.six");
