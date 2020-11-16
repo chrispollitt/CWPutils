@@ -1,4 +1,4 @@
-# CWPutils
+# BangHash
 Unix / Linux Utilities
 
 This is a collection of small utilities for Unix/Linix systems. They also works under Cygwin.
