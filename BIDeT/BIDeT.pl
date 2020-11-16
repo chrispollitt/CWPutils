@@ -19,13 +19,13 @@ Use one of these syntaxes:
 
   bidet [<options>] "<text string>"
   bidet [<options>] <file.txt>
-  <command> | bidet [<options>]
+  <command> | bidet [<options>] -
   
 Where <options> are one or more of:
 
   OPTION          MEANING                       DEFAULT
   --background=b  set background colour to "b"  transparent      
-  --colour=c      set text colour to "c"        black
+  --colour=c      set text colour to "c"        cornflowerblue
   --font=f        set font face to "f"          Helvetica
   --line=l        set line spacing to l         1
   --preserve      preserve newlines             False
@@ -125,7 +125,8 @@ Chris Pollitt https://github.com/chrispollitt/
 # Pragmas
 use strict;
 use warnings;
-use lib '.';  # xxx basename $0
+use FindBin qw($Bin);
+use lib "$Bin";
 binmode STDIN,  ':encoding(UTF-8)';
 binmode STDOUT, ':encoding(Latin1)';
 
@@ -231,7 +232,7 @@ sub test_colours {
   # get colours
 
   # get backgrounds
-  open($fh, '<', "$ENV{PWD}/netpbm_rgb.txt"); # xxx basename $0
+  open($fh, '<', "$Bin/netpbm_rgb.txt"); 
   @backgrounds = map {/^\d+ \d+ \d+ (\w+)/ ? $1 : () } (<$fh>);
   close($fh);
   
@@ -285,7 +286,7 @@ sub test_colours {
 sub main {
   # User settable params with default values
   my $background = "transparent";
-  my $colour     = 'lightblue';
+  my $colour     = 'cornflowerblue';
   my $font       = 'Helvetica';
   my $line       = 1;
   my $preserve   = 0;
@@ -411,13 +412,9 @@ sub main {
   ######## Convert to Sixel and output
   
   # pamflip        Flips images around various ways
-  # pnminvert      Exchanges black for white
-  # pnmrotate      Rotates images
   # pampaintspill  smoothly spill colours into the background
-  # pambackground  create mask of the background of an image
-  # pnmtopng
-  #   -transparent=colour
-  #   -background=colour
+  # ppmpat         add pattern to background
+  # pnmtile        add tiles to background
 
   # remove log
   unlink("$file.log");
@@ -435,19 +432,19 @@ sub main {
   }
   # ppm -> six
   if($background eq 'white') {
-    system("(cat $file.ppm | pnmtopng | img2sixel) > $file.six 2>> $file.log");
+    system("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six 2>> $file.log");
   } elsif ($background eq 'transparent' or $debian !~ /pamcomp/) {
-    system("(cat $file.ppm | pnmtopng -transparent=white -background=black | img2sixel) > $file.six 2>> $file.log");
+    system("(cat $file.ppm | pnmtopng -transparent=white -background=black | img2sixel -I) > $file.six 2>> $file.log");
   } else {
     # change background
     system("(cat $file.ppm | ppmchange white $background | sponge ${file}.ppm) 2>> $file.log");
     # ppm -> six
-    system("(cat $file.ppm | pnmtopng | img2sixel) > $file.six 2>> $file.log");
+    system("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six 2>> $file.log");
   }
   # output result
   system("cat $file.six");
   # delete tmp files
-  unlink(glob("$file*")); # xxx - uncomment this for production
+  unlink(glob("$file*"));
 }
 
 # Call main sub
