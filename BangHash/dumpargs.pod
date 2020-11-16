@@ -1,1 +1,17 @@
-=head1 dumpargs - print the arguemts that were passed to a program on the command line
+=head1 NAME
+
+B<dumpargs> - list arguments passed in from command line
+
+=head1 SYNOPSIS
+
+#!PREFIX/dumpargs [-flags] <interpreter> [<interpreter_args>]
+
+=head1 DESCRIPTION
+
+B<dumpargs> can serve as a debugging replacement for env(1).
+
+Its only purpose is to show how the system's kernel splits out
+the #! line in scripts.
+
+It is only meant for debugging purposes and should not be used in
+production scripts.
