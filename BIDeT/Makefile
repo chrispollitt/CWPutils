@@ -1,3 +1,4 @@
+SHELL  = /bin/bash
 PREFIX = /usr/local
 
 build all: man
@@ -20,7 +21,7 @@ install: build
 	perl -lpi -e 's,("\$$Bin),$$1/../share/BIDeT, and print ' $(PREFIX)/bin/bidet
 	chmod 555 $(PREFIX)/bin/bidet
 	cp netpbm_rgb.txt  PostScript_Simple.pm $(PREFIX)/share/BIDeT
-	[[ $$(uname) == CYGWIN* ]] && cp netpbm.sh /etc/profile.d
+	[[ $$(uname) != CYGWIN* ]] || cp netpbm.sh /etc/profile.d
 
 .PHONY: build all man test check clean install
 
