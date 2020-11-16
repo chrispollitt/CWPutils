@@ -1,3 +1,12 @@
+REQUIREMENTS
+
+gs        - ghostscript ghostscript-x gsfonts gsfonts-other gsfonts-x11
+sponge    - moreutils
+img2sixel - libsixel-bin
+mlterm    - mlterm
+
+STEPS
+
 make
 make check
 sudo make install

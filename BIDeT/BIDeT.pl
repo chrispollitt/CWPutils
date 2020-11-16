@@ -55,14 +55,16 @@ Notes:
 
 =item * GhostScript
 
+=item * Sponge (Part of MoreUtils package)
+
 =item * Netpbm package
 
 NOTE! The default version on Debian/Ubuntu has been lobotomized. 
 Features will be greatly restricted. To remedy, follow these steps:
 
-  1. sudo apt remove netpbm
+  1. sudo apt remove netpbm libnetpbm10
   2. wget -O netpbm-sf-10.73.33_amd64.deb https://sourceforge.net/projects/netpbm/files/super_stable/10.73.33/netpbm-sf-10.73.33_amd64.deb/download
-  3. sudo apt install libpng16-16
+  3. sudo apt install libpng16-16 libjpeg62
   4. sudo dpkg -i ./netpbm-sf-10.73.33_amd64.deb
   5. sudo chown -R root.root /usr/share/netpbm
   6. sudo chmod -R ugo+rX /usr/share/netpbm
