@@ -24,7 +24,7 @@ Use one of these syntaxes:
 Where <options> are one or more of:
 
   OPTION          MEANING                       DEFAULT
-  --background=b  set background colour to "b"  white      
+  --background=b  set background colour to "b"  transparent      
   --colour=c      set text colour to "c"        black
   --font=f        set font face to "f"          Helvetica
   --line=l        set line spacing to l         1
@@ -284,8 +284,8 @@ sub test_colours {
 # main ######################################################
 sub main {
   # User settable params with default values
-  my $background = "white";
-  my $colour     = 'black';
+  my $background = "transparent";
+  my $colour     = 'lightblue';
   my $font       = 'Helvetica';
   my $line       = 1;
   my $preserve   = 0;
@@ -319,10 +319,12 @@ sub main {
   ) or usage();
   if($help) {usage();}
   if($version) {usage(1);}
+  if($font   eq "list") {test_font($font, $iso)}
+  if($colour eq "list" or $background eq "list") {test_colours($colour, $background)}
+
   if(
     (!@ARGV) and 
-    (!test_stdin()) and 
-    ($font ne "list")
+    (!test_stdin())
   ) {usage();}  
   $Text::Wrap::columns  = $width;
   
@@ -411,11 +413,11 @@ sub main {
   # pamflip        Flips images around various ways
   # pnminvert      Exchanges black for white
   # pnmrotate      Rotates images
-  # pampaintspill  smoothly spill colors into the background
+  # pampaintspill  smoothly spill colours into the background
   # pambackground  create mask of the background of an image
   # pnmtopng
-  #   -transparent=color
-  #   -background=color
+  #   -transparent=colour
+  #   -background=colour
 
   # remove log
   unlink("$file.log");
