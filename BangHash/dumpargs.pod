@@ -4,7 +4,7 @@ B<dumpargs> - list arguments passed in from command line
 
 =head1 SYNOPSIS
 
-#!PREFIX/dumpargs [-flags] <interpreter> [<interpreter_args>]
+#!PREFIX/bin/dumpargs [-flags] <interpreter> [<interpreter_args>]
 
 =head1 DESCRIPTION
 
