@@ -31,10 +31,17 @@ endif
 
 # Run Once, as root
 ifneq ($(DEBIAN),)
+
+installreq:
+	apt install ghostscript ghostscript-x gsfonts gsfonts-other gsfonts-x11
+	apt install moreutils
+	apt install libsixel-bin
+	apt install mlterm
+
 fixnetpbm:
-	apt remove netpbm
+	apt remove netpbm libnetpbm10
 	wget -O netpbm-sf-10.73.33_amd64.deb https://sourceforge.net/projects/netpbm/files/super_stable/10.73.33/netpbm-sf-10.73.33_amd64.deb/download
-	apt install libpng16-16
+	apt install libpng16-16 libjpeg62
 	dpkg -i ./netpbm-sf-10.73.33_amd64.deb
 	chown -R root.root /usr/share/netpbm
 	chmod -R ugo+rX /usr/share/netpbm
@@ -45,7 +52,8 @@ help:
 	@echo "  build       - build objects"
 	@echo "  test        - test program"
 	@echo "  install     - install program"
+	@echo "  installreq  - install required OS packages"
 	@echo "  fixnetpbm   - fix netpbm on Ubuntu/Debian"
 
-.PHONY: build all man test check clean install fixnetpbm
+.PHONY: build all man test check clean install installreq fixnetpbm
 
