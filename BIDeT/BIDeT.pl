@@ -462,6 +462,8 @@ __END__
 ################################################################################
 DEVELOPER NOTES:
 
+fortune -s | bidet -c random -b random -f random -
+
 Source format choices:
   FMT     PROG         PACKAGE          USE
 - ps     (gs)          ghostscript      NO
