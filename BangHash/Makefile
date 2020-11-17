@@ -26,6 +26,8 @@ test check: all
 	./test_$(PROG1).sh ./$(PROG1)
 
 install: build
+	mkdir -p $(PREFIX)/bin
+	mkdir -p $(PREFIX)/share/man/man1
 	cp $(PROG1) $(PREFIX)/bin
 	cp $(PROG1).man $(PREFIX)/share/man/man1/$(PROG1).1
 	cp $(PROG2) $(PREFIX)/bin
@@ -59,7 +61,7 @@ $(PROG1): $(PROG1)_m.o $(LIBOBJS)
 	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 
 $(PROG1).pod: $(PROG1).pod-header $(PROG1).pod-middle $(PROG1).pod-footer
-	cat $^|perl -lpe 's,PREFIX,'"$(PREFIX)"',g' $^ > $(PROG1).pod
+	cat $^ > $(PROG1).pod
 
 $(PROG1).pod-middle: $(PROG1)
 	./$< -h > $(PROG1).pod-middle
@@ -98,6 +100,7 @@ $(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
 
 %.man: %.pod
 	pod2man $< $@
+	perl -lpi -e 's,PREFIX,'"$(PREFIX)"',g' $@
 
 # Special Rules ##############
 

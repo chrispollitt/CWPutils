@@ -4,7 +4,7 @@ B<env2> - run a program in a modified environment
 
 =head1 SYNOPSIS
 
-#!PREFIX/env2 [-flags] <interpreter> [<interpreter_args>]
+#!PREFIX/bin/env2 [-flags] <interpreter> [<interpreter_args>]
 
 =head1 DESCRIPTION
 
