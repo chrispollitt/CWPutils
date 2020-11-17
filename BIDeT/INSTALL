@@ -1,12 +1,55 @@
-REQUIREMENTS
+=REQUIREMENTS
 
-gs        - ghostscript ghostscript-x gsfonts gsfonts-other gsfonts-x11
-sponge    - moreutils
-img2sixel - libsixel-bin
-mlterm    - mlterm
+You will need all of these
+  Perl
+  GhostScript
+  Netpbm (full version)
+  MoreUtils
+  libSixel
+  a suitable Terminal Program
 
-STEPS
+Note the method to get the above depends on your platform.
+Please see the detail for each platform below.
+
+=STEPS
 
 make
 make check
 sudo make install
+
+----------------------------
+
+=CYGWIN
+
+setup-x86_64.exe
+  ghostscript libgs9 ghostscript-fonts-other
+  netpbm libnetpbm10
+  moreutils
+  mintty
+  
+From-Source
+  https://github.com/saitoha/libsixel
+   
+=LINUX (DEBIAN)
+
+apt
+  ghostscript ghostscript-x gsfonts gsfonts-other gsfonts-x11
+  moreutils
+  libsixel-bin
+  mlterm
+
+dpkg From-External-Repository
+  https://sourceforge.net/projects/netpbm
+
+=macOS
+
+port
+  netpbm
+  ghostscript
+  moreutils
+
+From-Source
+  https://github.com/saitoha/libsixel
+
+From App Store
+  iTerm2
