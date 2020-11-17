@@ -44,6 +44,10 @@ a.out
 BAK/*
 tmp/*
 
+# OS files
+.DS_Store
+.nfs*
+
 # Local stuff
 config.*
 dumpargs

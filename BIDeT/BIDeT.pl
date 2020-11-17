@@ -75,9 +75,11 @@ These are known to work:
 
 =over 4
 
-=item - mintty(1)
+=item - mintty  (Cygwin)
 
-=item - mlterm(1)
+=item - mlterm  (Linux)
+
+=item - iTerm2  (macOS)
 
 =back
 
@@ -140,7 +142,7 @@ use IO::Select;
 use Pod::Usage;
 use File::Basename;
 
-our $file       = "/dev/shm/$ENV{USER}/bidet_tmp";
+our $file;
 
 # Usage ####################################################
 sub usage {
@@ -312,6 +314,11 @@ sub main {
   my $version    = 0;
   my @text       = ();
 
+  if(-d "/dev/shm/.") {
+    $file       = "/dev/shm/$ENV{USER}/bidet_tmp";
+  } else {
+    $file       = "/tmp/$ENV{USER}/bidet_tmp";
+  }
   mkdir(dirname($file));
   # Get options 
   Getopt::Long::Configure ("bundling");
@@ -446,12 +453,14 @@ sub main {
     runprog("(cat $file.ppm | pnmtopng -transparent=white -background=black | img2sixel -I) > $file.six");
   } else {
     # change background
-    runprog("(cat $file.ppm | ppmchange white $background | sponge ${file}.ppm)");
+    runprog("(cat $file.ppm | ppmchange -closeok white $background | sponge ${file}.ppm)");
     # ppm -> six
     runprog("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six");
   }
   # output result
+  print "\n";
   system("cat $file.six");
+  print "\n";
   # delete tmp files
   unlink(glob("$file*"));
 }
