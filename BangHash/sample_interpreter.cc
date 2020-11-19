@@ -214,6 +214,8 @@ int main(int argc, char **argv) {
 #endif
 #if KERNEL_SPLIT != 2
   e = split_and_merge(o);  // split up argv[1]
+#else
+  e = o;
 #endif
   } catch (StdException &exc) {
     fprintf(stderr, "%s error: %s\n", Argv0, exc.what());
@@ -242,8 +244,9 @@ int main(int argc, char **argv) {
 // * main3 - Call own parse_flags() modeled on one from env2.cc
 // * 
 // * NOTES on my_parse_flags():
-// *   This implimentation is a copy of env2's. It sucks.
-// *   Should really copy the way Perl does it.
+// *   - This implimentation is a copy of env2's. It sucks.  Should really copy the way Perl does it.
+// *   - This is useless for Solaris as the only way to get all inter args is to read #! line 
+// *       directly from script the way env2 does it so might as well just use env2.
 // ************************************************************
 
 #define STRCMP_TRUE    0
