@@ -147,7 +147,7 @@ sub usage {
   my($version)=@_;
   
   if($version) {
-    print "Version: 1.0\n";
+    print "Version: 1.3\n";
   } else {
     pod2usage(
       -indent => 0,
