@@ -110,9 +110,7 @@ of sixel graphics to display Type 1 Postscript fonts.
 
 =over 4
 
-=item * Make cross-platform (Cygwin, Linux, Solaris, macOS)
-
-=item * Add additonal fonts??
+=item * Add additonal fonts
 
 =item * Add additonal effects (borders, ppmpat/pnmtile, etc.)
 
@@ -228,11 +226,11 @@ sub test_colours {
   $colour = lc $colour;
   $background = lc $background;
   
-  # get colours
+  # get colours ######
 
   # get backgrounds
   open($fh, '<', "$Bin/netpbm_rgb.txt"); 
-  @backgrounds = map {/^\d+ \d+ \d+ (\w+)/ ? $1 : () } (<$fh>);
+  @backgrounds = map {/^\s*\d+\s+\d+\s+\d+\s+(\w+)/ ? lc($1) : () } (<$fh>);
   close($fh);
   
   # look for common
@@ -240,7 +238,7 @@ sub test_colours {
     if(grep {lc $_ eq lc $c} @backgrounds) {push(@both, lc $c)}
   }
   
-  # list fonts  
+  # list fonts  #######
   if($colour eq "list" or $background eq "list") {
     for my $c (sort @both) {
       print $c . "\n";
@@ -248,7 +246,7 @@ sub test_colours {
     exit;
   }
 
-  # random
+  # random #######
   if($colour eq "random") {
     my $i = int(rand(scalar @both));
     $colour = $both[$i];
@@ -447,10 +445,16 @@ sub main {
     } 
   }
   # ppm -> six
+  #   background==white (no change)
   if($background eq 'white') {
     runprog("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six");
+  #   background==transparent (mask out white)
   } elsif ($background eq 'transparent' or $debian !~ /pamcomp/) {
-    runprog("(cat $file.ppm | pnmtopng -transparent=white -background=black | img2sixel -I) > $file.six");
+    # ppm -> png
+    runprog("(cat $file.ppm | pnmtopng -transparent=white) > $file.png"); 
+    # png -> six  (xxx: img2sixel does not reliably guess the terminal's bg colour)
+    runprog("(cat $file.png | img2sixel -I) > $file.six");
+  #   background==colour (change it)
   } else {
     # change background
     runprog("(cat $file.ppm | ppmchange -closeok white $background | sponge ${file}.ppm)");
@@ -509,14 +513,6 @@ dpkg -L netpbm  | egrep  /bin/ | wc -l
 
 expr 365 - 233
 132 *** MISSING! WTF!?
-
-On Ubuntu (Debian)
-1. sudo apt remove netpbm
-2. wget -O netpbm-sf-10.73.33_amd64.deb https://sourceforge.net/projects/netpbm/files/super_stable/10.73.33/netpbm-sf-10.73.33_amd64.deb/download
-3. sudo apt install libpng16-16
-4. sudo dpkg -i ./netpbm-sf-10.73.33_amd64.deb
-5. sudo chown -R root.root /usr/share/netpbm
-6. sudo chmod -R ugo+rX /usr/share/netpbm
 
 ----------
 
