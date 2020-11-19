@@ -7,7 +7,6 @@ SOURCES
 * dumpargs.cc              - Print the argv array
 * env2.cc                  - The main() function for env2
 * merge_arrays.cc          - split string into array and merge arrays
-* parse_flags.cc           - Parse out the flags to env2
 * sample_interpreter.cc    - A sample interpreter that uses env2 components
 * vars2.cc                 - read the config file and set env vars + interpreter flags
 
