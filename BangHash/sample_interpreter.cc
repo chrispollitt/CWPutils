@@ -94,7 +94,7 @@ void run_bash(argv_t ia, argv_t sa) {
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t flags;                  // Place for flags (xxx move to private var)
+hash_t flags;                  // Place for flags
 
 using namespace std;
 
@@ -177,7 +177,7 @@ int main(int argc, char **argv) {
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t flags;                  // Place for flags (xxx move to private var)
+hash_t flags;                  // Place for flags
 
 using namespace std;
 

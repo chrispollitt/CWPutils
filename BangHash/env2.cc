@@ -31,7 +31,7 @@ using namespace std;
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t flags;                  // Place for flags xxx
+hash_t flags;                  // Place for flags 
 #endif
 
 #define DEF_TO_STR2(s) #s
@@ -110,19 +110,19 @@ argv_t read_hashbang(argv_t ia) {
   for(i=0; i < ia.argc; i++) {
     if(Debug>=2) printf("Debug: arg%d='%s'\n",i,ia.argv[i]);
     if(
-      (strlen(ia.argv[i]))   &&
-      (i>=start+1)                  &&
-      (interpreter != NULL)  &&
-      (script == NULL)       &&
+      (strlen(ia.argv[i]))              &&
+      (i>=start+1)                      &&
+      (interpreter != NULL)             &&
+      (script == NULL)                  &&
       (!regex_search(ia.argv[i], dash)) &&
       (access( ia.argv[i], F_OK ) != -1)
     ) {
-      script = ia.argv[i];      // <-- script xxx may not be script
+      script = ia.argv[i];      // <-- script may not be script
       scr_loc = i;
     }
     else if(
       (strlen(ia.argv[i]))   &&
-      (i>=start)                  &&
+      (i>=start)             &&
       (interpreter == NULL)  &&
       (!regex_search (ia.argv[i], dash))
     ) {
@@ -236,32 +236,40 @@ argv_t env2(argv_t o) {
   }
   
 #if   KERNEL_SPLIT == 0
-  ;  // nothing extra to do
+  // split up argv[1] (from #! line) ///////////////////////////////////////////
+  n = split_string(o.argv[1]);
 #elif KERNEL_SPLIT == 1
-  o = read_hashbang(o);  // get hashbang line from script
+  // get hashbang line from script
+  o = read_hashbang(o);  
+  // split up argv[1] (from #! line) ///////////////////////////////////////////
+  n = split_string(o.argv[1]);
 #elif KERNEL_SPLIT == 2
-#error "KERNEL_SPLIT == 2 support not yet written"
+  // Yes this is silly to redo the work the kernel already did right, but
+  //  a) it's too much work to accommodate KERNEL_SPLIT == 2 "correctly"
+  //  b) i have yet to find a kernel that does KERNEL_SPLIT == 2 
+  // get hashbang line from script
+  o = read_hashbang(o);  
+  // split up argv[1] (from #! line) ///////////////////////////////////////////
+  n = split_string(o.argv[1]);
 #else
 #error "Must define KERNEL_SPLIT as 0, 1, or 2"
 #endif
-  
-  // split up argv[1] (from #! line) ///////////////////////////////////////////
-  n = split_string(o.argv[1]);
 
   // check that we have an interpreter from #! /////////////////////////////////
 #ifdef MAKE_EXE
-  // Set flags for exe call  zzz
-  nstart           = flags["nstart"].i();    // after env2 flags
-  int_loc          = nstart;                 // interpreter
-  oscr_loc         = 2;                      // first possible place for script
-  interpreter_base = basename(n.argv[int_loc]);
+  // flags["nstart"]  set by parse_flags()      // E after env2 flags
+  oscr_loc         = 2;                         // first possible place for script
+  // Set flags for exe call
+  nstart           = flags["nstart"].i();       // after env2 flags
+  int_loc          = nstart;                    // interpreter
+  interpreter_base = basename(n.argv[int_loc]); // from n
 #else
+  flags["nstart"]  = 0;                         // direct call
+  oscr_loc         = 1;                         // first possible place for script
   // Set flags for lib call
-  flags["nstart"]  = 0;                      // E after env2 flags
-  nstart           = flags["nstart"].i();    // after env2 flags
-  int_loc          = nstart;                 // interpreter
-  oscr_loc         = 1;                      // first possible place for script
-  interpreter_base = basename(o.argv[int_loc]);
+  nstart           = flags["nstart"].i();       // after env2 flags
+  int_loc          = nstart;                    // interpreter
+  interpreter_base = basename(o.argv[int_loc]); // from o
 #endif
 
   // look for args meant for script, not interpreter ///////////////////////////

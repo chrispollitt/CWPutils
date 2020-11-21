@@ -51,7 +51,7 @@ extern hash_t vars2();
 // Global vars
 extern char  *Argv0;                           // Name of program
 extern int    Debug;                           // Debug flag
-extern hash_t flags;                           // Place for flags  xxx
+extern hash_t flags;                           // Place for flags
 
 // std::exception with a what()
 class StdException: public std::exception {
