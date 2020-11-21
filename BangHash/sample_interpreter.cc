@@ -214,6 +214,8 @@ int main(int argc, char **argv) {
 #endif
 #if KERNEL_SPLIT != 2
   e = split_and_merge(o);  // split up argv[1]
+#else
+  e = o;
 #endif
   } catch (StdException &exc) {
     fprintf(stderr, "%s error: %s\n", Argv0, exc.what());
