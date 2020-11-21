@@ -94,9 +94,9 @@ _HERE_
   # Test to see kernel behaviour of #! splitting ##########
   echo "=== 3. Testing kernel #! parsing"
   echo "#pragma once" > config.hh
-  make dumpargs
+  make da
   set_sample_script '-a:b\ c -d'
-  ln -fs dumpargs sample_interpreter
+  ln -fs da sample_interpreter
   arg1=$(./sample_script.si 2>/dev/null| grep '^arg1=')
   if   [[ $arg1 == *"d'" ]]; then
     echo "config info: kernel does NOT split #! line"

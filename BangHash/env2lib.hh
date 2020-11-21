@@ -37,7 +37,7 @@ extern void perror(const char *s);
 extern int errno;
 
 // env2 functions
-extern int dumpargs(int argc, char **argv);
+extern int dumpargs(int argc, char **argv, int scr_loc=0);
 extern argv_t env2(argv_t o);
 extern char *getaline(FILE *fh);
 extern void init_flags(int found=0, int nstart=0);

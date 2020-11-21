@@ -175,18 +175,19 @@ argv_t read_hashbang(argv_t ia) {
  * env2 - construct the correct argv[] array
  **************************************************************/
 argv_t env2(argv_t o) {
-  argv_t n     = {0, (char **)NULL};
-  argv_t c     = {0, (char **)NULL};
-  argv_t e     = {0, (char **)NULL};
-  int set      = 0;           // cnf args set or add
-  int int_loc  = 0;           // interpreter nargv location
-  int scr_loc  = 0;           // script      nargv location
-  int oscr_loc = 0;
-  int i, j, k;               // Loop counters
-  int found, nstart;
-  string interpreter_base;   // basename of interpreter
-  hash_t add_args;
-  regex dash   = set_dash();
+  argv_t n     = {0, (char **)NULL}; //
+  argv_t c     = {0, (char **)NULL}; //
+  argv_t e     = {0, (char **)NULL}; //
+  int set      = 0;                  // cnf args set or add
+  int int_loc  = 0;                  // interpreter nargv location
+  int oscr_loc = 0;                  //
+  int nscr_loc  = 0;                  // script      nargv location
+  int escr_loc = 0;                  //
+  int i, j, k;                       // Loop counters
+  int found, nstart;                 //
+  string interpreter_base;           // basename of interpreter
+  hash_t add_args;                   //
+  regex dash   = set_dash();         //
   
   /****************************************
    * inline helper function to reduce duplicated code for splitting args on '~'
@@ -229,6 +230,10 @@ argv_t env2(argv_t o) {
       e.argv[j++] = arg;
     }
   };
+
+  /****************************************
+   * body of env2()
+   ****************************************/
   
   // main() should check for this - make sure we have the right number of args
   if(o.argc == 1) {
@@ -302,15 +307,15 @@ argv_t env2(argv_t o) {
 
   // add script  ///////////////////////////////////////////////////////////////
   if(found) {
-    scr_loc = found-1;
-    n.argv[scr_loc] = strndup( o.argv[oscr_loc], MAX_STR_CONST-1);
+    nscr_loc = found-1;
+    n.argv[nscr_loc] = strndup( o.argv[oscr_loc], MAX_STR_CONST-1);
   } else {
     if(oscr_loc == 2) {
-      scr_loc = n.argc;
-      n.argv[scr_loc] = strndup( o.argv[oscr_loc], MAX_STR_CONST-1);
+      nscr_loc = n.argc;
+      n.argv[nscr_loc] = strndup( o.argv[oscr_loc], MAX_STR_CONST-1);
       n.argc++;
     } else {
-      scr_loc = n.argc + (oscr_loc-2);
+      nscr_loc = n.argc + (oscr_loc-2);
       // o.argv[oscr_loc] will be added below
     }
   }
@@ -374,11 +379,16 @@ argv_t env2(argv_t o) {
       }
     // add nargv args //////////////////////////////////////
     } else {
-      if(set && i < scr_loc ) {
+      // skip intr args
+      if(set && i < nscr_loc ) {
         if(Debug) fprintf(stderr, "Debug: skipping nargv interprter arg: %s\n", n.argv[i]);
         i++;
+      // add intr args
       } else {
         split_sc(0);
+        if( i-1 == nscr_loc ) {
+          escr_loc = j-1;
+        }
       }
     }
   }
@@ -395,7 +405,7 @@ argv_t env2(argv_t o) {
     for(i=0; i<nstart; i++) {
       printf("arg%d='%s'\n",i+1,n.argv[i]);
     }
-    dumpargs(j, e.argv);
+    dumpargs(j, e.argv, escr_loc);
   }
 
   /// return new vars ////////////////////////////////////////////////

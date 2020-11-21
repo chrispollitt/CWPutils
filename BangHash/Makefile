@@ -8,7 +8,7 @@ PROG2   = dumpargs
 SAMPLE  = sample_interpreter
 LIBOBJ0 = $(PROG1).o
 LIBOBJ1 = $(PROG2).o
-LIBOBJ2 = merge_arrays.o
+LIBOBJ2 = array_utils.o
 LIBOBJ3 = vars2.o
 LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3)
 

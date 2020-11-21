@@ -29,8 +29,7 @@ using namespace std;
 /****************************************************************
  * split out string into array
  *   input:   input   // Input string
- *   output:  output  // Output string array
- *   return:  count   // Number of strings found
+ *   return:  o       // Output argv_t
  **************************************************************/
 argv_t split_string(char *input) {
   argv_t o;
@@ -71,8 +70,10 @@ argv_t split_string(char *input) {
     // clear in_bs
     in_bs=0;
   };
-  /***********************************/
 
+  /****************************************
+   * body of split_string()
+   ****************************************/
   output = (char **)calloc(MAX_STR_CONST, sizeof(char *));
 
   // init in and out pointers
@@ -202,7 +203,7 @@ argv_t split_string(char *input) {
  * join array into one string
  *   input:   strings  // array
  *   input:   count    // size of array
- *   input:   sep      // seperator
+ *   input:   sep      // seperator char
  *   return:  str      // joined strings
  *******************************************************************/
 char* join_array(char *strings[], int count, char sep) {
@@ -277,9 +278,10 @@ argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr) {
 
 /****************************************************************
  * split and merge
- *   input:   input   // Input string
- *   output:  output  // Output string array
- *   return:  count   // Number of strings found
+ *   input:   argvi   // Input argv_t
+ *   input:   stri    // Input string
+ *   input:   at      // Where to insert
+ *   return:  argvo   // Output argv_t
  **************************************************************/
 argv_t split_and_merge(argv_t argvi, char *stri, int at) {
   argv_t argvs = {0, (char **)NULL};

@@ -2,64 +2,31 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-//#include <malloc.h>
-#include "dumpargs.hh"
+#include "env2lib.hh"
 
-char *getaline(FILE *fh) {
-  char *line = (char *)malloc(MAX_LINE_LEN), *linep = line;
-  size_t lenmax = MAX_LINE_LEN, len = lenmax;
-  int c;
-
-  if(line == NULL)
-    return NULL;
-
-  for(;;) {
-    c = fgetc(fh);
-    if(c == EOF) {
-      *line++ = '\4';
-      break;
-    }
-
-    if(--len == 0) {
-      len = lenmax;
-      char *linen = (char *)realloc(linep, lenmax *= 2);
-
-      if(linen == NULL) {
-        free(linep);
-        return NULL;
-      }
-      line = linen + (line - linep);
-      linep = linen;
-    }
-
-    if( c == '\n') {
-      *line++ = '\0';
-      break;
-    }
-    else {
-      *line++ = c;
-    }
-  }
-  *line = '\0';
-  return linep;
-}
-
-int dumpargs(int argc, char **argv) {
-  char *line;
+int dumpargs(int argc, char **argv, int scr_loc) {
+  char *line   = NULL;
   char *script = NULL;
   FILE *fh     = NULL;
-  int i=0;
-  int j=0;
+  int i        = 0;
+  size_t size  = 0;
+  int read     = 0;
 
   printf("------arguments-----\n");
   for(i=0; i<argc; i++) {
     printf("arg%d='%s'",i,argv[i]);
     if(
-      (strlen(argv[i]))   &&
-      (i>0)               &&
-      (script == NULL)    &&
-      (argv[i][0] != '-') &&
-      (access( argv[i], F_OK ) != -1)
+      (
+        (scr_loc)           && 
+        (scr_loc = i)
+      )       ||
+      (
+        (strlen(argv[i]))   &&
+        (i>0)               &&
+        (script == NULL)    &&
+        (argv[i][0] != '-') &&
+        (access( argv[i], F_OK ) != -1)
+      )
     ) {
       script = argv[i];
       printf("\t<-- script\n");
@@ -89,16 +56,16 @@ int dumpargs(int argc, char **argv) {
   }
   if(fh != NULL) {
     printf("------input-----\n");
-    line = getaline(fh);
-    while(line[0] != '\4') {
-      printf("line%d='%s'\n",j,line);
-      free(line);
-      j++;
-      line = getaline(fh);
+    i = 0;
+    while((read =  getline(&line, &size, fh)) != -1) {
+      line[strlen(line)-1]='\0';
+      printf("line%d='%s'\n", i++, line);
     }
     fclose(fh);
   }
+#ifndef MAKE_EXE
   printf("------output-----\n");
+#endif
 
   return(0);
 }
