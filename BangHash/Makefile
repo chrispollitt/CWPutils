@@ -79,10 +79,6 @@ $(SAMPLE)2.o: $(SAMPLE).cc
 	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=2 -o $@ -c $<
 $(SAMPLE)2: $(SAMPLE)2.o $(LIBOBJS) $(LIBOBJ0)
 	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
-$(SAMPLE)3.o: $(SAMPLE).cc
-	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=3 -o $@ -c $<
-$(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
-	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 
 # Generic Rules ##############
 

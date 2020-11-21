@@ -55,7 +55,7 @@ argv_t split_string(char *input) {
     // if not in quoted string
     if(!*in_q2 && !in_bs) {
       // if closed on empty string, add to array and move to next argv
-      if(*in_q1 && ccnt==0 && flags["pre"].length()) {
+      if(*in_q1 && ccnt==0 && flags["pre"].i() ) {
         *output_ptr = ENDOFSTR;
         output[count++] = output_tmp;
         output_tmp = (char *)malloc(MAX_STR_CONST);
@@ -119,7 +119,7 @@ argv_t split_string(char *input) {
     ) {
       // comment
       if(
-        (flags["cmt"].length())       &&
+        (flags["cmt"].i() )       &&
         (*input_ptr     == COMMENT)   &&
         (*(input_ptr-1) == SPACE)     &&
         (*(input_ptr-2) != BACKSLASH) &&
@@ -135,7 +135,7 @@ argv_t split_string(char *input) {
         char *pos;
 
         if(
-          flags["exp"].length() &&
+          flags["exp"].i() &&
           in_bs                 &&
           (pos = strchr(expa, *input_ptr))
         ) {
@@ -144,7 +144,7 @@ argv_t split_string(char *input) {
           *output_ptr++ = expc[posd];
         } else {
           if(
-            flags["sbs"].length() &&
+            flags["sbs"].i() &&
             in_bs
           ) {
             output_ptr--;
@@ -166,7 +166,7 @@ argv_t split_string(char *input) {
     // back slash (escape char) ///////////////////////
     else if (*input_ptr==BACKSLASH) {
       if(
-        flags["sbs"].length() &&
+        flags["sbs"].i() &&
         in_bs
       ) {
         output_ptr--;

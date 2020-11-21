@@ -63,7 +63,7 @@ hash_t vars2() {
           val =   regex_replace(val, cfg_re4, "$1");
         }
         // expand escaped chars
-        if(flags["exp"].length()) {
+        if(flags["exp"].i() ) {
           char expa[] = "abefnrtv";
           char expc[] = {7,8,27,12,10,13,9,11};
           for(i=0; i<strlen(expa);i++) {
@@ -74,7 +74,7 @@ hash_t vars2() {
           }
         }
         // strip backslashes
-        if(flags["sbs"].length()) {
+        if(flags["sbs"].i() ) {
           while( regex_search(val, cfg_re2) ) {
             val = regex_replace(val, cfg_re2, "$1");
           }

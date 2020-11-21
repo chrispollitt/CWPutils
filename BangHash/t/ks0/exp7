@@ -1,7 +1,6 @@
 Debug: Debug mode activated
 Debug: No rc file mode activated
 Debug: Comment mode activated
-Debug: found: 1
 Debug: nstart: 1
 Debug: oscr_loc: 2
 Debug: hashbang=-dnc bash -x # comment

@@ -8,8 +8,24 @@
 #define MAX_STR_CONST 255
 #define MAX_LINE_LEN 1024
 
-typedef std::map<std::string, std::string> hash_t;
-typedef struct argv {
+class flag_t {
+  public:
+    // c'tors
+    flag_t()              { val=std::to_string(0); };
+    flag_t(int v)         { val=std::to_string(v); };
+    flag_t(char *v)       { val=std::string(v);    };
+    flag_t(std::string v) { val=v;                 };
+    // get
+    int         l() { return val.length();  }
+    int         i() { return std::stoi(val);};
+    const char *c() { return val.c_str();   };
+    std::string s() { return val;           };
+  private:
+    // attrs
+    std::string val;
+};
+typedef std::map<std::string, flag_t> hash_t;
+typedef struct {
   int argc;
   char **argv;
 } argv_t;
