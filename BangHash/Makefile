@@ -20,7 +20,7 @@ rebuild: clean all
 
 progs: $(PROG1) $(PROG1).man $(PROG2) $(PROG2).man
 
-samples: $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3
+samples: $(SAMPLE)1 $(SAMPLE)2
 
 test check: all
 	./test_$(PROG1).sh ./$(PROG1)
@@ -34,7 +34,7 @@ install: build
 	cp $(PROG2).man $(PREFIX)/share/man/man1/$(PROG2).1
 
 clean:
-	-rm -f $(PROG1) $(PROG2) $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3 $(PROG1).pod sample_script.si
+	-rm -f $(PROG1) $(PROG2) $(SAMPLE)1 $(SAMPLE)2 $(PROG1).pod sample_script.si
 	-rm -f *.man *.o *.exe *~ *.stackdump core
 	-rm -f t/out*
 
