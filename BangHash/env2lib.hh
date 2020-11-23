@@ -74,4 +74,3 @@ public:
 private:
   std::string message;
 };
-

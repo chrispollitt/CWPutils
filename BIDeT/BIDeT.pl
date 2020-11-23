@@ -519,3 +519,9 @@ expr 365 - 233
 ghostscript/9.52/Resource/Init/FCOfontmap-PCLPS2
 ghostscript/9.52/Resource/Init/Fontmap.GS
 ghostscript/9.52/Resource/Init/gs_fonts.ps
+
+---------
+
+Port to Tektronix window of xterm?
+Port to Linux console (TERM=linux)
+
