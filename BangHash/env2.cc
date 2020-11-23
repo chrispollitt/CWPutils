@@ -94,6 +94,8 @@ argv_t read_hashbang(argv_t ia) {
   int start;
   regex dash        = set_dash();
   
+  if(Debug>=2) printf("Debug: Func=read_hashbang\n");
+  
 #ifdef MAKE_EXE
   start=1;
 #if UNAME == UNAME_SOLARIS
@@ -189,6 +191,8 @@ argv_t env2(argv_t o) {
   hash_t add_args;                   //
   regex dash   = set_dash();         //
   
+  if(Debug>=2) printf("Debug: Func=env2\n");
+
   /****************************************
    * inline helper function to reduce duplicated code for splitting args on '~'
    ****************************************/
@@ -395,7 +399,7 @@ argv_t env2(argv_t o) {
   e.argv[j] = NULL;
 
   // dump args /////////////////////////////////////////////////////////////////
-  if(Debug) fprintf(stderr, "Debug: hashbang=%s\n", o.argv[1]);
+  if(Debug) fprintf(stderr, "Debug: hashbang='%s'\n", o.argv[1]);
   if( Debug && !flags["dump"].i() ) {
     for(i=0; i<j; i++) fprintf(stderr, "Debug: argv[%d]='%s'\n", i, e.argv[i]);
   }

@@ -118,8 +118,8 @@ _HERE_
   cat >> config.hh <<'_HERE_'
 #define UNAME_LINUX   1
 #define UNAME_CYGWIN  2
-#define UNAME_MACOS   3
-#define UNAME_SOLARIS 4
+#define UNAME_SOLARIS 3
+#define UNAME_MACOS   4
 _HERE_
 
   # copy correct test exp to t dir #########################

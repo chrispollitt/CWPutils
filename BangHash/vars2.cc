@@ -34,6 +34,8 @@ hash_t vars2() {
   regex cfg_re4( R"(^["]([^"]*)["]$)" );                // remove enclosing ""
   smatch cfg_matches;
 
+  if(Debug>=2) printf("Debug: Func=vars2\n");
+
   snprintf(conf_name, sizeof(conf_name)-1,"%s/.%s%s",home,myname,"rc");
   if(stat(conf_name, &conf_stat) != 0) {
     if(Debug) fprintf(stderr, "Debug: conf file not found: %s\n", conf_name);
