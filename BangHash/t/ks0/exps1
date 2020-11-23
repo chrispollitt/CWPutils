@@ -10,7 +10,7 @@ Debug: add_args: boo=-s
 Debug: add_args: bar=
 Debug: set_args: baz=-le
 Debug: interpreter_base: sample_interpreter
-Debug: hashbang=-a -b -c:foo ~~ -1 -2 -3
+Debug: hashbang='-a -b -c:foo ~~ -1 -2 -3'
 Debug: argv[0]='-a'
 Debug: argv[1]='-b'
 Debug: argv[2]='-c:foo'
