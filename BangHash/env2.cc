@@ -96,7 +96,7 @@ argv_t read_hashbang(argv_t ia) {
   
 #ifdef MAKE_EXE
   start=1;
-#if UNAME == SunOS
+#if UNAME == UNAME_SOLARIS
   // Solaris strips off interpreter args past the first one
   if(regex_search(ia.argv[1], dash)) {
     interpreter = (char *)"found";
@@ -466,7 +466,7 @@ hash_t parse_flags(char *flags_str) {
         // debug
         else if(*(flags_str+j) == 'd') {
           Debug++;
-          if(Debug) fprintf(stderr, "Debug: Debug mode activated\n");
+          if(Debug==1) fprintf(stderr, "Debug: Debug mode activated\n");
         }
         // emit (dump) - this is really a debug thing
         else if(*(flags_str+j) == 'e' || *(flags_str+j) == 'D' ) {

@@ -50,6 +50,7 @@ tmp/*
 
 # Local stuff
 config.*
+da
 dumpargs
 sample_script.si
 sample_interpreter

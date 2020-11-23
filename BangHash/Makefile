@@ -34,7 +34,7 @@ install: build
 	cp $(PROG2).man $(PREFIX)/share/man/man1/$(PROG2).1
 
 clean:
-	-rm -f $(PROG1) $(PROG2) $(SAMPLE)1 $(SAMPLE)2 $(PROG1).pod sample_script.si
+	-rm -f $(PROG1) $(PROG2) $(SAMPLE)1 $(SAMPLE)2 $(PROG1).pod sample_script.si da
 	-rm -f *.man *.o *.exe *~ *.stackdump core
 	-rm -f t/out*
 

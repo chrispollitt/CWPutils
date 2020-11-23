@@ -35,34 +35,34 @@ function main {
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = g++
-CXXFLAGS  = -Wall -g -std=c++14 -DUNAME=Linux -DPREFIX=$(PREFIX)
+CXXFLAGS  = -Wall -g -std=c++14 -DUNAME=UNAME_LINUX -DPREFIX=$(PREFIX)
 LDXX      = $(CXX)
 LDXXFLAGS = 
 LDXXLIBS  = 
 
 _HERE_
       ;;
-    CYGWIN_NT*)
+    CYGWIN*)
       cat > config.mk <<'_HERE_'
 
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = g++
-CXXFLAGS  = -Wall -g -std=c++14 -D_POSIX_C_SOURCE=201401L -DUNAME=CYGWIN_NT -DPREFIX=$(PREFIX)
+CXXFLAGS  = -Wall -g -std=c++14 -D_POSIX_C_SOURCE=201401L -DUNAME=UNAME_CYGWIN -DPREFIX=$(PREFIX)
 LDXX      = $(CXX)
 LDXXFLAGS = 
 LDXXLIBS  = 
 
 _HERE_
       ;;
-    SunOS)
+    SunOS|Solaris)
       echo "*** config note: remember to use gmake not make ***"
       cat > config.mk <<'_HERE_'
 
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = CC
-CXXFLAGS  = -Wall -g -std=c++14 -D_XPG6 -DUNAME=SunOS -DPREFIX=$(PREFIX)
+CXXFLAGS  = -Wall -g -std=c++14 -D_XPG6 -DUNAME=UNAME_SOLARIS -DPREFIX=$(PREFIX)
 LDXX      = $(CXX)
 LDXXFLAGS = -std=c++14
 LDXXLIBS  = 
@@ -75,7 +75,7 @@ _HERE_
 # Site cusomizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = clang++
-CXXFLAGS  = -Wall -g -std=c++14 -DUNAME=Darwin -DPREFIX=$(PREFIX)
+CXXFLAGS  = -Wall -g -std=c++14 -DUNAME=UNAME_MACOS -DPREFIX=$(PREFIX)
 LDXX      = $(CXX)
 LDXXFLAGS = 
 LDXXLIBS  = 
@@ -115,6 +115,12 @@ _HERE_
     echo "$arg1"
     exit 1
   fi
+  cat >> config.hh <<'_HERE_'
+#define UNAME_LINUX   1
+#define UNAME_CYGWIN  2
+#define UNAME_MACOS   3
+#define UNAME_SOLARIS 4
+_HERE_
 
   # copy correct test exp to t dir #########################
   echo "=== 4. Picking test exp files"
