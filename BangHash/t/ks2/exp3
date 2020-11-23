@@ -15,8 +15,8 @@ Debug: add_args: boo=-s
 Debug: add_args: bar=
 Debug: set_args: baz=-le
 Debug: interpreter_base: perl
-Debug: adding cfg interprter arg: -w
-Debug: adding cfg interprter arg: -I/foo bar
+Debug: adding cfg interpreter arg: -w
+Debug: adding cfg interpreter arg: -I/foo bar
 Debug: hashbang='-defs perl -l ~~ "hello\\ three"'
 ------env-----
 arg0='/Users/chris/github/chrispollitt/CWPutils/BangHash/sample_interpreter'

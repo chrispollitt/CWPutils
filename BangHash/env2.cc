@@ -2,7 +2,7 @@
  * env replacement
  *
  * Has these features over and above the classic env(1):
- * - splits out interpreter arg string into seperate args
+ * - splits out interpreter arg string into separate args
  * - has a config file that allows for
  *   ~ environment variables to be set
  *   ~ interpreter args to be added in per interpreter
@@ -211,10 +211,10 @@ argv_t env2(argv_t o) {
     }
     
     // if arg has embedded '~' then split into two args
-    // Allow for interpreter flags to have args seperated by space, not just = or :
-    // e.g. -a~foo   becomes -a foo  (now 2 seperate args)
-    //      -a:foo   no-chng
-    //      -a=foo   no-chng
+    // Allow for interpreter flags to have args separated by space, not just = or :
+    // e.g. -a~foo   becomes -a foo  (now 2 separate args)
+    //      -a:foo   no-change
+    //      -a=foo   no-change
     // Or allow non-dashed prefixed flag
     // e.g. ~arg     becomes arg
     pos = strchr(arg, '~');
@@ -362,22 +362,22 @@ argv_t env2(argv_t o) {
         c.argv[k] += 2;  // skip over special marker
         // if empty string
         if ( !strlen(c.argv[k]) && !flags["pre"].i() ) {
-          if(Debug) fprintf(stderr, "Debug: skipping empty cfg interprter arg at %d\n", k);
+          if(Debug) fprintf(stderr, "Debug: skipping empty cfg interpreter arg at %d\n", k);
           k++;
           // set it
         } else {
-          if(Debug) fprintf(stderr, "Debug: setting cfg interprter arg: %s\n", c.argv[k]);
+          if(Debug) fprintf(stderr, "Debug: setting cfg interpreter arg: %s\n", c.argv[k]);
           split_sc(1);
         }
       // else add_arg
       } else {
         // if empty string
         if ( !strlen(c.argv[k]) && !flags["pre"].i() ) {
-          if(Debug) fprintf(stderr, "Debug: skipping empty cfg interprter arg at %d\n", k);
+          if(Debug) fprintf(stderr, "Debug: skipping empty cfg interpreter arg at %d\n", k);
           k++;
           // add it
         } else {
-          if(Debug) fprintf(stderr, "Debug: adding cfg interprter arg: %s\n", c.argv[k]);
+          if(Debug) fprintf(stderr, "Debug: adding cfg interpreter arg: %s\n", c.argv[k]);
           split_sc(1);
         }
       }
@@ -385,7 +385,7 @@ argv_t env2(argv_t o) {
     } else {
       // skip intr args
       if(set && i < nscr_loc ) {
-        if(Debug) fprintf(stderr, "Debug: skipping nargv interprter arg: %s\n", n.argv[i]);
+        if(Debug) fprintf(stderr, "Debug: skipping nargv interpreter arg: %s\n", n.argv[i]);
         i++;
       // add intr args
       } else {
@@ -531,7 +531,7 @@ hash_t parse_flags(char *flags_str) {
     }
     // found non-flag argument (may not find in Solaris)
     else {
-      break; // from outter while
+      break; // from outer while
     }
     flags_str += j;
   } // while
