@@ -1,0 +1,37 @@
+Debug: Debug mode activated
+Debug: Perserve empty args mode activated
+Debug: Dump mode activated
+Debug: Delim mode activated with '~~'
+Debug: nstart: 1
+Debug: oscr_loc: 2
+Debug: setenv: FOO="\"BABBLE\" 'MUTTER'"
+Debug: add_args: perl=-w -I"/foo bar"
+Debug: add_args: bash=-x
+Debug: add_args: sh=-x -v
+Debug: setenv: BOO=BABBLE MUTTER
+Debug: setenv: BAR=
+Debug: unsetenv: BAZ
+Debug: add_args: boo=-s
+Debug: add_args: bar=
+Debug: set_args: baz=-le
+Debug: interpreter_base: perl
+Debug: adding cfg interprter arg: -w
+Debug: adding cfg interprter arg: -I/foo bar
+Debug: hashbang='-dpef perl -l ~~ "" "hello\\ two"'
+------env-----
+arg0='/Users/chris/github/chrispollitt/CWPutils/BangHash/sample_interpreter'
+arg1='-dpef'
+------arguments-----
+arg0='perl'	<-- interpreter
+arg1='-w'
+arg2='-I/foo bar'
+arg3='-l'
+arg4='./sample_script.si'	<-- script
+arg5=''
+arg6='hello\\ two'
+arg7='goodbye'
+------input-----
+line0='#!/Users/chris/github/chrispollitt/CWPutils/BangHash/sample_interpreter -dpef perl -l ~~ "" "hello\\ two"'
+line1='$"=q/" "/;print qq/ARGV="@ARGV" FOO="$ENV{FOO}"/'
+------output-----
+ARGV="" "hello\\ two" "goodbye" FOO=""\"BABBLE\" 'MUTTER'""

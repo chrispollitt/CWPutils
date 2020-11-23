@@ -1,0 +1,24 @@
+Usage:                                                                  
+  #!/usr/local/env2 [-flags] <interpreter> [<interpreter_args>]                    
+  #!/usr/local/env2 -[flags]f <interpreter> [<interpreter_args>] ~~ <script_args>  
+
+Where flags are one or more of:                                         
+  a     : Allow ~ to mark non-dashed flag AND allow space sep flag args 
+  c     : Comments mode (stuff after # is discarded)                    
+  d     : Debug mode (repeat for more)                                  
+  e     : Emit mode (call dumpargs)                                     
+  f     : Find script opts separated by delimiter ~~                    
+  n     : No rc file read                                               
+  p     : Preserve empty args                                           
+  s     : Strip backslashes                                             
+  x     : eXpand standard backslash-escaped characters                  
+  v     : print the Version of this program                             
+  h     : this Help                                                     
+
+Notes:                                                                  
+  * all flags must be combined into one string                          
+
+Examples:                                                               
+  #!/usr/local/env2 -sn perl -w                                                    
+  #!/usr/local/env2 bash -x -v                                                     
+  #!/usr/local/env2 -c python # -*-Python-*-                                       
