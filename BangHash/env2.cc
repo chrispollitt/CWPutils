@@ -78,6 +78,8 @@ regex set_dash() {
 
 /****************************************************************
  * read_hashbang - read #! line from script file
+ *   input  = ia (argv_t)
+ *   output = oa (argv_t) 
  **************************************************************/
 argv_t read_hashbang(argv_t ia) {
   char *line        = NULL;
@@ -253,7 +255,7 @@ argv_t env2(argv_t o) {
   //  a) it's too much work to accommodate KERNEL_SPLIT == 2 "correctly"
   //  b) i have yet to find a kernel that does KERNEL_SPLIT == 2 
   // get hashbang line from script
-  o = read_hashbang(o);  
+  o = read_hashbang(o);
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_string(o.argv[1]);
 #else
