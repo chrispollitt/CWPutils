@@ -24,7 +24,7 @@ endif
 	mkdir -p $(PREFIX)/bin
 	cp BIDeT.man $(PREFIX)/share/man/man1/bidet.1
 	cp BIDeT.pl $(PREFIX)/bin/bidet
-	perl -lpi -e 's,("\$$Bin),$$1/../share/BIDeT, and print ' $(PREFIX)/bin/bidet
+	perl -lpi -e 's,("\$$Bin),$$1/../share/BIDeT,' $(PREFIX)/bin/bidet
 	chmod 555 $(PREFIX)/bin/bidet
 	cp netpbm_rgb.txt  PostScript_Simple.pm $(PREFIX)/share/BIDeT
 	[[ $$(uname) != CYGWIN* ]] || cp netpbm.sh /etc/profile.d
