@@ -43,6 +43,8 @@ argv_t split_string(char *input) {
   int in_dq=0;        // Inside double quote
   int in_bs=0;        // Inside backslash
 
+  if(Debug>=2) printf("Debug: Func=split_string\n");
+
   /****************************************
    * inline helper function to reduce duplicated code for quote parsing
    ****************************************/
@@ -211,7 +213,9 @@ char* join_array(char *strings[], int count, char sep) {
   size_t total_length = 0;      /* Total length of joined strings */
   size_t length = 0;            /* Length of a string             */
   int i = 0;                    /* Loop counter                   */
-
+  
+  if(Debug>=2) printf("Debug: Func=join_array\n");
+  
   /* Find total length of joined strings */
   for(i = 0 ; i<count ; i++)
   {
@@ -254,6 +258,8 @@ char* join_array(char *strings[], int count, char sep) {
 argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr) {
   argv_t argv3;
   int i, j, k;
+
+  if(Debug>=2) printf("Debug: Func=merge_arrays\n");
 
   i = 0; // argv3 out: combined array
   j = 0; // argv2 in:  array to be inserted at 'at' point

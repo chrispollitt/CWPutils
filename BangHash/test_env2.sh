@@ -21,9 +21,9 @@ function set_sample_script {
     inter="$PWD/sample_interpreter "
   fi
   
-  echo "#!$inter$iargs" > sample_script.si
+  echo -E "#!$inter$iargs" > sample_script.si
   if [[ -n $body ]]; then
-    echo "$body" >> sample_script.si
+    echo -E "$body" >> sample_script.si
   else
     cat sample_script.si.template >> sample_script.si
   fi

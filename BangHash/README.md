@@ -4,9 +4,9 @@ Unix / Linux Utilities
 This is a collection of small utilities for Unix/Linix systems. They also works under Cygwin.
 
 SOURCES
+* array_utils.cc           - split string into array and merge arrays
 * dumpargs.cc              - Print the argv array
 * env2.cc                  - The main() function for env2
-* merge_arrays.cc          - split string into array and merge arrays
 * sample_interpreter.cc    - A sample interpreter that uses env2 components
 * vars2.cc                 - read the config file and set env vars + interpreter flags
 

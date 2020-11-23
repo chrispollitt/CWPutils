@@ -2,7 +2,7 @@
  * env replacement
  *
  * Has these features over and above the classic env(1):
- * - splits out interpreter arg string into seperate args
+ * - splits out interpreter arg string into separate args
  * - has a config file that allows for
  *   ~ environment variables to be set
  *   ~ interpreter args to be added in per interpreter
@@ -96,9 +96,11 @@ argv_t read_hashbang(argv_t ia) {
   int start;
   regex dash        = set_dash();
   
+  if(Debug>=2) printf("Debug: Func=read_hashbang\n");
+  
 #ifdef MAKE_EXE
   start=1;
-#if UNAME == SunOS
+#if UNAME == UNAME_SOLARIS
   // Solaris strips off interpreter args past the first one
   if(regex_search(ia.argv[1], dash)) {
     interpreter = (char *)"found";
@@ -191,6 +193,8 @@ argv_t env2(argv_t o) {
   hash_t add_args;                   //
   regex dash   = set_dash();         //
   
+  if(Debug>=2) printf("Debug: Func=env2\n");
+
   /****************************************
    * inline helper function to reduce duplicated code for splitting args on '~'
    ****************************************/
@@ -209,10 +213,10 @@ argv_t env2(argv_t o) {
     }
     
     // if arg has embedded '~' then split into two args
-    // Allow for interpreter flags to have args seperated by space, not just = or :
-    // e.g. -a~foo   becomes -a foo  (now 2 seperate args)
-    //      -a:foo   no-chng
-    //      -a=foo   no-chng
+    // Allow for interpreter flags to have args separated by space, not just = or :
+    // e.g. -a~foo   becomes -a foo  (now 2 separate args)
+    //      -a:foo   no-change
+    //      -a=foo   no-change
     // Or allow non-dashed prefixed flag
     // e.g. ~arg     becomes arg
     pos = strchr(arg, '~');
@@ -360,22 +364,22 @@ argv_t env2(argv_t o) {
         c.argv[k] += 2;  // skip over special marker
         // if empty string
         if ( !strlen(c.argv[k]) && !flags["pre"].i() ) {
-          if(Debug) fprintf(stderr, "Debug: skipping empty cfg interprter arg at %d\n", k);
+          if(Debug) fprintf(stderr, "Debug: skipping empty cfg interpreter arg at %d\n", k);
           k++;
           // set it
         } else {
-          if(Debug) fprintf(stderr, "Debug: setting cfg interprter arg: %s\n", c.argv[k]);
+          if(Debug) fprintf(stderr, "Debug: setting cfg interpreter arg: %s\n", c.argv[k]);
           split_sc(1);
         }
       // else add_arg
       } else {
         // if empty string
         if ( !strlen(c.argv[k]) && !flags["pre"].i() ) {
-          if(Debug) fprintf(stderr, "Debug: skipping empty cfg interprter arg at %d\n", k);
+          if(Debug) fprintf(stderr, "Debug: skipping empty cfg interpreter arg at %d\n", k);
           k++;
           // add it
         } else {
-          if(Debug) fprintf(stderr, "Debug: adding cfg interprter arg: %s\n", c.argv[k]);
+          if(Debug) fprintf(stderr, "Debug: adding cfg interpreter arg: %s\n", c.argv[k]);
           split_sc(1);
         }
       }
@@ -383,7 +387,7 @@ argv_t env2(argv_t o) {
     } else {
       // skip intr args
       if(set && i < nscr_loc ) {
-        if(Debug) fprintf(stderr, "Debug: skipping nargv interprter arg: %s\n", n.argv[i]);
+        if(Debug) fprintf(stderr, "Debug: skipping nargv interpreter arg: %s\n", n.argv[i]);
         i++;
       // add intr args
       } else {
@@ -397,7 +401,7 @@ argv_t env2(argv_t o) {
   e.argv[j] = NULL;
 
   // dump args /////////////////////////////////////////////////////////////////
-  if(Debug) fprintf(stderr, "Debug: hashbang=%s\n", o.argv[1]);
+  if(Debug) fprintf(stderr, "Debug: hashbang='%s'\n", o.argv[1]);
   if( Debug && !flags["dump"].i() ) {
     for(i=0; i<j; i++) fprintf(stderr, "Debug: argv[%d]='%s'\n", i, e.argv[i]);
   }
@@ -468,7 +472,7 @@ hash_t parse_flags(char *flags_str) {
         // debug
         else if(*(flags_str+j) == 'd') {
           Debug++;
-          if(Debug) fprintf(stderr, "Debug: Debug mode activated\n");
+          if(Debug==1) fprintf(stderr, "Debug: Debug mode activated\n");
         }
         // emit (dump) - this is really a debug thing
         else if(*(flags_str+j) == 'e' || *(flags_str+j) == 'D' ) {
@@ -529,7 +533,7 @@ hash_t parse_flags(char *flags_str) {
     }
     // found non-flag argument (may not find in Solaris)
     else {
-      break; // from outter while
+      break; // from outer while
     }
     flags_str += j;
   } // while
