@@ -50,7 +50,7 @@ uninstall:
 
 fixpaths:
 	@for f in t/exp*; do \
-	perl -lpi~ -e 's,/(.+/CWPutils/)(sample_interpreter),'"$(PWD)"'/$$2,;' $$f; \
+	perl -lpi~ -e 's,/(.+/CWPutils/BangHash/)(sample_interpreter),'"$(PWD)"'/$$2,;' $$f; \
 	done
 	@rm t/exp*~
 
