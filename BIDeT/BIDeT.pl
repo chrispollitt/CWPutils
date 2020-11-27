@@ -463,7 +463,7 @@ sub main {
   }
   if($ansi) {
     # png -> ans 
-    runprog("$Bin/img2ans -scale $file.png > $file.ans");
+    runprog("$Bin/img2ans $file.png > $file.ans");
     # output result
     system("cat $file.ans");
   } else {

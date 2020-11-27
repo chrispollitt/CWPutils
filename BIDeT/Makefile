@@ -1,5 +1,6 @@
 SHELL  = /bin/bash
 PREFIX = /usr/local
+CFLAGS = -Wall -g
 
 DEBIAN = $(shell cat /etc/os-release 2>/dev/null|grep -i debian)
 
@@ -10,7 +11,7 @@ img2ans: img2ans.c
 man:
 	pod2man BIDeT.pl > BIDeT.man
 
-test check:
+test check: build
 	./BIDeT.pl "Hello, World!"
 
 clean:
