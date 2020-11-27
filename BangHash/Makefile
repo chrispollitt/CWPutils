@@ -34,13 +34,13 @@ install: build
 	cp $(PROG2).man $(PREFIX)/share/man/man1/$(PROG2).1
 
 clean:
-	-rm -f $(PROG1) $(PROG2) $(SAMPLE)1 $(SAMPLE)2 $(PROG1).pod sample_script.si da
+	-rm -f $(PROG1) $(PROG2) $(SAMPLE) $(SAMPLE)1 $(SAMPLE)2 $(PROG1).pod *.pod-middle sample_script.si da
 	-rm -f *.man *.o *.exe *~ *.stackdump core
 	-rm -f t/out*
 
 distclean: clean
 	-rm -f t/exp* config.hh
-	# Can't rm config.mk as we need it to run
+# Can't rm config.mk as we need it to run!
 
 uninstall:
 	-rm -f $(PREFIX)/bin/$(PROG1)
