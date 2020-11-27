@@ -24,6 +24,7 @@ Use one of these syntaxes:
 Where <options> are one or more of:
 
   OPTION          MEANING                       DEFAULT
+  --ansi          use ANSI instead of SIXEL     False
   --background=b  set background colour to "b"  transparent      
   --colour=c      set text colour to "c"        cornflowerblue
   --font=f        set font face to "f"          Helvetica
@@ -295,6 +296,7 @@ sub runprog {
 # main ######################################################
 sub main {
   # User settable params with default values
+  my $ansi       = 0;
   my $background = "transparent";
   my $colour     = 'cornflowerblue';
   my $font       = 'Helvetica';
@@ -321,6 +323,7 @@ sub main {
   # Get options 
   Getopt::Long::Configure ("bundling");
   GetOptions(
+    "ansi|a"         => \$ansi,
     "background|b=s" => \$background,
     "colour|c=s"     => \$colour,
     "font|f=s"       => \$font,  
@@ -444,27 +447,31 @@ sub main {
       runprog("(pnmrotate -background white -90 < ${file}.ppm | sponge ${file}.ppm)");
     } 
   }
-  # ppm -> six
+  # ppm -> png
   #   background==white (no change)
   if($background eq 'white') {
-    runprog("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six");
+    runprog("(cat $file.ppm | pnmtopng ) > $file.png");
   #   background==transparent (mask out white)
   } elsif ($background eq 'transparent' or $debian !~ /pamcomp/) {
-    # ppm -> png
     runprog("(cat $file.ppm | pnmtopng -transparent=white) > $file.png"); 
-    # png -> six  (xxx: img2sixel does not reliably guess the terminal's bg colour)
-    runprog("(cat $file.png | img2sixel -I) > $file.six");
   #   background==colour (change it)
   } else {
     # change background
     runprog("(cat $file.ppm | ppmchange -closeok white $background | sponge ${file}.ppm)");
-    # ppm -> six
-    runprog("(cat $file.ppm | pnmtopng | img2sixel -I) > $file.six");
+    # ppm -> png
+    runprog("(cat $file.ppm | pnmtopng ) > $file.png");
   }
-  # output result
-  print "\n";
-  system("cat $file.six");
-  print "\n";
+  if($ansi) {
+    # png -> ans 
+    runprog("$Bin/img2ans -scale $file.png > $file.ans");
+    # output result
+    system("cat $file.ans");
+  } else {
+    # png -> six  (xxx: img2sixel does not reliably guess the terminal's bg colour)
+    runprog("(cat $file.png | img2sixel -I) > $file.six");
+    # output result
+    system("cat $file.six");
+  }
   # delete tmp files
   unlink(glob("$file*"));
 }

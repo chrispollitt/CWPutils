@@ -3,7 +3,9 @@ PREFIX = /usr/local
 
 DEBIAN = $(shell cat /etc/os-release 2>/dev/null|grep -i debian)
 
-build all: man
+build all: img2ans man
+
+img2ans: img2ans.c
 
 man:
 	pod2man BIDeT.pl > BIDeT.man
@@ -12,7 +14,7 @@ test check:
 	./BIDeT.pl "Hello, World!"
 
 clean:
-	-rm -f BIDeT.man
+	-rm -f BIDeT.man img2ans img2ans.exe
 
 # Run as root
 install: build
@@ -23,10 +25,11 @@ endif
 	mkdir -p $(PREFIX)/share/man/man1
 	mkdir -p $(PREFIX)/bin
 	cp BIDeT.man $(PREFIX)/share/man/man1/bidet.1
+	-chmod 755 $(PREFIX)/bin/bidet 2> /dev/null
 	cp BIDeT.pl $(PREFIX)/bin/bidet
-	perl -lpi -e 's,("\$$Bin),$$1/../share/BIDeT,' $(PREFIX)/bin/bidet
+	perl -lpi -e 's,([" ]\$$Bin),$$1/../share/BIDeT,' $(PREFIX)/bin/bidet
 	chmod 555 $(PREFIX)/bin/bidet
-	cp netpbm_rgb.txt  PostScript_Simple.pm $(PREFIX)/share/BIDeT
+	cp img2ans netpbm_rgb.txt  PostScript_Simple.pm $(PREFIX)/share/BIDeT
 	[[ $$(uname) != CYGWIN* ]] || cp netpbm.sh /etc/profile.d
 
 # Run Once, as root
@@ -43,8 +46,8 @@ fixnetpbm:
 	wget -O netpbm-sf-10.73.33_amd64.deb https://sourceforge.net/projects/netpbm/files/super_stable/10.73.33/netpbm-sf-10.73.33_amd64.deb/download
 	apt install libpng16-16 libjpeg62
 	dpkg -i ./netpbm-sf-10.73.33_amd64.deb
-	chown -R root.root /usr/share/netpbm
-	chmod -R ugo+rX /usr/share/netpbm
+	dpkg -L netpbm-sf|xargs chown -R root.root
+	dpkg -L netpbm-sf|xargs chmod -R ugo+rX
 endif
 
 help:
