@@ -1,0 +1,8 @@
+The following files are (possibly modified) versions of other FOSS.
+Note: Each of these have their own LICENSE. Please see their source for more.
+
+MY-NAME                  ORIG-NAME                   SOURCE
+PostScript_Simple.pm     PostScript/Simple.pm        metacpan.org:/pod/PostScript::Simple
+img2ans.c                derasterize.c               github.com:/csdvrx/derasterize
+uchar.h                  uchar.h                     github.com:/csdvrx/derasterize
+netpbm_rgb.txt           rgb.txt                     sourceforge.net:/projects/netpbm 

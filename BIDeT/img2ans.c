@@ -1,4 +1,4 @@
-/*bin/echo  ' -*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;coding:utf-8 -*-│
+/* -*- mode:c;indent-tabs-mode:nil;c-basic-offset:2;coding:utf-8 -*-           │
 │vi: set net ft=c ts=2 sts=2 sw=2 fenc=utf-8                                :vi│
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ Copyright 2019 Csdvrx & Justine Alexandra Roberts Tunney                     │
@@ -15,30 +15,9 @@
 │ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF      │
 │ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.               │
 ╞══════════════════════════════════════════════════════════════════════════════╡
-│ To use this, install a compiler and (for now) imagemagick:                   │
+│ To use this, install a compiler and imagemagick:                             │
 │  apt install build-essential imagemagick                                     │
-│                                                                              │
-│ Then make this file executable or run it with sh:                            │
-│  chmod +x derasterize.c                                                      │
-│  sh derasterize.c -y10 -x10 samples/wave.png                                 │
-│                                                                              │
-│ You can use the c file directly: the blub below recompiles when needed.      │
-╚────────────────────────────────────────────────────────────────────'>/dev/null
-  if ! [ "${0%.*}" -nt "$0" ]; then
-    if [ -z "$CC" ]; then
-      CC=$(command -v clang-9) ||
-      CC=$(command -v clang-8) ||
-      CC=$(command -v clang) ||
-      CC=$(command -v gcc) ||
-      CC=$(command -v cc)
-    fi
-    COPTS="-g -march=native -Ofast"
-    $CC $COPTS -o "${0%.*}" "$0" -lm || exit
-  fi
-  exec ./"${0%.*}" "$@"
-  exit
-
-*/
+╚────────────────────────────────────────────────────────────────────         */
 
 #define HELPTEXT "\n\
 NAME\n\
