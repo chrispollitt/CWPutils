@@ -70,6 +70,8 @@ Features will be greatly restricted. To remedy, follow these steps:
   5. sudo chown -R root.root /usr/share/netpbm
   6. sudo chmod -R ugo+rX /usr/share/netpbm
 
+=item * img2sixel (Part of libsixel-bin package)
+
 =item * a terminal that handles Sixel graphics
 
 These are known to work:
@@ -78,7 +80,7 @@ These are known to work:
 
 =item - mintty  (Cygwin)
 
-=item - mlterm  (Linux)
+=item - mlterm  (Linux, Solaris)
 
 =item - iTerm2  (macOS)
 
