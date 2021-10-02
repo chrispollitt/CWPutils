@@ -1,0 +1,94 @@
+DEVELOPER NOTES:
+
+* switch from  netpbm  to  imagemagick
+* switch from  ps      to  pdf
+* switch from  gs      to  poppler
+* fix img2sixel to properly detect background colour for transparent background
+* test if sixel is supported by terminal
+
+---runprog
+
+gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH $file.ps
+
+pnmcrop
+pnmmargin -white 10
+pnmrotate -background white -90
+ppmchange -closeok white $background 
+
+pnmtopng  -transparent=white
+
+img2sixel -I
+
+---imagemagick
+
+Magick++-config
+MagickCore-config
+MagickWand-config
+
+animate
+compare
+composite
+conjure
+convert  <-----
+display
+identify
+import
+montage
+
+-background color
+-colors 256
+-orient zzz
+-quiet
+-transparent-color color
+
+---pdf creation
+
+PDF::API2::Basic
+PDF::API2::Lite
+PDF::API2::Simple
+PDF::Builder::Basic
+PDF::Builder::Lite
+PDF::CreateSimple    <------
+PDF::EasyPDF
+PDF::Tiny
+PDF::Writer
+
+Poppler        PERL   (CPAN)
+ruby-poppler   RUBY   (GEM)
+python-poppler PYTHON (PIP3)
+
+poppler-utils  CLI
+
+---pdf 2 png
+
+  ghostscript
+    gs -dBATCH -dNOPAUSE -dFirstPage=1 -dLastPage=1 -sOutputFile=- -sDEVICE=ppmraw -ryyy $file.pdf
+  poppler-utils
+    pdftoppm
+    pdftopng
+
+---sample calls
+
+fortune -s | bidet -c random -b random -f random -
+bidet "The quick brown fox jumps over the lazy dog"
+bidet "Voyez le brick géant que j'examine près du wharf"
+
+----source format choices
+
+  FMT     PROG         PACKAGE          USE
+- ps     (gs)          ghostscript      NO
+- pdf    (pdftoppm)    poppler-utils    ?
+- latex  (latex2gif)   tth-common       ?
+- rtf    (RTF2PNG.EXE) US$79            NO
+
+-----image formats
+
+pAm  ????     ????
+pBm  bitmap   b & w
+pGm  graymap  gray scale
+pNm  N={B,G,P}
+pPm  pixmap   colour    ***
+
+---fonts
+xlsfonts (1)         - server font list displayer for X
+font-manager (1)     - Simple font management for GTK+ desktop environments

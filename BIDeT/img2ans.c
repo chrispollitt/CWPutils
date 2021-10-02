@@ -102,6 +102,8 @@ Copyright 2019 Csdvrx & Justine Alexandra Roberts Tunney\"");
 #elif MODE == FASTER
 #define MC 4u
 #define GN 25u
+#else
+#error MODE_ILLEGAL
 #endif
 
 #define FLOAT float

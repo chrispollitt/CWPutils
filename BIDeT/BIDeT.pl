@@ -3,7 +3,6 @@
 # BIDeT - Use this after you're done with Toilet!
 #
 
-
 =pod
 
 =encoding utf8
@@ -131,7 +130,7 @@ use warnings;
 use FindBin qw($Bin);
 use lib "$Bin";
 binmode STDIN,  ':encoding(UTF-8)';
-binmode STDOUT, ':encoding(Latin1)';
+binmode STDOUT, ':encoding(Latin1)'; # xxx: UTF-8 
 
 # Includes
 use Getopt::Long;
@@ -478,57 +477,4 @@ sub main {
 
 # Call main sub
 main();
-
-__END__
-
-################################################################################
-DEVELOPER NOTES:
-
-fortune -s | bidet -c random -b random -f random -
-
-Source format choices:
-  FMT     PROG         PACKAGE          USE
-- ps     (gs)          ghostscript      NO
-- pdf    (pdftoppm)    poppler-utils    ?
-- latex  (latex2gif)   tth-common       ?
-- rtf    (RTF2PNG.EXE) US$79            NO
-
---------------
-
-The quick brown fox jumps over the lazy dog
-Voyez le brick géant que j'examine près du wharf
-
-------------
-
-pAm  ????     ????
-pBm  bitmap   b & w
-pGm  graymap  gray scale
-pNm  N={B,G,P}
-pPm  pixmap   colour    ***
-
--------------
-
-export RGBDEF="/usr/share/netpbm/rgb.txt"  <-- not set in Cygwin by default
-sh: 1: pamcomp: not found                  <-- not available on Ubuntu
-sh: 1: pnmrotate: not found                <-- not available on Ubuntu
-
-apt files netpbm | egrep  /bin/ | wc -l
-365
-
-dpkg -L netpbm  | egrep  /bin/ | wc -l
-233
-
-expr 365 - 233
-132 *** MISSING! WTF!?
-
-----------
-
-ghostscript/9.52/Resource/Init/FCOfontmap-PCLPS2
-ghostscript/9.52/Resource/Init/Fontmap.GS
-ghostscript/9.52/Resource/Init/gs_fonts.ps
-
----------
-
-Port to Tektronix window of xterm?
-Port to Linux console (TERM=linux)
 
