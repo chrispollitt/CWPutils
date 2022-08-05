@@ -92,20 +92,20 @@ hash_t vars2() {
         }
         if(Debug) fprintf(stderr, "Debug: setenv: %s=%s\n", var.c_str(), val.c_str());
         setenv(var.c_str(),val.c_str(),1);
-        // Unset Environment Variable
+      // Unset Environment Variable
       } else if(sep == "!") {
         if(Debug) fprintf(stderr, "Debug: unsetenv: %s\n", var.c_str());
         unsetenv(var.c_str());
-        // Extra interpeter args
+      // Extra interpeter args
       } else if(sep == ":") {
         if(Debug) fprintf(stderr, "Debug: add_args: %s=%s\n", var.c_str(), val.c_str());
         add_args[var] = val;
-        // Only interpeter args
+      // Only interpeter args
       } else if(sep == ";") {
         if(Debug) fprintf(stderr, "Debug: set_args: %s=%s\n", var.c_str(), val.c_str());
         // prepend special marker ~~ to let env2() know this is a set, not add
         add_args[var] = "~~"+val;
-        // Impossible!
+      // Impossible!
       } else {
         if(Debug) fprintf(stderr, "Debug: sep illegal: %s\n", sep.c_str());
       }

@@ -95,6 +95,7 @@ argv_t read_hashbang(argv_t ia) {
   argv_t oa;
   int start;
   regex dash        = set_dash();
+  regex delim       = regex(string(R"(.+[=:].*)"));
   
   if(Debug>=2) printf("Debug: Func=read_hashbang\n");
   
@@ -111,26 +112,33 @@ argv_t read_hashbang(argv_t ia) {
   start=0;
 #endif
   
+  // An example hashbang line:
+  //   #!/usr/bin/env2 -env2_flags interpreter -interpreter_flags ~~ -script_flags
+  // As passed in from Linux:
+  //   "/usr/bin/env2" "-env2_flags interpreter -interpreter_flags  ~~ -script_flags" "script"
   for(i=0; i < ia.argc; i++) {
     if(Debug>=2) printf("Debug: arg%d='%s'\n",i,ia.argv[i]);
+    // Look for script
     if(
-      (strlen(ia.argv[i]))              &&
-      (i>=start+1)                      &&
-      (interpreter != NULL)             &&
-      (script == NULL)                  &&
-      (!regex_search(ia.argv[i], dash)) &&
-      (access( ia.argv[i], F_OK ) != -1)
+      (strlen(ia.argv[i]))              &&  // arg has length
+      (i>=start+1)                     &&  // arg is after interpreter
+      (interpreter != NULL)             &&  // we found the interpreter
+      (script == NULL)                 &&  // we have not found the script yet
+      (!regex_search(ia.argv[i], dash))  &&  // does not start with a dash (or ghost dash)
+      (!flags["allow"].l() && !regex_search(ia.argv[i], delim)) && // no = or : in middle of name 
+      (access( ia.argv[i], F_OK ) != -1)    //  file exists
     ) {
-      script = ia.argv[i];      // <-- script may not be script
+      script = ia.argv[i];      // <-- script
       scr_loc = i;
     }
+    // Look for interpreter
     else if(
-      (strlen(ia.argv[i]))   &&
-      (i>=start)             &&
-      (interpreter == NULL)  &&
-      (!regex_search (ia.argv[i], dash))
+      (strlen(ia.argv[i]))   &&              // arg has length
+      (i>=start)            &&              // arg is after env2 args
+      (interpreter == NULL)  &&              // we have not found the interpreter yet
+      (!regex_search (ia.argv[i], dash))      // does not start with a dash (or ghost dash)
     ) {
-      interpreter = ia.argv[i]; // <-- interpreter (may not be set on Solaris!)
+      interpreter = ia.argv[i]; // <-- interpreter (arg may have been striped out on Solaris!)
     }
     else {
       ; // flag or arg
@@ -511,6 +519,10 @@ hash_t parse_flags(char *flags_str) {
         else if(*(flags_str+j) == 's' ) {
           flags["sbs"] = 1;
           if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
+        }
+        // version
+        else if(*(flags_str+j) == 'v' ) {
+          usage(2);
         }
         // expand backslash-escaped chars
         else if(*(flags_str+j) == 'x' ) {
