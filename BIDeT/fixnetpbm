@@ -1,0 +1,20 @@
+#!/bin/bash
+# fixnetpbm
+url='https://sourceforge.net/projects/netpbm/files/super_stable/10.73.33/netpbm-sf-10.73.33_amd64.deb/download'
+if [[  $(id -un) != root ]]; then
+  echo "Must run as root"
+  exit 1
+fi
+if [[ -z $1 ]]; then
+  apt remove netpbm libnetpbm10
+  wget -O netpbm-sf-10.73.33_amd64.deb $url
+  apt install libpng16-16 libjpeg62
+  dpkg -i ./netpbm-sf-10.73.33_amd64.deb
+fi
+files=$(dpkg -L netpbm-sf)
+for file in $files; do
+  if [[ -f $file ]]; then
+    chown root.root $file
+    chmod ugo+rXi $file
+  fi
+done

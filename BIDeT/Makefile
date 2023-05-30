@@ -43,12 +43,7 @@ installreq:
 	apt install mlterm
 
 fixnetpbm:
-	apt remove netpbm libnetpbm10
-	wget -O netpbm-sf-10.73.33_amd64.deb https://sourceforge.net/projects/netpbm/files/super_stable/10.73.33/netpbm-sf-10.73.33_amd64.deb/download
-	apt install libpng16-16 libjpeg62
-	dpkg -i ./netpbm-sf-10.73.33_amd64.deb
-	dpkg -L netpbm-sf|xargs chown -R root.root
-	dpkg -L netpbm-sf|xargs chmod -R ugo+rX
+	./fixnetpbm
 endif
 
 help:
