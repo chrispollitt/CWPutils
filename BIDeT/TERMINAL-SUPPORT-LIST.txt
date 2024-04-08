@@ -1,0 +1,50 @@
+TERMINAL              SIXEL
+
+Alacritty             no
+Black Box             no
+Bobcat                YES!
+ConEmu                no      **
+Contour               YES!
+ctx terminal          YES!
+Darktile              YES!
+DomTerm               YES!
+Eat                   YES!
+Elementary Terminal   no
+Exoterm               YES!
+foot                  YES!
+GNOME Terminal        no    **
+guake                 no
+iTerm2*               YES!
+kitty                 no
+konsole*              YES!
+LaTerminal            YES!
+MacTerm               YES!
+mintty*               YES!
+mlterm                YES!
+MobaXterm             no
+PuTTY                 no    **
+Rio terminal          no
+Rlogin                YES!
+sixel-tmux            YES!   (not a terminal)
+suckless st           Needs Patch
+SwiftTerm             YES!
+SyncTERM              YES!
+TeraTerm              no
+Terminal.app          no
+Terminology           no
+termux                no
+Tilix                 no
+tmux*                 YES!
+toyterm               YES!
+U++                   YES!
+URxvt                 no
+Visual Studio Code    YES!
+wezterm               YES!
+Windows Console       no
+Windows Terminal      no     **
+xfce-terminal         YES!
+xterm                 YES!
+xterm.js              YES!
+yaft                  YES!
+Yakuake               YES!
+Zellij                YES!
