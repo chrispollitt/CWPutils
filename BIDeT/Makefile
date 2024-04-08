@@ -12,6 +12,7 @@ man:
 	pod2man BIDeT.pl > BIDeT.man
 
 test check: build
+	./test-sixel.sh
 	./BIDeT.pl "Hello, World!"
 
 clean:

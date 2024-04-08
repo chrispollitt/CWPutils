@@ -28,15 +28,18 @@ if [[ ${BASH_VERSINFO[0]} -eq 3 ]]; then
 
 	In the meantime, try using "brew install bash".
 	EOF
+        EXIT_CODE=1
 	exit 1
     else
 	exec bash "$0" "$@"  || echo "Exec failed" >&2
+        EXIT_CODE=1
 	exit 1
     fi
 fi
 
 if ! command -v montage >/dev/null; then
     echo "Please install ImageMagick" >&2
+    EXIT_CODE=1
     exit 1
 fi
 
@@ -49,11 +52,12 @@ fi
 if [[ "$COMSPEC" ]]; then
     alias convert="magick convert" # Shun MS Windows' "convert" command.
 fi
-    
+
+export EXIT_CODE=0    
 cleanup() {
     echo -n $'\e\\'		# Escape sequence to stop SIXEL.
     stty echo			# Reset terminal to show characters.
-    exit 0
+    exit $EXIT_CODE 
 }
 trap cleanup SIGINT SIGHUP SIGABRT EXIT
 
@@ -90,7 +94,8 @@ autodetect() {
 	    echo
 	    cat -v <<< "Please mention device attribute codes: ${REPLY}c"
 	fi
-
+ 
+        EXIT_CODE=1
 	exit 1
     fi
 
