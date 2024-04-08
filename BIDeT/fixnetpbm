@@ -15,6 +15,6 @@ files=$(dpkg -L netpbm-sf)
 for file in $files; do
   if [[ -f $file ]]; then
     chown root.root $file
-    chmod ugo+rXi $file
+    chmod ugo+rX $file
   fi
 done
