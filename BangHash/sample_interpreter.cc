@@ -70,7 +70,6 @@ void run_bash(argv_t ia, argv_t sa) {
     exit(1);
   }
 
-
   // set vars
   fprintf(shell, "typeset -a argv=(%s)\n", iargvs);
   fprintf(shell, "BASH_ARGV0=%s\n", sa.argv[0]);  // bash v5 feature

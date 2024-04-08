@@ -102,14 +102,14 @@ _HERE_
     echo "config info: kernel does NOT split #! line"
     echo "#define KERNEL_SPLIT 0" >> config.hh
     ks=0
-  elif [[ $arg1 == *"\'" ]]; then
-    echo "config info: kernel DOES split #! line but does NOT handle escaped whitespace"
-    echo "#define KERNEL_SPLIT 1" >> config.hh
-    ks=1
   elif [[ $arg1 == *" c'" ]]; then
     echo "config info: kernel DOES split #! line and DOES handle escaped  whitespace"
     echo "#define KERNEL_SPLIT 2" >> config.hh
     ks=2
+  elif [[ $arg1 == *"\'" ]]; then
+    echo "config info: kernel DOES split #! line but does NOT handle escaped whitespace"
+    echo "#define KERNEL_SPLIT 1" >> config.hh
+    ks=1
   else
     echo "config error: unexpected result from kernel parsing of #! line"
     echo "$arg1"
