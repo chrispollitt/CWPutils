@@ -3,7 +3,6 @@
 # BIDeT - Use this after you're done with Toilet!
 #
 
-
 =pod
 
 =encoding utf8
@@ -159,6 +158,19 @@ sub usage {
   exit(1);
 }
 
+# See if we have a sixel capable terminal ###########################
+sub test_sixel {
+	my $out=`test-sixel`;
+	chomp($out);
+	my $bg;
+	if($out =~ /Sixel support found. fg=\S+ bg=(\S+) nc=(\S+)/) {
+		$bg = $1;
+	} else {
+		die("error: Sixel not supported\n");
+	}
+	return $bg;
+}
+
 # See if we have input on stdin ###########################
 sub test_stdin {
   my $timeout = 0.3;  # Best to use "-" as filename to force STDIN
@@ -287,6 +299,7 @@ sub test_colours {
 sub runprog {
   my($cmd) = @_;
   
+	$cmd =~ s/#/\\#/g;
   system("$cmd 2>> $file.log");
   if(-s "$file.log") {
     print STDERR "error: system call failed: $cmd\n";
@@ -315,6 +328,8 @@ sub main {
   my $text       = "";
   my $version    = 0;
   my @text       = ();
+	
+	my $term_background = test_sixel();
 
   if(-d "/dev/shm/.") {
     $file       = "/dev/shm/$ENV{USER}/bidet_tmp";
@@ -469,8 +484,8 @@ sub main {
     # output result
     system("cat $file.ans");
   } else {
-    # png -> six  (xxx: img2sixel does not reliably guess the terminal's bg colour)
-    runprog("(cat $file.png | img2sixel -I) > $file.six");
+    # png -> six  (img2sixel does not reliably guess the terminal's bg colour)
+    runprog("(cat $file.png | img2sixel -I -B $term_background) > $file.six");
     # output result
     system("cat $file.six");
   }

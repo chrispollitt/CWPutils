@@ -1,6 +1,5 @@
 SHELL  = /bin/bash
 PREFIX = /usr/local
-CFLAGS = -Wall -g
 
 DEBIAN = $(shell cat /etc/os-release 2>/dev/null|grep -i debian)
 
@@ -26,8 +25,10 @@ endif
 	mkdir -p $(PREFIX)/share/BIDeT
 	mkdir -p $(PREFIX)/share/man/man1
 	mkdir -p $(PREFIX)/bin
+	-rm -rf $(PREFIX)/bin/test-sixel $(PREFIX)/share/man/man1/bidet.1 $(PREFIX)/bin/bidet /usr/local/share/BIDeT/*
+	cp test-sixel.sh $(PREFIX)/bin/test-sixel
+	chmod 555 $(PREFIX)/bin/test-sixel
 	cp BIDeT.man $(PREFIX)/share/man/man1/bidet.1
-	-chmod 755 $(PREFIX)/bin/bidet 2> /dev/null
 	cp BIDeT.pl $(PREFIX)/bin/bidet
 	perl -lpi -e 's,([" ]\$$Bin),$$1/../share/BIDeT,' $(PREFIX)/bin/bidet
 	chmod 555 $(PREFIX)/bin/bidet

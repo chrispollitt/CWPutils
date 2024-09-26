@@ -162,7 +162,7 @@ autodetect() {
     # Figure out how many tiles we can fit per row. ("+ 1" is for -shadow).
     numtiles=$((width/(tilewidth + 2*tilexspace + 1)))
 
-    echo "Sixel support found. fg=$foreground bg=$background"
+    echo "Sixel support found. fg=$foreground bg=$background nc=$numcolors"
 }
 
 # Discover and setup the terminal
