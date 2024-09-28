@@ -17,6 +17,7 @@
 ╞══════════════════════════════════════════════════════════════════════════════╡
 │ To use this, install a compiler and imagemagick:                             │
 │  apt install build-essential imagemagick                                     │
+   https://github.com/csdvrx/derasterize
 ╚────────────────────────────────────────────────────────────────────         */
 
 #define HELPTEXT "\n\
@@ -1061,8 +1062,15 @@ static unsigned char *LoadImageOrDie(char *path, unsigned yn, unsigned xn) {
   if (!(pid = fork())) {
     close(rw[0]);
     dup2(rw[1], STDOUT_FILENO);
-    execlp("convert", "convert", path, "-resize", dim, "-colorspace", "RGB",
-           "-depth", "8", "rgb:-", NULL);
+    execlp(
+		  "convert", "convert", path, 
+			"-resize", dim, 
+			"-colorspace", "RGB",
+//		"-alpha",             "activate",  // activate, deactivate, reset
+//		"-background",        "white",
+//		"-transparent-color", "black", 
+      "-depth", "8", "rgb:-",
+			NULL);
     _exit(EXIT_FAILURE);
   }
   close(rw[1]);
