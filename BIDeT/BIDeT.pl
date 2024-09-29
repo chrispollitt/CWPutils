@@ -395,6 +395,7 @@ sub main {
 
   ######### make sure colours are valid
   ($colour, $background)=test_colours($colour, $background);
+  $background = $term_background unless($background ne 'transparent');
   
   ######## Create PostScript file
   
@@ -410,6 +411,7 @@ sub main {
   # create a new page
   $p->newpage;
   
+	# SAMPLE TRICKS
   if(0) { 
     # draw some lines and other shapes
     $p->line(1,1, 1,4);
@@ -419,7 +421,6 @@ sub main {
     $p->setlinewidth( 0.01 );
     $p->curve(1,5, 1,7, 3,7, 3,5);
     $p->curvextend(3,3, 5,3, 5,5);
-     
     # draw a rotated polygon in a different colour
     $p->setcolour(0,100,200);
     $p->polygon({rotate=>45}, 1,1, 1,2, 2,2, 2,1, 1,1);
@@ -456,30 +457,20 @@ sub main {
   unlink("$file.log");
   # ps -> ppm
   runprog("(gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH $file.ps | pnmcrop| pnmmargin -white 10 ) > $file.ppm");
-  # do we have the crappy Debian netpbm?
-  my $debian = `type pamcomp 2>/dev/null`;
-  if($debian !~ /pamcomp/) {
-    print STDERR "Note: You have the lobotomized Debian netpbm. Features are greatly restricted.\n";
-  } else {
-    # rotate
-    if($rotate) {
-      runprog("(pnmrotate -background white -90 < ${file}.ppm | sponge ${file}.ppm)");
+  # change background
+  runprog("(cat $file.ppm | ppmchange -closeok white '$background' | sponge ${file}.ppm)") unless($background eq 'white');
+  # rotate
+  if($rotate) {
+    # do we have the crappy Debian netpbm?
+    my $debian = `type pamcomp 2>/dev/null`;
+    if($debian !~ /pamcomp/) {
+      print STDERR "Note: You have the lobotomized Debian netpbm. Features are greatly restricted.\n";
+    } else {
+      runprog("(pnmrotate -background '$background' -90 < ${file}.ppm | sponge ${file}.ppm)");
     } 
   }
   # ppm -> png
-  #   background==white (no change)
-  if($background eq 'white') {
-    runprog("(cat $file.ppm | pnmtopng ) > $file.png");
-  #   background==transparent (mask out white)
-  } elsif ($background eq 'transparent' or $debian !~ /pamcomp/) {
-    runprog("(cat $file.ppm | pnmtopng -transparent=white) > $file.png"); 
-  #   background==colour (change it)
-  } else {
-    # change background
-    runprog("(cat $file.ppm | ppmchange -closeok white $background | sponge ${file}.ppm)");
-    # ppm -> png
-    runprog("(cat $file.ppm | pnmtopng ) > $file.png");
-  }
+  runprog("(cat $file.ppm | pnmtopng ) > $file.png");
   if($ansi) {
     # png -> ans 
     runprog("$Bin/img2ans -b'$term_background' $file.png > $file.ans");
