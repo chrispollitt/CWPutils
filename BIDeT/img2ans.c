@@ -64,7 +64,9 @@ Copyright 2019 Csdvrx & Justine Alexandra Roberts Tunney\"");
 #include <fenv.h>
 #include <limits.h>
 #include <locale.h>
+#ifdef __linux__
 #include <malloc.h>
+#endif
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -82,6 +84,8 @@ Copyright 2019 Csdvrx & Justine Alexandra Roberts Tunney\"");
 #define BEST 0
 #define FAST 1
 #define FASTER 2
+
+#define MAX_BG_LENGTH 100
 
 #ifndef MODE
 #ifdef __AVX2__
@@ -918,7 +922,7 @@ static FLOAT adjudicate(unsigned b, unsigned f, unsigned g,
     for (i = 0; i < BN; ++i) p[i] -= lb[k * BN + i];
     // For a minimization problem, abs can do. Much faster
     // TODO: approximate square by bit shifting 
-    for (i = 0; i < BN; ++i) p[i] = abs(p[i]);
+    for (i = 0; i < BN; ++i) p[i] = abs((int)(p[i]));
     //for (i = 0; i < BN; ++i) p[i] *= p[i];
     for (i = 0; i < BN; ++i) q[i] += p[i];
   }
@@ -1052,7 +1056,7 @@ static void ReadAll(int fd, char *p, size_t n) {
   } while (n);
 }
 
-static unsigned char *LoadImageOrDie(char *path, unsigned yn, unsigned xn) {
+static unsigned char *LoadImageOrDie(char *path, unsigned yn, unsigned xn, char *bg) {
   void *rgb;
   size_t size;
   int pid, ws, rw[2];
@@ -1062,13 +1066,13 @@ static unsigned char *LoadImageOrDie(char *path, unsigned yn, unsigned xn) {
   if (!(pid = fork())) {
     close(rw[0]);
     dup2(rw[1], STDOUT_FILENO);
+//fprintf(stderr, "path=%s\n", path);
     execlp(
 		  "convert", "convert", path, 
 			"-resize", dim, 
+  		"-background", bg,
+		  "-alpha", "background", 
 			"-colorspace", "RGB",
-//		"-alpha",             "activate",  // activate, deactivate, reset
-//		"-background",        "white",
-//		"-transparent-color", "black", 
       "-depth", "8", "rgb:-",
 			NULL);
     _exit(EXIT_FAILURE);
@@ -1088,6 +1092,7 @@ int main(int argc, char *argv[]) {
   void *rgb;
   unsigned yd, xd;
   int y=0, x=0;
+  char bg[MAX_BG_LENGTH] = "black";
 
   btoa(0, 0); // FIXME: this is needed. But why?
 
@@ -1109,6 +1114,10 @@ int main(int argc, char *argv[]) {
                     break;
                  case 'y':
                     y = atoi(++option);
+                    break;
+                 case 'b':
+                    strncpy(bg, ++option, MAX_BG_LENGTH - 1);
+                    bg[MAX_BG_LENGTH - 1] = '\0'; // Ensure null-termination
                     break;
                  case 'h':
                     printf (HELPTEXT);
@@ -1136,7 +1145,7 @@ int main(int argc, char *argv[]) {
 
   // FIXME: on the conversion stage should do 2Y because of halfblocks
   // printf( "filename >%s<\tx >%d<\ty >%d<\n\n", filename, x, y);
-  rgb = LoadImageOrDie(filename, y, x);
+  rgb = LoadImageOrDie(filename, y, x, bg);
   PrintImage(rgb, y, x);
   free(rgb);
   return 0;

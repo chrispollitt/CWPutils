@@ -143,6 +143,7 @@ use Pod::Usage;
 use File::Basename;
 
 our $file;
+our $debug      = 0;
 
 # Usage ####################################################
 sub usage {
@@ -299,7 +300,7 @@ sub test_colours {
 sub runprog {
   my($cmd) = @_;
   
-	$cmd =~ s/#/\\#/g;
+  print STDERR "CMD=$cmd\n" if($debug);
   system("$cmd 2>> $file.log");
   if(-s "$file.log") {
     print STDERR "error: system call failed: $cmd\n";
@@ -342,6 +343,7 @@ sub main {
   GetOptions(
     "ansi|a"         => \$ansi,
     "background|b=s" => \$background,
+    "debug|d"        => \$debug,
     "colour|c=s"     => \$colour,
     "font|f=s"       => \$font,  
     "line|l=f"       => \$line,
@@ -480,17 +482,17 @@ sub main {
   }
   if($ansi) {
     # png -> ans 
-    runprog("$Bin/img2ans $file.png > $file.ans");
+    runprog("$Bin/img2ans -b'$term_background' $file.png > $file.ans");
     # output result
     system("cat $file.ans");
   } else {
     # png -> six  (img2sixel does not reliably guess the terminal's bg colour)
-    runprog("(cat $file.png | img2sixel -I -B $term_background) > $file.six");
+    runprog("(cat $file.png | img2sixel -I -B '$term_background') > $file.six");
     # output result
     system("cat $file.six");
   }
   # delete tmp files
-  unlink(glob("$file*"));
+  unlink(glob("$file*")) unless($debug);
 }
 
 # Call main sub
