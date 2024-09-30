@@ -163,13 +163,14 @@ sub usage {
 sub test_sixel {
 	my $out=`test-sixel`;
 	chomp($out);
-	my $bg;
-	if($out =~ /Sixel support found. fg=\S+ bg=(\S+) nc=(\S+)/) {
-		$bg = $1;
+	my($fg,$bg);
+	if($out =~ /Sixel support found. fg=(\S+) bg=(\S+) nc=(\S+)/) {
+		$fg = $1;
+		$bg = $2;
 	} else {
 		die("error: Sixel not supported\n");
 	}
-	return $bg;
+	return ($fg,$bg);
 }
 
 # See if we have input on stdin ###########################
@@ -273,10 +274,12 @@ sub test_colours {
   }
 
   # check colour
-  if(!grep($_ eq $colour, (@both))) {
-    print STDERR "$0 error: Invalid colour: $colour\n";
-    exit(1);
-  }
+  if($colour ne 'default') {
+    if(!grep($_ eq $colour, (@both))) {
+      print STDERR "$0 error: Invalid colour: $colour\n";
+      exit(1);
+    }
+	}
   
   # check background
   if($background ne 'transparent') {
@@ -293,6 +296,32 @@ sub test_colours {
   }    
   
   return($colour, $background);
+}
+
+# hex48_to_rgb ##########################################
+
+sub hex48_to_rgb {
+    my ($hex) = @_;
+
+    # Remove the leading "#" if present
+    $hex =~ s/^#//;
+
+    # Extract the first 12 characters (4 hex digits for each colour component)
+    my $r = substr($hex, 0, 4);  # Red component
+    my $g = substr($hex, 4, 4);  # Green component
+    my $b = substr($hex, 8, 4);  # Blue component
+
+    # Convert the 16-bit hex values to decimal (0-65535)
+    $r = hex($r);
+    $g = hex($g);
+    $b = hex($b);
+
+    # Scale 16-bit values (0-65535) down to 8-bit values (0-255)
+    $r = int($r / 257);  # 65535 / 257 = 255
+    $g = int($g / 257);
+    $b = int($b / 257);
+
+    return ($r, $g, $b);
 }
 
 # runprog ###################################################
@@ -313,8 +342,8 @@ sub runprog {
 sub main {
   # User settable params with default values
   my $ansi       = 0;
+  my $colour     = 'default';
   my $background = "transparent";
-  my $colour     = 'cornflowerblue';
   my $font       = 'Helvetica';
   my $line       = 1;
   my $preserve   = 0;
@@ -330,7 +359,7 @@ sub main {
   my $version    = 0;
   my @text       = ();
 	
-	my $term_background = test_sixel();
+	my ($term_foreground, $term_background) = test_sixel();
 
   if(-d "/dev/shm/.") {
     $file       = "/dev/shm/$ENV{USER}/bidet_tmp";
@@ -395,6 +424,7 @@ sub main {
 
   ######### make sure colours are valid
   ($colour, $background)=test_colours($colour, $background);
+  $colour     = $term_foreground unless($colour     ne 'default');
   $background = $term_background unless($background ne 'transparent');
   
   ######## Create PostScript file
@@ -434,7 +464,14 @@ sub main {
       $background='white';
     }
   }
-  $p->setcolour($colour);
+	# hex : #000000000000
+	if($colour =~ m/^#\d+$/) {
+		my($r,$g,$b) = hex48_to_rgb($colour);
+    $p->setcolour($r,$g,$b);
+	# name : white
+	} else {
+    $p->setcolour($colour);
+	}
   $p->setfont($font, $size);
   $i=scalar(@text) * $line;
   for $text (@text) {
