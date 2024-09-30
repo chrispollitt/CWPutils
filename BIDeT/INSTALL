@@ -2,10 +2,11 @@
 
 You will need all of these
   Perl
-  GhostScript
-  Netpbm (full version)
-  MoreUtils
-  libSixel
+  GhostScript (with fonts)
+  Netpbm (with pnmrotate)
+  MoreUtils (for sponge)
+  libSixel (with libpng support)
+  ImageMagick
   a suitable Terminal Program
 
 Note the method to get the above depends on your platform.
@@ -24,6 +25,7 @@ sudo make install
 setup-x86_64.exe
   ghostscript libgs9 ghostscript-fonts-other
   netpbm libnetpbm10
+	ImageMagick
   moreutils
   mintty
   
@@ -34,8 +36,9 @@ From-Source
 
 apt
   ghostscript ghostscript-x gsfonts gsfonts-other gsfonts-x11
+	ImageMagick
   moreutils
-  libsixel-bin
+  libsixel-bin (default version missing libpng support)
   mlterm
 
 dpkg From-External-Repository
@@ -46,10 +49,28 @@ dpkg From-External-Repository
 port
   netpbm
   ghostscript
+	ImageMagick
   moreutils
+	bash (modern version)
 
 From-Source
   https://github.com/saitoha/libsixel
 
 From App Store
   iTerm2
+
+========================TO DO======================
+
+===VERIFY REQUIREMENTS
+
+GhostScript with fonts
+ImageMagick	with convert
+netpbm			with pnmrotate
+libsixel		with libpng support
+*term				with sixel (iTerm2, mintty, mlterm, xterm -ti vt340)
+
+===FILES
+
+Makefile
+configure  <-- to write (check pre-reqs)
+
