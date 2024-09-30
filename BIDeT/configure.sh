@@ -90,3 +90,4 @@ run_checks() {
 
 # Run the checks
 run_checks
+bash ./test-sixel.sh
