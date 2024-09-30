@@ -5,6 +5,20 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# Check for modern Bash
+check_bash() {
+  if command_exists bash; then
+    echo "Bash is installed."
+  else
+    echo "Error: Bash is not installed."
+    return 1
+  fi
+	if (( ${BASH_VERSINFO[0]} < 4 )); then
+    echo "Error: Bash is too old."
+    return 1
+	fi
+}
+
 # Check for Perl
 check_perl() {
   if command_exists perl; then
@@ -79,6 +93,7 @@ check_imagemagick() {
 # Main function to run all checks
 run_checks() {
   echo "Checking for required dependencies..."
+  check_bash || exit 1
   check_perl || exit 1
   check_ghostscript || exit 1
   check_netpbm || exit 1

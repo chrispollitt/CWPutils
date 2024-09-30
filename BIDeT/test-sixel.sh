@@ -11,27 +11,12 @@ foreground=black # Default text color.
 width=800	       # Default width of screen in pixels.
 timeout=0.25		 # How long to wait for terminal to respond to a control sequence (in seconds).
 
+# Save the original file descriptors
+exec 3<&0 4<&1 5<&2
+# Reassign STDIN and STDOUT to /dev/tty
+exec </dev/tty >/dev/tty 2>&1
+
 # Sanity checks and compatibility
-if [[ ${BASH_VERSINFO[0]} -eq 3 ]]; then
-  if bash --version | head -1 | grep -q "version 3"; then
-    cat <<-EOF >&2
-  Error: The version of Bash is extremely out of date.
-  (2007, the same year Steve Jobs announced the iPhone!)
-
-  This is almost always due to Apple's MacOS being silly.
-  Please let Apple know that their users expect current UNIX tools.
-
-  In the meantime, try using "brew install bash".
-EOF
-    EXIT_CODE=1
-    exit 1
-  else
-    exec bash "$0" "$@"  || echo "Exec failed" >&2
-    EXIT_CODE=1
-    exit 1
-  fi
-fi
-
 if ! command -v montage >/dev/null; then
   echo "Please install ImageMagick" >&2
   EXIT_CODE=1
@@ -51,8 +36,10 @@ fi
 ## CLEANUP ########################
 export EXIT_CODE=0    
 cleanup() {
-  echo -n $'\e\\'		# Escape sequence to stop SIXEL.
-  stty echo			# Reset terminal to show characters.
+  echo -n $'\e\\'		   # Escape sequence to stop SIXEL.
+	if [[ -t 1 ]]; then  #
+    stty echo			     # Reset terminal to show characters.
+	fi
   exit $EXIT_CODE 
 }
 trap cleanup SIGINT SIGHUP SIGABRT EXIT
@@ -108,7 +95,9 @@ look_for_sixel_term() {
 autodetect() {
   # Various terminal automatic configuration routines.
   # Don't show escape sequences the terminal doesn't understand.
-  stty -echo			# Hush-a Mandara Ni Pari
+	if [[ -t 1 ]]; then
+    stty -echo			
+	fi
   # IS TERMINAL SIXEL CAPABLE?		# Send Device Attributes
   IFS=";?c" read -a REPLY -s -t 1 -d "c" -p $'\e[c' >&2
   for code in "${REPLY[@]}"; do
@@ -187,6 +176,17 @@ EOF
   tileyspace=$((tilexspace/2))
   # Figure out how many tiles we can fit per row. ("+ 1" is for -shadow).
   numtiles=$((width/(tilewidth + 2*tilexspace + 1)))
+
+  # cleanup
+	echo -n $'\e\\'		# Escape sequence to stop SIXEL.
+	if [[ -t 1 ]]; then 
+    stty echo			    # Reset terminal to show characters.
+	fi
+	trap - SIGINT SIGHUP SIGABRT EXIT
+  # Restore the original file descriptors
+  exec <&3 >&4 2>&5
+	exec 3<&- 4<&- 5<&-
+	# output result
   echo "Sixel support found. fg=$foreground bg=$background nc=$numcolors"
 }
 ## MAIN ##########################

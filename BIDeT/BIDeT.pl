@@ -138,7 +138,7 @@ binmode STDOUT, ':encoding(Latin1)';
 use Getopt::Long;
 use Text::Wrap;
 use PostScript_Simple;
-use IO::Select;
+#use IO::Select;
 use Pod::Usage;
 use File::Basename;
 
@@ -389,8 +389,7 @@ sub main {
   if($colour eq "list" or $background eq "list") {test_colours($colour, $background)}
 
   if(
-    (!@ARGV) and 
-    (!test_stdin())
+    (!@ARGV) # and (!test_stdin())
   ) {usage();}  
   $Text::Wrap::columns  = $width;
   
