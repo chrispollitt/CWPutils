@@ -83,7 +83,7 @@ look_for_sixel_term() {
   if [[ $uname == "darwin" ]]; then
     loc=$(ls -1d /Applications/$nterm.app /Users/$USER/Applications/$nterm.app 2>/dev/null | head -1)
     if [[ -n $loc ]]; then
-      echo "Good news: you have iTerm2 at $loc"
+      echo "Good news: you have $nterm at $loc"
       return 0
     fi
   fi
