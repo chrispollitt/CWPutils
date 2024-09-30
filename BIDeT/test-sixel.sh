@@ -69,7 +69,7 @@ look_for_sixel_term() {
       nterm="mintty"
       ;;
     darwin)
-      nterm="iTerm2"
+      nterm="iTerm"
       ;;
     *linux|*bsd|sunos|solaris)
       ;;  # No specific terminal to add for these platforms
@@ -78,6 +78,15 @@ look_for_sixel_term() {
       return 1
       ;;
   esac
+
+  # Special case for macOS (Darwin) to check for nterm in Applications folders
+  if [[ $uname == "darwin" ]]; then
+    loc=$(ls -1d /Applications/$nterm.app /Users/$USER/Applications/$nterm.app 2>/dev/null | head -1)
+    if [[ -n $loc ]]; then
+      echo "Good news: you have iTerm2 at $loc"
+      return 0
+    fi
+  fi
 
   # Look for terminals gterm and nterm in the PATH
   for term in $nterm $gterm; do
@@ -90,15 +99,6 @@ look_for_sixel_term() {
       return 0
     fi
   done
-
-  # Special case for macOS (Darwin) to check for iTerm2 in Applications folders
-  if [[ $uname == "darwin" ]]; then
-    loc=$(ls -1d /Applications/iTerm.app /Users/$USER/Applications/iTerm.app 2>/dev/null | head -1)
-    if [[ -n $loc ]]; then
-      echo "Good news: you have iTerm2 at $loc"
-      return 0
-    fi
-  fi
 
   # If no terminal was found
   echo "No suitable sixel-compatible terminal found."
