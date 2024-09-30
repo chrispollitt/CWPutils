@@ -465,7 +465,7 @@ sub main {
     }
   }
 	# hex : #000000000000
-	if($colour =~ m/^#\d+$/) {
+	if($colour =~ m/^#[0-9a-f]{12}$/) {
 		my($r,$g,$b) = hex48_to_rgb($colour);
     $p->setcolour($r,$g,$b);
 	# name : white
