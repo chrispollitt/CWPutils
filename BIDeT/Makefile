@@ -32,7 +32,7 @@ endif
 	cp BIDeT.pl $(PREFIX)/bin/bidet
 	perl -lpi -e 's,([" ]\$$Bin),$$1/../share/BIDeT,' $(PREFIX)/bin/bidet
 	chmod 555 $(PREFIX)/bin/bidet
-	cp img2ans netpbm_rgb.txt  PostScript_Simple.pm $(PREFIX)/share/BIDeT
+	cp img2ans netpbm_rgb.txt  PostScript_Simple.pm fontlist.txt $(PREFIX)/share/BIDeT
 	[[ $$(uname) != CYGWIN* ]] || cp netpbm.sh /etc/profile.d
 
 # Run Once, as root
