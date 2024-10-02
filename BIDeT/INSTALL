@@ -14,6 +14,7 @@ Please see the detail for each platform below.
 
 =STEPS
 
+./configure.sh
 make
 make check
 sudo make install
@@ -59,18 +60,5 @@ From-Source
 From App Store
   iTerm2
 
-========================TO DO======================
 
-===VERIFY REQUIREMENTS
-
-GhostScript with fonts
-ImageMagick	with convert
-netpbm			with pnmrotate
-libsixel		with libpng support
-*term				with sixel (iTerm2, mintty, mlterm, xterm -ti vt340)
-
-===FILES
-
-Makefile
-configure  <-- to write (check pre-reqs)
 
