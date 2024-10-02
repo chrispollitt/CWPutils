@@ -6,6 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT);
 use Carp;
 use Exporter;
+use File::Slurper 'read_lines';
 #use PostScript::Simple::EPS;
 
 @ISA = qw(Exporter);
@@ -97,30 +98,7 @@ our @isofonts = qw(
     Times-Roman                    
   );
   
-our @extfonts = qw(
-    AvantGarde-Book                 
-    AvantGarde-BookOblique         
-    AvantGarde-Demi                
-    AvantGarde-DemiOblique         
-    Bookman-Demi                   
-    Bookman-DemiItalic             
-    Bookman-Light                  
-    Bookman-LightItalic            
-    Helvetica-Narrow               
-    Helvetica-Narrow-Bold          
-    Helvetica-Narrow-BoldOblique   
-    Helvetica-Narrow-Oblique       
-    NewCenturySchlbk-Bold          
-    NewCenturySchlbk-BoldItalic     
-    NewCenturySchlbk-Italic          
-    NewCenturySchlbk-Roman          
-    Palatino-Bold                   
-    Palatino-BoldItalic            
-    Palatino-Italic                
-    Palatino-Roman                 
-    ZapfChancery-MediumItalic         
-    ZapfDingbats                    
-  );
+our @extfonts = read_lines('/usr/local/share/BIDeT/fontlist.txt');
 
 # Define colour names
 our %pscolours = (

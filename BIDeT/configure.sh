@@ -42,6 +42,9 @@ check_ghostscript() {
     echo "Error: GhostScript is not installed."
     return 1
   fi
+	# collect install font list
+	echo "Collecting list of fonts..."
+	for f in `fc-list|cut -d: -f1`;do (fc-query $f|perl -lne '/postscriptname: "(.+?)"/ and print $1');done|sort -fu > fontlist.txt
 }
 
 # Check for Netpbm and pnmrotate

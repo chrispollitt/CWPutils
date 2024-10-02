@@ -185,30 +185,137 @@ sub test_stdin {
   return(0);
 }
 
+# Collapse or find closest font ############################
+sub collapse_or_find_font {
+  my ($mode, $font, @available_fonts) = @_;
+  my %seen;
+  my @collapsed_fonts;
+	my @types = qw(
+    Black
+    Black-Italic
+    Bold
+    BoldCond
+    BoldCondItal
+    BoldItal
+    BoldItalic
+    BoldItalicMT
+    BoldMT
+    BoldObli
+    BoldOblique
+    Condensed
+    CondensedBold
+    CondensedExtraBold
+    Demi
+    DemiBold
+    DemiBoldItal
+    DemiCond
+    DemiItalic
+    DemiObli
+    DemiOblique
+    Extra
+    ExtraBold
+    ExtraCondensed
+    ExtraCondensedBold
+    ExtraLight
+    Heavy
+    HeavyItalic
+    Ital
+    Italic
+    ItalicMT
+    Ligh
+    LighItal
+    Light
+    LightItalic
+    Medi
+    MediItal
+    Medium
+    MediumCond
+    MediumItalic
+		MT
+    Oblique
+		Reg
+    Regular
+    ReguObli
+    Sans
+    SansCondensed
+    SansMono
+    SansUnicode
+    Semibold
+    SemiboldItalic
+    Semilight
+    SemilightItalic
+    Serif
+    SerifCondensed
+    UltraBold
+    UltraBoldCondensed
+  );
+	# sort by length
+  @types = sort { length($b) <=> length($a) } @types;
+	# collapse
+  if ($mode eq "collapse") {
+    # Collapse fonts mode
+    my %seen;
+    my @collapsed_fonts;
+    foreach my $font (@available_fonts) {
+      # Remove specified suffixes
+      foreach my $type (@types) {
+        if ($font =~ s/-?\Q$type\E$//) {
+          last;  # Exit the loop after the first match
+        }
+      }
+      # Add the base font to the collapsed list if not already seen
+      unless ($seen{$font}) {
+        push @collapsed_fonts, $font;
+        $seen{$font} = 1;
+      }
+    }
+    return @collapsed_fonts;
+  # search
+  } elsif ($mode eq "search") {
+    # Find closest font mode
+    # Check each suffix
+    foreach my $type (reverse @types) {
+      my $candidate_font = $font . $type;
+      if (grep { $_ eq $candidate_font } @available_fonts) {
+				print STDERR "Debug: font=$candidate_font\n" if($debug);
+        return $candidate_font;  # Return the first valid font found
+      }
+      $candidate_font = $font . "-" . $type;
+      if (grep { $_ eq $candidate_font } @available_fonts) {
+				print STDERR "Debug: font=$candidate_font\n" if($debug);
+        return $candidate_font;  # Return the first valid font found
+      }
+    }
+    return undef;  # No valid font found
+  }
+}
+
 # Ensure font is valid #####################################
 sub test_font {
-  my($font, $iso) = @_;
-  my @isofonts   = @PostScript_Simple::isofonts;
-  my @fonts      = @PostScript_Simple::extfonts;
-  
+  my ($font, $iso) = @_;
+  my @isofonts = @PostScript_Simple::isofonts;
+  my @fonts = @PostScript_Simple::extfonts;
+
   ####### Check for valid font
 
-  # list fonts  
-  if($font eq "list") {
+  # List fonts
+  if ($font eq "list") {
     print "--- Regular ---\n";
-    for my $f (sort @fonts) {
+    my @fonts_c = collapse_or_find_font("collapse", "", @fonts);  # Collapse all
+    for my $f (sort @fonts_c) {
       print $f . "\n";
     }
     print "--- Latin1 compatible ---\n";
-    for my $f (sort @isofonts) {
+    my @isofonts_c = collapse_or_find_font("collapse", "", @isofonts);  # Collapse all
+    for my $f (sort @isofonts_c) {
       print $f . "\n";
     }
     exit;
   }
-  
+
   # random
-  if($font eq "random") {
-    if($iso) {
+  if ($font eq "random") {
+    if ($iso) {
       my $i = int(rand(scalar @isofonts));
       $font = $isofonts[$i];
     } else {
@@ -216,18 +323,28 @@ sub test_font {
       $font = $fonts[$i];
     }
   }
-  
+
   # make sure font is ok
-  if($iso) {
-    if(!grep($_ eq $font, @isofonts)) {
-      print STDERR "$0 error: Invalid ISO font: $font\n";
-      exit(1);
+  if ($iso) {
+    if (!grep { $_ eq $font } @isofonts) {
+      my $closest_font = collapse_or_find_font("search", $font, @isofonts);
+      if ($closest_font) {
+        $font = $closest_font;
+      } else {
+        print STDERR "$0 error: Invalid ISO font: $font\n";
+        exit(1);
+      }
     }
     $font .= "-iso";
-  } else {
-    if(!grep($_ eq $font, (@fonts, @isofonts))) {
-      print STDERR "$0 error: Invalid font: $font\n";
-      exit(1);
+	} else {
+    if (!grep { $_ eq $font } (@fonts, @isofonts)) {
+      my $closest_font = collapse_or_find_font("search", $font, (@fonts, @isofonts));
+      if ($closest_font) {
+        $font = $closest_font;
+      } else {
+        print STDERR "$0 error: Invalid ISO font: $font\n";
+        exit(1);
+      }
     }
   }
   return $font;
