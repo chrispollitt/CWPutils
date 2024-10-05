@@ -218,11 +218,13 @@ sub collapse_or_find_font {
     # Find closest font mode
     # Check each suffix
     foreach my $type (reverse @types) {
+			# no dash
       my $candidate_font = $font . $type;
       if (grep { $_ eq $candidate_font } @available_fonts) {
 				print STDERR "Debug: font=$candidate_font\n" if($debug);
         return $candidate_font;  # Return the first valid font found
       }
+			# with dash
       $candidate_font = $font . "-" . $type;
       if (grep { $_ eq $candidate_font } @available_fonts) {
 				print STDERR "Debug: font=$candidate_font\n" if($debug);

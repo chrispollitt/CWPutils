@@ -29,7 +29,7 @@ foreach my $font (@font_list) {
     my $suffix = substr($font, -$i);
     $suffix_count{$suffix}++
     if(
-      $suffix =~ /^-[a-z]/i
+      $suffix =~ /^-[a-z]/i # must start with dash
     );
   }
 }
@@ -40,8 +40,8 @@ my %valid_suffixes;
 # First, gather all suffixes that appear at least 2 times
 foreach my $suffix (keys %suffix_count) {
   if (
-    ($suffix_count{$suffix} >= 2) or
-    (grep {$suffix =~ /$_/} @standard)
+    ($suffix_count{$suffix} >= 2) or    # 2+ reps
+    (grep {$suffix =~ /$_/} @standard)  # standard suffix string
   ) {
     $valid_suffixes{$suffix} = $suffix_count{$suffix};
   }
@@ -72,5 +72,5 @@ foreach my $suffix (sort { length($b) <=> length($a) } keys %longest_suffixes) {
   print "$suffix\n";
 }
 foreach my $suffix (@standard) {
-  print "$suffix\n";
+  print "$suffix\n"; # no dash required
 }
