@@ -141,6 +141,7 @@ use PostScript_Simple;
 #use IO::Select;
 use Pod::Usage;
 use File::Basename;
+use File::Slurper 'read_lines';
 
 our $file;
 our $debug      = 0;
@@ -190,65 +191,7 @@ sub collapse_or_find_font {
   my ($mode, $font, @available_fonts) = @_;
   my %seen;
   my @collapsed_fonts;
-	my @types = qw(
-    Black
-    Black-Italic
-    Bold
-    BoldCond
-    BoldCondItal
-    BoldItal
-    BoldItalic
-    BoldItalicMT
-    BoldMT
-    BoldObli
-    BoldOblique
-    Condensed
-    CondensedBold
-    CondensedExtraBold
-    Demi
-    DemiBold
-    DemiBoldItal
-    DemiCond
-    DemiItalic
-    DemiObli
-    DemiOblique
-    Extra
-    ExtraBold
-    ExtraCondensed
-    ExtraCondensedBold
-    ExtraLight
-    Heavy
-    HeavyItalic
-    Ital
-    Italic
-    ItalicMT
-    Ligh
-    LighItal
-    Light
-    LightItalic
-    Medi
-    MediItal
-    Medium
-    MediumCond
-    MediumItalic
-		MT
-    Oblique
-		Reg
-    Regular
-    ReguObli
-    Sans
-    SansCondensed
-    SansMono
-    SansUnicode
-    Semibold
-    SemiboldItalic
-    Semilight
-    SemilightItalic
-    Serif
-    SerifCondensed
-    UltraBold
-    UltraBoldCondensed
-  );
+	my @types = read_lines('/usr/local/share/BIDeT/fontsuffixlist.txt');
 	# sort by length
   @types = sort { length($b) <=> length($a) } @types;
 	# collapse

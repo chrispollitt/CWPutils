@@ -45,6 +45,7 @@ check_ghostscript() {
 	# collect install font list
 	echo "Collecting list of fonts..."
 	for f in `fc-list|cut -d: -f1`;do (fc-query $f|perl -lne '/postscriptname: "(.+?)"/ and print $1');done|sort -fu > fontlist.txt
+        ./list-common-suffixes.pl > fontsuffixlist.txt
 }
 
 # Check for Netpbm and pnmrotate
