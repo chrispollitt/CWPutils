@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Function to check if a command exists
 command_exists() {
@@ -44,7 +44,7 @@ check_ghostscript() {
   fi
 	# collect install font list
 	echo "Collecting list of fonts..."
-	for f in `fc-list|cut -d: -f1`;do (fc-query $f|perl -lne '/postscriptname: "(.+?)"/ and print $1');done|sort -fu > fontlist.txt
+	for f in `fc-list|cut -d: -f1`;do [[ -f $f ]] && (fc-query $f|perl -lne '/postscriptname: "(.+?)"/ and print $1');done|sort -fu > fontlist.txt
         ./list-common-suffixes.pl > fontsuffixlist.txt
 }
 
