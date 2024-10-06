@@ -1,5 +1,4 @@
-#!/usr/bin/env perl 
-#!/usr/bin/env perl -CA
+#!/usr/bin/env2 perl -CA
 #
 # BIDeT - Use this after you're done with Toilet!
 #
