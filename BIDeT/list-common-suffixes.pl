@@ -3,7 +3,8 @@ use strict;
 use warnings;
 use File::Slurper 'read_lines';
 
-# Sample list of Type1 PS fonts (you can replace this with your actual list)
+# Sample list of Type1 PS font styles
+# Add more styles as needed
 my @standard = qw(
   Black
   Bold

@@ -10,18 +10,16 @@ our $debug = 0;
 our @fonts = read_lines('/usr/local/share/BIDeT/fontlist.txt');
 
 # Define style aliases to handle variations (e.g., Italic can be Ital, Oblique, etc.)
+# Add more styles as needed
 our %style_data = (
-    regular  => { priority => 1, aliases => ['regular', 'regu', 'roman', 'roma'] },
-    italic   => { priority => 2, aliases => ['italic', 'ital', 'oblique', 'obli'] },
-    bold     => { priority => 3, aliases => ['bold'] },
-    light    => { priority => 4, aliases => ['light', 'ligh'] },
-    semilight=> { priority => 4, aliases => ['semilight'] },
-    black    => { priority => 5, aliases => ['black'] },
-    extended => { priority => 6, aliases => ['extended', 'exte'] },
-    demi     => { priority => 7, aliases => ['demi'] },
-    medium   => { priority => 7, aliases => ['medium', 'medi'] },
-    heavy    => { priority => 8, aliases => ['heavy'] },
-    # Add more styles as needed
+    black      => { priority => 3, aliases => ['black'] },
+    bold       => { priority => 3, aliases => ['bold', 'demibold', 'demi', 'semibold', 'semi'] },
+    compressed => { priority => 4, aliases => ['compressed', 'condensed'] },
+    heavy      => { priority => 5, aliases => ['heavy'] },
+    italic     => { priority => 4, aliases => ['italic', 'ital', 'oblique', 'obli'] },
+    light      => { priority => 3, aliases => ['light', 'ligh', 'semilight'] },
+    medium     => { priority => 2, aliases => ['medium', 'medi'] },
+    regular    => { priority => 1, aliases => ['regular', 'regu', 'roman', 'roma'] },
 );
 # $style_data{$style_name}{aliases}
 # $style_data{$style_name}{priority}
@@ -131,9 +129,9 @@ sub find_font {
 }
 
 # Main program
-my $base_font = "URWGothic"; # "NimbusSansNarrow";
+my $base_font = $ARGV[0] || "Courier";
 chomp($base_font);
-my $style_input = "Italic";
+my $style_input = $ARGV[1] || "";
 chomp($style_input);
 my @styles = split(/\s+/, $style_input);
 
