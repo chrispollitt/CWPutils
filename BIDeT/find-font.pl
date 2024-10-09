@@ -123,7 +123,7 @@ sub find_font {
         scalar(@{$a->{styles}}) <=> scalar(@{$b->{styles}})
     } @matches;
     
-    print "DEBUG: All matches: " . join(", ", map { $_->{name} } @matches) . "\n"; # if($debug);
+    print STDERR "DEBUG: All matches: " . join(", ", map { $_->{name} } @matches) . "\n"; # if($debug);
     
     return @matches ? $matches[0]->{name} : undef;  # Return the best match or undef if no match
 }
@@ -141,7 +141,8 @@ print "DEBUG: Input styles: " . join(", ", @styles) . "\n"  if($debug);
 # Find and print the matching font
 my $matching_font = find_font($base_font, @styles);
 if ($matching_font) {
-    print "Matching font: $matching_font\n";
+    print "$matching_font\n";
 } else {
-    print "No matching font found.\n";
+    print STDERR "No matching font found.\n";
+    exit 1;
 }
