@@ -1,5 +1,7 @@
 #!/usr/bin/env perl
 
+use File::Slurper qw~read_lines write_text~;
+
 use strict;
 use warnings;
 
@@ -30,7 +32,7 @@ our %exts = (
   sh      => [ 'bash'      , '--version' ],
   st      => [ 'smalltalk' , '--version' ],
   swift   => [ 'swift'     , '--version' ],
-  tcl     => [ 'tclsh'     , '<<< "puts [info patchlevel]"' ],
+#  tcl     => [ 'tclsh'     , '<<< "puts [info patchlevel]"' ],
   zsh     => [ 'zsh'       , '--version' ],
 );
 our %hbangs = swap_hash( %exts );
@@ -51,6 +53,20 @@ sub swap_hash {
   }
   
   return %swapped_hash;
+}
+
+# which -a
+sub which_a {
+  my $cmd = shift or die "Usage: which_a(command)\n";
+  my @paths = split /:/, $ENV{PATH};
+  my @results;
+    foreach my $path (@paths) {
+      my $full_path = "$path/$cmd";
+      if (-x $full_path) {
+          push @results, $full_path;
+      }
+  }
+  return @results;
 }
 
 # sort ver numbers
@@ -78,59 +94,95 @@ sub sort_versions {
 
 # main sub
 sub main {
+	# get list of files from command line
   my @files = @ARGV;
+	# loop over files
   for my $file (@files) {
-		my($ext, $hbang, @locs, $verflag, $ver, %vers);
+		my($ext, $hbang, $ohbang, @locs, $verflag, $ver, %vers, $eol, $ehbang);
+		# see if file exists
 		if(! -f $file) {
-      print STDERR "Unable to find file: $file\n";
+      warn "Unable to find file: $file\n";
       next;
 		}
-    $ext   = ($file =~ /\.(\w+)$/)[0] or $ext = '';
-    $hbang = (`head -1 "$file"`)[0];
-    $hbang =~ s~^#!/?(?:[^/]+/){0,}(?:env\s+)?(\w+)($|\s+.*)[\r\n]+$~$1~ or $hbang = '';
+		# get extension
+    $ext = ($file =~ /\.(\w+)$/)[0] or $ext = '';
+		# get hasnbang
+		my @script = read_lines($file);
+    $ohbang = $script[0];
+		$hbang = $ohbang;
+		$eol = "\n";
+    $hbang =~ m~^#!/?(?:[^/]+/){0,}(?:env\s+)?(\w+)(\s+.*)?$~;
+		($hbang, $ehbang) = ($1 || '', $2 || '');
 		if(! $hbang) {
 			if($ext) {
 				if(exists $exts{$ext}) {
 		      $hbang = $exts{$ext}->[0];
 				} else {
-				  print STDERR "Unknown ext for file: $file - '$ext'\n";
+				  warn "Unknown ext for file: $file - '$ext'\n";
 				  next;
 				}
 			} else {
-				print STDERR "Unable to determine script type: $file\n";
+				warn "Unable to determine script type: $file\n";
 				next;
 			}
 		}
-    print STDERR "DEBUG: f=$file e=$ext h=$hbang\n" if($debug);
-    @locs   = (`which -a "$hbang" 2>/dev/null`);
+		# debug out
+    warn "DEBUG: f=$file e=$ext h=$hbang\n" if($debug);
+		# look for interpreter in PATH
+    @locs = which_a($hbang);
 		if(!@locs) {
-				print STDERR "Unable to locate interpreter in the PATH: $file\n";
+				warn "Unable to locate interpreter in the PATH: $file\n";
 				next;
 		}
+		# get ext if not there
 		if(! $ext) {
 			if(exists $hbangs{$hbang}) {
    		  $ext = $hbangs{$hbang};
 			} else {
-				print STDERR "Unknown hbang in file: $file - '$hbang'\n";
+				warn "Unknown hbang in file: $file - '$hbang'\n";
 				next;
 			}
 		}
+		# look for ext in hash
 		if(exists $exts{$ext}) {
 		  $verflag = $exts{$ext}->[1];
 		} else {
-			print STDERR "Unknown ext for file: $file - '$ext'\n";
+			warn "Unknown ext for file: $file - '$ext'\n";
 			next;
 		}
-		for my $loc (@locs) {
-			$loc =~ s~[\r\n]+$~~;
-			$ver = (grep(/\d\.\d/, `"$loc" $verflag 2>/dev/null`))[0] or $ver = '';
-			$ver =~ s~^.*?(\d(?:\.\d+)+).*[\r\n]+$~$1~ or $ver = 'UNKNOWN';
-      print STDERR "DEBUG:   l=$loc v=$ver\n" if($debug);
-			$vers{$ver} = $loc;
+		# one or many?
+		my $choice;
+		if (@locs == 1) {
+			$choice = $locs[0];	
+		} else {
+		  # loop over locations
+		  for my $loc (@locs) {
+		  	$loc =~ s~[\r\n]+$~~;
+				# get version
+		  	$ver = (grep(/\d\.\d/, `"$loc" $verflag 2>/dev/null`))[0] or $ver = '';
+		  	$ver =~ s~^.*?(\d(?:\.\d+)+).*[\r\n]+$~$1~ or $ver = 'UNKNOWN';
+        warn "DEBUG:   l=$loc v=$ver\n" if($debug);
+		  	next if($ver eq 'UNKNOWN');
+		  	$vers{$ver} = $loc;
+		  }
+		  # sort and loop over versions found
+		  my @vers = sort_versions(keys %vers);
+		  for my $ver (@vers) {
+		  	warn "DEBUG: $vers{$ver} = $ver\n" if($debug);
+		  }
+		  # chose most recent version
+		  $choice = $vers[-1];
+		  $choice = $vers{$choice};
 		}
-		for my $ver (sort_versions(keys %vers)) {
-			print "$vers{$ver} = $ver\n";
+		# fix hbang line
+		$hbang = "#!" . $choice . $ehbang;
+		if($ohbang =~ m~^#!~) {
+			$script[0] = $hbang;
+		} else {
+			unshift(@script, $hbang)
 		}
+		write_text($file, join($eol, @script) . $eol);
+		print "f=$file i=$choice\n";
   }
 }
 
@@ -138,44 +190,6 @@ main();
 
 __END__
 
-`perl -lpi~ -e 's~x~x~ if($. == 1)' "$file"`;
-
 ==== CYGWIN ======================
-
 PATH="$PATH:/cygdrive/d/Apps/Go/bin:/cygdrive/c/Program Files/PowerShell/7"
 
-l=/bin/awk v=5.1.0
-l=/bin/bash v=4.4.12
-l=/bin/lua v=5.3.6
-l=/bin/perl v=5.32.1
-l=/bin/php v=7.3.7
-l=/bin/python3 v=3.8.10
-l=/bin/ruby v=2.6.4
-l=/bin/sed v=4.4
-l=/bin/tclsh v=8.6.11
-l=/bin/zsh v=5.8
-l=/cygdrive/c/Program Files/nodejs/node v=0.2.0
-l=/cygdrive/c/Program Files/PowerShell/7/pwsh v=7.2.23
-l=/cygdrive/c/Windows/system32/bash v=5.0.17
-l=/cygdrive/d/Apps/Go/bin/go v=1.11.5
-
-  clojure
-  ex
-* fish  
-* groovy
-  hs
-  kts
-  R
-  scala
-  scm
-  swift
-
-==== INTERMITTENT BUG !!!
-
-$../config_hashbang.pl f_pl
-DEBUG: f=f_pl e= h=perl
-Unknown hbang in file: f_pl - 'perl'
-
-$../config_hashbang.pl f_pl
-DEBUG: f=f_pl e= h=perl
-DEBUG:   l=/bin/perl v=5.32.1
