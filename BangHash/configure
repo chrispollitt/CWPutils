@@ -69,7 +69,7 @@ LDXXLIBS  =
 
 _HERE_
       ;;
-    Darwin)
+    Darwin|*BSD)
       cat > config.mk <<'_HERE_'
 
 # Site cusomizable variables (change as needed)
@@ -97,24 +97,47 @@ _HERE_
   make da
   set_sample_script '-a:b\ c -d'
   ln -fs da sample_interpreter
-  arg1=$(./sample_script.si 2>/dev/null| grep '^arg1=')
-  if   [[ $arg1 == *"d'" ]]; then
-    echo "config info: kernel does NOT split #! line"
+	declare -a args
+	OIFS="$IFS"
+	IFS='
+'
+  args=($(./sample_script.si 2>/dev/null))
+	IFS="$OIFS"
+	# test split
+  if   [[ ${args[1]} == *"d'" ]]; then                      # Linux/FreeBSD
+    echo "config info: kernel does NOT split #! line"     
     echo "#define KERNEL_SPLIT 0" >> config.hh
     ks=0
-  elif [[ $arg1 == *"\'" ]]; then
+  elif [[ ${args[1]} == *"b"?"'" ]]; then                   # Solaris/Darwin
     echo "config info: kernel DOES split #! line but does NOT handle escaped whitespace"
     echo "#define KERNEL_SPLIT 1" >> config.hh
     ks=1
-  elif [[ $arg1 == *" c'" ]]; then
+  elif [[ ${args[1]} == *"c'" ]]; then                      # Perfect!
     echo "config info: kernel DOES split #! line and DOES handle escaped  whitespace"
     echo "#define KERNEL_SPLIT 2" >> config.hh
     ks=2
   else
     echo "config error: unexpected result from kernel parsing of #! line"
-    echo "$arg1"
+    echo "${args[1]}"
     exit 1
   fi
+	# test truncate
+  if   [[ ${args[2]} == *".si'" ]]; then
+	  if [[ $ks == 0 ]]; then                                 # Linux/FreeBSD
+      echo "config info: kernel does NOT truncate #! line"  
+		else                                                    # Solaris
+      echo "config info: kernel DOES truncate #! line"      
+		fi
+  elif [[ ${args[2]} == *"c'" ]]; then                      # Darwin
+    echo "config info: kernel does NOT truncate #! line"    
+  elif [[ ${args[2]} == *"d'" ]]; then                      # Perfect!
+    echo "config info: kernel does NOT truncate #! line"    
+  else
+    echo "config error: unexpected result from kernel parsing of #! line"
+    echo "${args[2]}"
+    exit 1
+  fi	
+	# create config header
   cat >> config.hh <<'_HERE_'
 #define UNAME_LINUX   1
 #define UNAME_CYGWIN  2
