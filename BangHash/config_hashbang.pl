@@ -72,11 +72,12 @@ sub which_a {
   my $cmd = shift or die "Usage: which_a(command)\n";
   my @paths = split /:/, $ENV{PATH};
   my @results;
-    foreach my $path (@paths) {
-      my $full_path = "$path/$cmd";
-      if (-x $full_path) {
-          push @results, $full_path;
-      }
+	
+  foreach my $path (@paths) {
+    my $full_path = "$path/$cmd";
+    if (-x $full_path) {
+      push @results, $full_path;
+    }
   }
   return @results;
 }
@@ -126,12 +127,6 @@ sub process_file {
   # Check the original hashbang line
   if ($ohbang =~ /^#!/) {
     check_hashbang($ohbang);
-  }
-
-  # In dry run mode, don't modify the file
-  if ($dry_run) {
-    print "Dry run: Would update $file\n" if $debug;
-    return;
   }
 
   my($ext, $hbang, @locs, $verflag, $ver, %vers, $eol, $ehbang);
@@ -213,7 +208,12 @@ sub process_file {
   } else {
   	unshift(@script, $hbang)
   }
-  write_text($file, join($eol, @script) . $eol);
+  # In dry run mode, don't modify the file
+  if ($dry_run) {
+    print "Dry run: Would update $file\n" if $debug;
+  } else {
+    write_text($file, join($eol, @script) . $eol);
+	}
   print "f=$file i=$choice\n";
 }
 
