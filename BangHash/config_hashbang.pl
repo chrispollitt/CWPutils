@@ -41,9 +41,6 @@ our %exts = (
   st      => [ 'smalltalk' , '--version' ],
   swift   => [ 'swift'     , '--version' ],
   zsh     => [ 'zsh'       , '--version' ],
-
-  true     => [ 'true'       , '--xxx' ],  # xxx
-  false    => [ 'false'      , '--xxx' ],  # xxx
 );
 our %hbangs = swap_hash(%exts);
 
@@ -115,14 +112,14 @@ sub get_latest {
   # look for interpreter in PATH
   @locs = which_a($hbang);
   if(!@locs) {
-  		warn "Unable to locate interpreter in the PATH: $file\n";
+  		warn "Error: Unable to locate interpreter in the PATH: $file\n";
   		return;
   }
   # look for ext in hash
   if(exists $exts{$ext}) {
     $verflag = $exts{$ext}->[1];
   } else {
-  	warn "Unknown ext for file: $file - '$ext'\n";
+  	warn "Error: Unknown ext for file: $file - '$ext'\n";
   	return;
   }
   # one or many?
@@ -141,7 +138,7 @@ sub get_latest {
     }
 		# no vers avail
     if(!keys %vers) {
-			warn "None of the interpreters returned a version string\n";
+			warn "Error: None of the interpreters returned a version string\n";
 			return;
 		}
     # sort and loop over versions found
@@ -162,7 +159,7 @@ sub process_file {
   my($ext, $hbang, $eol, $ehbang);
 	# see if file exists
 	if(! -f $file) {
-    warn "Unable to find file: $file\n";
+    warn "Error: Unable to find file: $file\n";
     return;
 	}
   my @script = read_lines($file);
@@ -172,7 +169,7 @@ sub process_file {
   # Backup the original file if needed
   if ($backup) {
     my $backup_file = $file . ".bak";
-    copy($file, $backup_file) or warn "Failed to create backup: $backup_file\n";
+    copy($file, $backup_file) or warn "Error: Failed to create backup: $backup_file\n";
     print "Backup created: $backup_file\n" if $debug;
   }
 	
@@ -192,11 +189,11 @@ sub process_file {
   		if(exists $exts{$ext}) {
         $hbang = $exts{$ext}->[0];
   		} else {
-  		  warn "Unknown ext for file: $file - '$ext'\n";
+  		  warn "Error: Unknown ext for file: $file - '$ext'\n";
   		  return;
   		}
   	} else {
-  		warn "Unable to determine script type: $file\n";
+  		warn "Error: Unable to determine script type: $file\n";
   		return;
   	}
   }
@@ -205,7 +202,7 @@ sub process_file {
   	if(exists $hbangs{$hbang}) {
   	  $ext = $hbangs{$hbang};
   	} else {
-  		warn "Unknown hbang in file: $file - '$hbang'\n";
+  		warn "Error: Unknown hbang in file: $file - '$hbang'\n";
   		return;
   	}
   }
