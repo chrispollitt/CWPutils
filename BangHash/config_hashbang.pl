@@ -41,6 +41,9 @@ our %exts = (
   st      => [ 'smalltalk' , '--version' ],
   swift   => [ 'swift'     , '--version' ],
   zsh     => [ 'zsh'       , '--version' ],
+
+  true     => [ 'true'       , '--xxx' ],  # xxx
+  false    => [ 'false'      , '--xxx' ],  # xxx
 );
 our %hbangs = swap_hash(%exts);
 
@@ -56,14 +59,14 @@ sub swap_hash {
   return %swapped_hash;
 }
 
-# Check if the hashbang line contains multiple arguments and suggest using env
+# Check if the hashbang line contains multiple arguments and suggest using env2
 sub check_hashbang {
   my ($hashbang) = @_;
   if ($hashbang =~ m/^#!\s*(\S+)\s+(.+)/) {
     my $interpreter = $1;
     my $arguments = $2;
     print "Hashbang contains multiple arguments: $hashbang\n";
-    print "Consider using: #!/usr/bin/env $interpreter $arguments\n";
+    print "Consider using: #!/usr/bin/env2 $interpreter $arguments\n";
   }
 }
 
@@ -105,70 +108,15 @@ sub sort_versions {
   return @sorted;
 }
 
-# Read and update hashbang if needed
-sub process_file {
-  my ($file) = @_;
-		# see if file exists
-		if(! -f $file) {
-      warn "Unable to find file: $file\n";
-      return;
-		}
-  my @script = read_lines($file);
-  my $ohbang = $script[0];
-  chomp($ohbang);
-
-  # Backup the original file if needed
-  if ($backup) {
-    my $backup_file = $file . ".bak";
-    copy($file, $backup_file) or warn "Failed to create backup: $backup_file\n";
-    print "Backup created: $backup_file\n" if $debug;
-  }
-
-  # Check the original hashbang line
-  if ($ohbang =~ /^#!/) {
-    check_hashbang($ohbang);
-  }
-
-  my($ext, $hbang, @locs, $verflag, $ver, %vers, $eol, $ehbang);
-  # get extension
-  $ext = ($file =~ /\.(\w+)$/)[0] or $ext = '';
-  # get hasnbang
-  $hbang = $ohbang;
-  $eol = "\n";
-  if($hbang =~ m~^#!/?(?:[^/]+/){0,}(?:env\s+)?(\w+)(\s+.*)?$~) {
-    ($hbang, $ehbang) = ($1, $2 || '');
-	} else {
-    ($hbang, $ehbang) = ('', '');
-	}
-  if(! $hbang) {
-  	if($ext) {
-  		if(exists $exts{$ext}) {
-        $hbang = $exts{$ext}->[0];
-  		} else {
-  		  warn "Unknown ext for file: $file - '$ext'\n";
-  		  return;
-  		}
-  	} else {
-  		warn "Unable to determine script type: $file\n";
-  		return;
-  	}
-  }
-  # debug out
-  warn "DEBUG: f=$file e=$ext h=$hbang\n" if($debug);
+# get latest version
+sub get_latest {
+	my($hbang, $file, $ext) = @_;
+	my(@locs, $verflag, $ver, %vers, $choice);
   # look for interpreter in PATH
   @locs = which_a($hbang);
   if(!@locs) {
   		warn "Unable to locate interpreter in the PATH: $file\n";
   		return;
-  }
-  # get ext if not there
-  if(! $ext) {
-  	if(exists $hbangs{$hbang}) {
-  	  $ext = $hbangs{$hbang};
-  	} else {
-  		warn "Unknown hbang in file: $file - '$hbang'\n";
-  		return;
-  	}
   }
   # look for ext in hash
   if(exists $exts{$ext}) {
@@ -178,7 +126,6 @@ sub process_file {
   	return;
   }
   # one or many?
-  my $choice;
   if (@locs == 1) {
   	$choice = $locs[0];	
   } else {
@@ -192,6 +139,11 @@ sub process_file {
     	next if($ver eq 'UNKNOWN');
     	$vers{$ver} = $loc;
     }
+		# no vers avail
+    if(!keys %vers) {
+			warn "None of the interpreters returned a version string\n";
+			return;
+		}
     # sort and loop over versions found
     my @vers = sort_versions(keys %vers);
     for my $ver (@vers) {
@@ -201,6 +153,70 @@ sub process_file {
     $choice = $vers[-1];
     $choice = $vers{$choice};
   }
+  return $choice;
+}
+
+# Read and update hashbang if needed
+sub process_file {
+  my($file) = @_;
+  my($ext, $hbang, $eol, $ehbang);
+	# see if file exists
+	if(! -f $file) {
+    warn "Unable to find file: $file\n";
+    return;
+	}
+  my @script = read_lines($file);
+  my $ohbang = $script[0];
+  chomp($ohbang);
+
+  # Backup the original file if needed
+  if ($backup) {
+    my $backup_file = $file . ".bak";
+    copy($file, $backup_file) or warn "Failed to create backup: $backup_file\n";
+    print "Backup created: $backup_file\n" if $debug;
+  }
+	
+  # get extension
+  $ext = ($file =~ /\.(\w+)$/)[0] or $ext = '';
+  # get hashbang
+  $hbang = $ohbang;
+  $eol = "\n";
+  if($hbang =~ m~^#!/?(?:[^/]+/){0,}(?:env2?\s+)?(\w+)(\s+.*)?$~) {
+    ($hbang, $ehbang) = ($1, $2 || '');
+	} else {
+    ($hbang, $ehbang) = ('', '');
+	}
+	# set hbang if missing
+  if(! $hbang) {
+  	if($ext) {
+  		if(exists $exts{$ext}) {
+        $hbang = $exts{$ext}->[0];
+  		} else {
+  		  warn "Unknown ext for file: $file - '$ext'\n";
+  		  return;
+  		}
+  	} else {
+  		warn "Unable to determine script type: $file\n";
+  		return;
+  	}
+  }
+  # set ext if missing
+  if(! $ext) {
+  	if(exists $hbangs{$hbang}) {
+  	  $ext = $hbangs{$hbang};
+  	} else {
+  		warn "Unknown hbang in file: $file - '$hbang'\n";
+  		return;
+  	}
+  }
+	# see if ext and interpreter match
+	if($ext ne $hbangs{$hbang}) {
+		warn("Warning: ext and interpreter do not match!\n");
+	}
+  # debug out
+  warn "DEBUG: f=$file e=$ext h=$hbang\n" if($debug);
+	my $choice = get_latest($hbang, $file, $ext);
+	return if(!$choice);
   # fix hbang line
   $hbang = "#!" . $choice . $ehbang;
   if($ohbang =~ m~^#!~) {
@@ -215,6 +231,10 @@ sub process_file {
     write_text($file, join($eol, @script) . $eol);
 	}
   print "f=$file i=$choice\n";
+  # Check the hashbang line for multiple args
+  if ($hbang =~ /^#!/) {
+    check_hashbang($hbang);
+  }
 }
 
 # Main function
