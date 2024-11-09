@@ -640,3 +640,34 @@ ghostscript/9.52/Resource/Init/gs_fonts.ps
 Port to Tektronix window of xterm?
 Port to Linux console (TERM=linux)
 
+---------
+
+#!/bin/bash
+
+# Remove log
+rm -f "$file.log"
+
+# Convert PS to PNG and crop
+convert -density 300 "$file.ps" -trim +repage -bordercolor white -border 10 "$file.png"
+
+# Change background if not white
+if [ "$background" != "white" ]; then
+    convert "$file.png" -fuzz 1% -fill "$background" -opaque white "$file.png"
+fi
+
+# Rotate if needed
+if [ "$rotate" = true ]; then
+    convert "$file.png" -background "$background" -rotate 90 "$file.png"
+fi
+
+if [ "$ansi" = true ]; then
+    # Convert PNG to ANSI
+    img2ans -b"$term_background" "$file.png" > "$file.ans"
+    # Output result
+    cat "$file.ans"
+else
+    # Convert PNG to Sixel
+    img2sixel -I -B "$term_background" "$file.png" > "$file.six"
+    # Output result
+    cat "$file.six"
+fi
