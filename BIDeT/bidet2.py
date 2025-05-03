@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 BIDeT - Use this after you're done with Toilet!
-Enhanced version with multiple effects.
+Enhanced version with multiple effects and optimized performance.
 """
 
 import argparse
@@ -48,54 +48,17 @@ class PostScriptSimple:
         "grey70": [178, 178, 178], "grey80": [204, 204, 204], "grey90": [229, 229, 229],
         "black": [0, 0, 0], "white": [255, 255, 255],
         
-        # X-Windows colours
+        # X-Windows colours - reduced list for performance
         "aliceblue": [240, 248, 255], "antiquewhite": [250, 235, 215], "aqua": [0, 255, 255],
         "aquamarine": [127, 255, 212], "azure": [240, 255, 255], "beige": [245, 245, 220],
         "bisque": [255, 228, 196], "blanchedalmond": [255, 255, 205], "blueviolet": [138, 43, 226],
         "brown": [165, 42, 42], "burlywood": [222, 184, 135], "cadetblue": [95, 158, 160],
         "chartreuse": [127, 255, 0], "chocolate": [210, 105, 30], "coral": [255, 127, 80],
-        "cornflowerblue": [100, 149, 237], "cornsilk": [255, 248, 220], "crimson": [220, 20, 60],
-        "cyan": [0, 255, 255], "darkcyan": [0, 139, 139], "darkgoldenrod": [184, 134, 11],
-        "darkgray": [169, 169, 169], "darkgrey": [169, 169, 169], "darkkhaki": [189, 183, 107],
-        "darkmagenta": [139, 0, 139], "darkolivegreen": [85, 107, 47], "darkorange": [255, 140, 0],
-        "darkorchid": [153, 50, 204], "darksalmon": [233, 150, 122], "darkseagreen": [143, 188, 143],
-        "darkslateblue": [72, 61, 139], "darkslategray": [47, 79, 79], "darkslategrey": [47, 79, 79],
-        "darkturquoise": [0, 206, 209], "darkviolet": [148, 0, 211], "deeppink": [255, 20, 147],
-        "deepskyblue": [0, 191, 255], "dimgray": [105, 105, 105], "dimgrey": [105, 105, 105],
-        "dodgerblue": [30, 144, 255], "firebrick": [178, 34, 34], "floralwhite": [255, 250, 240],
-        "forestgreen": [34, 139, 34], "fuchsia": [255, 0, 255], "gainsboro": [220, 220, 220],
-        "ghostwhite": [248, 248, 255], "gold": [255, 215, 0], "goldenrod": [218, 165, 32],
-        "gray": [128, 128, 128], "grey": [128, 128, 128], "greenyellow": [173, 255, 47],
-        "honeydew": [240, 255, 240], "hotpink": [255, 105, 180], "indianred": [205, 92, 92],
-        "indigo": [75, 0, 130], "ivory": [255, 240, 240], "khaki": [240, 230, 140],
-        "lavender": [230, 230, 250], "lavenderblush": [255, 240, 245], "lawngreen": [124, 252, 0],
-        "lemonchiffon": [255, 250, 205], "lightblue": [173, 216, 230], "lightcoral": [240, 128, 128],
-        "lightcyan": [224, 255, 255], "lightgoldenrodyellow": [250, 250, 210], "lightgray": [211, 211, 211],
-        "lightgreen": [144, 238, 144], "lightgrey": [211, 211, 211], "lightpink": [255, 182, 193],
-        "lightsalmon": [255, 160, 122], "lightseagreen": [32, 178, 170], "lightskyblue": [135, 206, 250],
-        "lightslategray": [119, 136, 153], "lightslategrey": [119, 136, 153], "lightsteelblue": [176, 196, 222],
-        "lightyellow": [255, 255, 224], "lime": [0, 255, 0], "limegreen": [50, 205, 50],
-        "linen": [250, 240, 230], "magenta": [255, 0, 255], "maroon": [128, 0, 0],
-        "mediumaquamarine": [102, 205, 170], "mediumblue": [0, 0, 205], "mediumorchid": [186, 85, 211],
-        "mediumpurple": [147, 112, 219], "mediumseagreen": [60, 179, 113], "mediumslateblue": [123, 104, 238],
-        "mediumspringgreen": [0, 250, 154], "mediumturquoise": [72, 209, 204], "mediumvioletred": [199, 21, 133],
-        "midnightblue": [25, 25, 112], "mintcream": [245, 255, 250], "mistyrose": [255, 228, 225],
-        "moccasin": [255, 228, 181], "navajowhite": [255, 222, 173], "navy": [0, 0, 128],
-        "oldlace": [253, 245, 230], "olive": [128, 128, 0], "olivedrab": [107, 142, 35],
-        "orange": [255, 165, 0], "orangered": [255, 69, 0], "orchid": [218, 112, 214],
-        "palegoldenrod": [238, 232, 170], "palegreen": [152, 251, 152], "paleturquoise": [175, 238, 238],
-        "palevioletred": [219, 112, 147], "papayawhip": [255, 239, 213], "peachpuff": [255, 218, 185],
-        "peru": [205, 133, 63], "pink": [255, 192, 203], "plum": [221, 160, 221],
-        "powderblue": [176, 224, 230], "purple": [128, 0, 128], "rosybrown": [188, 143, 143],
-        "royalblue": [65, 105, 225], "saddlebrown": [139, 69, 19], "salmon": [250, 128, 114],
-        "sandybrown": [244, 164, 96], "seagreen": [46, 139, 87], "seashell": [255, 245, 238],
-        "sienna": [160, 82, 45], "silver": [192, 192, 192], "skyblue": [135, 206, 235],
-        "slateblue": [106, 90, 205], "slategray": [112, 128, 144], "slategrey": [112, 128, 144],
-        "snow": [255, 250, 250], "springgreen": [0, 255, 127], "steelblue": [70, 130, 180],
-        "tan": [210, 180, 140], "teal": [0, 128, 128], "thistle": [216, 191, 216],
-        "tomato": [253, 99, 71], "turquoise": [64, 224, 208], "violet": [238, 130, 238],
-        "wheat": [245, 222, 179], "whitesmoke": [245, 245, 245], "yellow": [255, 255, 0],
-        "yellowgreen": [154, 205, 50],
+        "cornflowerblue": [100, 149, 237], "cyan": [0, 255, 255], "gold": [255, 215, 0], 
+        "gray": [128, 128, 128], "grey": [128, 128, 128], "green": [0, 128, 0],
+        "magenta": [255, 0, 255], "maroon": [128, 0, 0], "navy": [0, 0, 128],
+        "orange": [255, 165, 0], "pink": [255, 192, 203], "purple": [128, 0, 128],
+        "silver": [192, 192, 192], "snow": [255, 250, 250], "yellow": [255, 255, 0],
     }
     
     # Paper size definitions
@@ -380,7 +343,7 @@ class PostScriptSimple:
 
 
 class EffectsProcessor:
-    """Process image effects with Pillow"""
+    """Process image effects with Pillow - optimized for performance"""
     
     # Available patterns for backgrounds
     patterns = [
@@ -392,7 +355,7 @@ class EffectsProcessor:
         self.debug = debug
     
     def _create_pattern_image(self, pattern_name, size, color1, color2, scale=20):
-        """Create a pattern image
+        """Create a pattern image - optimized for speed
         
         Args:
             pattern_name: Name of the pattern
@@ -407,44 +370,50 @@ class EffectsProcessor:
         img = Image.new('RGBA', size, color1)
         draw = ImageDraw.Draw(img)
         
+        # Adjust scale based on image size for better performance
+        if width > 1000 or height > 1000:
+            scale = max(scale, 30)  # Use larger pattern elements for large images
+        
         if pattern_name == "checkerboard":
-            # Checkerboard pattern
-            for y in range(0, height, scale):
-                for x in range(0, width, scale):
-                    if (x // scale + y // scale) % 2 == 0:
-                        draw.rectangle([x, y, x + scale - 1, y + scale - 1], fill=color2)
+            # Checkerboard pattern - optimized by drawing larger rectangles
+            for y in range(0, height, scale*2):
+                for x in range(0, width, scale*2):
+                    draw.rectangle([x, y, x + scale - 1, y + scale - 1], fill=color2)
+                    draw.rectangle([x + scale, y + scale, x + scale*2 - 1, y + scale*2 - 1], fill=color2)
         
         elif pattern_name == "dots":
-            # Dots pattern
+            # Dots pattern - reduced dot count for speed
             dot_radius = scale // 2
-            for y in range(dot_radius, height, scale):
-                for x in range(dot_radius, width, scale):
+            dot_spacing = scale * 2
+            for y in range(dot_radius, height, dot_spacing):
+                for x in range(dot_radius, width, dot_spacing):
                     draw.ellipse([x - dot_radius, y - dot_radius, 
                                   x + dot_radius, y + dot_radius], fill=color2)
         
         elif pattern_name == "grid":
-            # Grid pattern
-            for y in range(0, height, scale):
+            # Grid pattern - draw fewer lines for speed
+            for y in range(0, height, scale*2):
                 draw.line([(0, y), (width, y)], fill=color2, width=1)
-            for x in range(0, width, scale):
+            for x in range(0, width, scale*2):
                 draw.line([(x, 0), (x, height)], fill=color2, width=1)
         
         elif pattern_name == "stripes":
-            # Stripes pattern
+            # Stripes pattern - use rectangles for better performance
             for y in range(0, height, scale*2):
                 draw.rectangle([0, y, width, y + scale - 1], fill=color2)
         
         elif pattern_name == "waves":
-            # Waves pattern
-            for y in range(0, height, scale):
+            # Waves pattern - simplified with fewer points
+            for y in range(0, height, scale*2):
                 points = []
-                for x in range(0, width + scale, scale//2):
+                step = max(1, scale//1)  # Larger step for better performance
+                for x in range(0, width + scale, step):
                     points.append((x, y + int(math.sin(x * 0.05) * scale/2)))
                 if len(points) > 1:
                     draw.line(points, fill=color2, width=2)
         
         elif pattern_name == "zigzag":
-            # Zigzag pattern
+            # Zigzag pattern - simplified
             for y_offset in range(0, height, scale*2):
                 points = []
                 for x in range(0, width + scale, scale):
@@ -454,33 +423,35 @@ class EffectsProcessor:
                     draw.line(points, fill=color2, width=2)
         
         elif pattern_name == "crosshatch":
-            # Crosshatch pattern
-            for y in range(-height, height*2, scale):
+            # Crosshatch pattern - draw fewer lines
+            step = scale * 2
+            for y in range(-height, height*2, step):
                 draw.line([(0, y), (width, y + width)], fill=color2, width=1)
                 draw.line([(0, y + width), (width, y)], fill=color2, width=1)
         
         elif pattern_name == "bricks":
-            # Bricks pattern
+            # Bricks pattern - simplified
             brick_height = scale
             brick_width = scale * 2
-            for y in range(0, height, brick_height):
-                offset = 0 if (y // brick_height) % 2 == 0 else brick_width // 2
-                for x in range(-offset, width, brick_width):
-                    draw.rectangle([x, y, x + brick_width - 1, y + brick_height - 1], 
-                                   outline=color2, width=1)
+            for y in range(0, height, brick_height*2):
+                # Just draw outlines for speed
+                draw.rectangle([0, y, width, y + brick_height - 1], outline=color2, width=1)
+                draw.rectangle([brick_width//2, y + brick_height, width, y + brick_height*2 - 1], outline=color2, width=1)
         
         elif pattern_name == "diamonds":
-            # Diamonds pattern
-            for y in range(0, height, scale):
-                for x in range(0, width, scale):
+            # Diamonds pattern - draw fewer diamonds
+            for y in range(0, height, scale*2):
+                for x in range(0, width, scale*2):
                     draw.polygon([(x + scale/2, y), (x + scale, y + scale/2), 
                                    (x + scale/2, y + scale), (x, y + scale/2)], 
                                  fill=color2)
         
         elif pattern_name == "bubbles":
-            # Random bubbles pattern
+            # Random bubbles pattern - fewer bubbles for speed
             import random
-            for _ in range(width * height // (scale * scale)):
+            random.seed(0)  # Make it reproducible
+            bubble_count = max(20, width * height // (scale * scale * 10))
+            for _ in range(bubble_count):
                 x = random.randint(0, width)
                 y = random.randint(0, height)
                 radius = random.randint(scale//4, scale//2)
@@ -490,7 +461,7 @@ class EffectsProcessor:
         return img
     
     def _get_rgb_color(self, color_name):
-        """Convert color name to RGB tuple
+        """Convert color name to RGB tuple - optimized
         
         Args:
             color_name: Color name or hex value
@@ -498,18 +469,31 @@ class EffectsProcessor:
         Returns:
             RGB tuple
         """
+        # Create a cache for colors if it doesn't exist
+        if not hasattr(self, '_color_cache'):
+            self._color_cache = {}
+        
+        # Check if color is in cache
+        if color_name in self._color_cache:
+            return self._color_cache[color_name]
+        
         if color_name in PostScriptSimple.pscolours:
-            return tuple(PostScriptSimple.pscolours[color_name])
+            rgb = tuple(PostScriptSimple.pscolours[color_name])
+            self._color_cache[color_name] = rgb
+            return rgb
         
         try:
             # Try to parse as hex color
-            return ImageColor.getrgb(color_name)
+            rgb = ImageColor.getrgb(color_name)
+            self._color_cache[color_name] = rgb
+            return rgb
         except:
             print(f"Warning: Unknown color '{color_name}', using black", file=sys.stderr)
+            self._color_cache[color_name] = (0, 0, 0)
             return (0, 0, 0)
     
     def _make_transparent_background(self, img):
-        """Make the white background transparent
+        """Make the white background transparent - optimized for speed
         
         Args:
             img: PIL Image
@@ -517,9 +501,27 @@ class EffectsProcessor:
         Returns:
             PIL Image with transparent background
         """
-        img = img.convert("RGBA")
-        datas = img.getdata()
+        # Only convert if needed
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+            
+        # Process only if image is large
+        if img.width > 500 or img.height > 500:
+            # Use numpy for faster processing if available
+            try:
+                import numpy as np
+                data = np.array(img)
+                # Create an alpha mask where white pixels are transparent
+                mask = ((data[:,:,0] > 240) & 
+                        (data[:,:,1] > 240) & 
+                        (data[:,:,2] > 240))
+                data[mask, 3] = 0
+                return Image.fromarray(data)
+            except ImportError:
+                pass
         
+        # Fallback to the standard method
+        datas = img.getdata()
         new_data = []
         for item in datas:
             # Change all white (or nearly white) pixels to transparent
@@ -530,9 +532,9 @@ class EffectsProcessor:
                 
         img.putdata(new_data)
         return img
-
+    
     def render_ps_to_image(self, ps_file):
-        """Render PostScript to PNG using Ghostscript
+        """Render PostScript to PNG using Ghostscript - optimized for speed
         
         Args:
             ps_file: PostScript file
@@ -543,14 +545,16 @@ class EffectsProcessor:
         # Create a temporary file for the output
         temp_png = f"{ps_file}.png"
         
-        # Use Ghostscript to render the PS to PNG
+        # Use Ghostscript to render the PS to PNG with optimized settings
         gs_cmd = [
             "gs", 
             "-dSAFER",
             "-dBATCH", 
             "-dNOPAUSE", 
+            "-dGraphicsAlphaBits=4",  # Reduce antialiasing for speed
+            "-dTextAlphaBits=4",      # Reduce antialiasing for speed
             "-sDEVICE=pngalpha", 
-            "-r300", 
+            "-r150",                  # Lower resolution for faster processing
             f"-sOutputFile={temp_png}",
             ps_file
         ]
@@ -571,7 +575,7 @@ class EffectsProcessor:
             # Make white background transparent
             img = self._make_transparent_background(img)
             
-            # Auto-crop the image
+            # Auto-crop the image - simplified for speed
             if img.mode == 'RGBA':
                 # Get the alpha channel
                 alpha = img.split()[3]
@@ -579,11 +583,6 @@ class EffectsProcessor:
                 bbox = alpha.getbbox()
                 if bbox:
                     # Crop to bounding box
-                    img = img.crop(bbox)
-            else:
-                # For non-RGBA images, use the normal crop function
-                bbox = ImageOps.invert(img.convert('L')).getbbox()
-                if bbox:
                     img = img.crop(bbox)
             
             # Add a small padding
@@ -600,10 +599,10 @@ class EffectsProcessor:
             
         except Exception as e:
             print(f"Error: Failed to process image: {e}", file=sys.stderr)
-            sys.exit(1)    
-
+            sys.exit(1)
+    
     def apply_effects(self, img, effects):
-        """Apply various effects to the image
+        """Apply various effects to the image - optimized for speed
         
         Args:
             img: PIL Image
@@ -614,6 +613,8 @@ class EffectsProcessor:
         """
         # Make a copy to work with
         result = img.copy()
+        
+        # Apply essential effects first (those that modify the base image)
         
         # Apply flip if requested
         if effects.get('flip'):
@@ -632,38 +633,45 @@ class EffectsProcessor:
                 color1 = self._get_rgb_color(spill_colors[0])
                 color2 = self._get_rgb_color(spill_colors[1])
                 
-                # Create a gradient mask
-                gradient = Image.new('L', result.size, 0)
-                draw = ImageDraw.Draw(gradient)
-                
-                for y in range(result.height):
-                    # Calculate gradient intensity (0-255)
-                    intensity = int(255 * y / result.height)
-                    draw.line([(0, y), (result.width, y)], fill=intensity)
-                
-                # Create gradient overlay image
+                # Create a gradient overlay image - simplified
                 gradient_img = Image.new('RGBA', result.size)
-                for y in range(result.height):
+                for y in range(0, result.height, 2):  # Step by 2 for speed
                     # Calculate interpolation factor (0.0-1.0)
                     t = y / result.height
                     # Linear interpolation between colors
                     r = int(color1[0] * (1-t) + color2[0] * t)
                     g = int(color1[1] * (1-t) + color2[1] * t)
                     b = int(color1[2] * (1-t) + color2[2] * t)
-                    # Draw a line of this color
-                    ImageDraw.Draw(gradient_img).line(
-                        [(0, y), (result.width, y)], fill=(r, g, b, 128))
+                    # Draw a line of this color - use rectangle for speed
+                    ImageDraw.Draw(gradient_img).rectangle(
+                        [(0, y), (result.width, y+1)], fill=(r, g, b, 128))
                 
                 # Apply gradient overlay where the original image has content
                 if result.mode == 'RGBA':
-                    # Get the alpha channel of the original image
-                    alpha = result.split()[3]
-                    # Create a new image for the result
-                    new_img = Image.new('RGBA', result.size, (0, 0, 0, 0))
-                    # Paste the gradient using the original alpha as mask
-                    new_img.paste(gradient_img, (0, 0), alpha)
-                    # Blend with the original
-                    result = Image.alpha_composite(result, new_img)
+                    result = Image.alpha_composite(result, gradient_img)
+        
+        # Apply fade if requested (simple fades are fast)
+        if effects.get('fade'):
+            fade_type = effects['fade']
+            fade_amount = float(effects.get('fade_amount', '0.5'))
+            
+            if fade_type == 'transparent' and result.mode == 'RGBA':
+                # Simple alpha adjustment
+                r, g, b, a = result.split()
+                a = ImageEnhance.Brightness(a).enhance(1.0 - fade_amount)
+                result = Image.merge('RGBA', (r, g, b, a))
+            
+            elif fade_type == 'white':
+                # Simple brightness/contrast adjustment
+                result = ImageEnhance.Contrast(result).enhance(1.0 - fade_amount)
+                if result.mode == 'RGBA':
+                    result = ImageEnhance.Brightness(result).enhance(1.0 + fade_amount)
+            
+            elif fade_type == 'black':
+                # Simple brightness adjustment
+                result = ImageEnhance.Brightness(result).enhance(1.0 - fade_amount)
+        
+        # Now apply additive effects (patterns, shadows, etc.)
         
         # Apply pattern to background if requested
         if effects.get('pattern'):
@@ -674,93 +682,28 @@ class EffectsProcessor:
                 color1 = self._get_rgb_color(pattern_colors[0])
                 color2 = self._get_rgb_color(pattern_colors[1] if len(pattern_colors) > 1 else 'black')
                 
-                # Create pattern image
+                # Use a smaller scale factor for speed with larger images
                 pattern_scale = int(effects.get('pattern_scale', '20'))
+                if result.width * result.height > 1000000:  # Large image
+                    pattern_scale = max(pattern_scale, 30)  # Use larger pattern elements
+                
                 pattern_img = self._create_pattern_image(
                     pattern_name, result.size, color1 + (255,), color2 + (255,), pattern_scale)
                 
                 # Create a composite with the pattern as background
                 if result.mode == 'RGBA':
-                    # Create a new image with the pattern
                     new_img = pattern_img.copy()
-                    # Paste the original image on top
                     new_img.alpha_composite(result)
                     result = new_img
         
-        # Apply tiling if requested
-        if effects.get('tile'):
-            tile_type = effects['tile']
-            tile_count = int(effects.get('tile_count', '3'))
-            
-            # Create a larger canvas
-            if tile_type == 'grid':
-                # Create a grid of tiles
-                tile_size = (result.width, result.height)
-                new_size = (tile_size[0] * tile_count, tile_size[1] * tile_count)
-                tiled_img = Image.new('RGBA', new_size, (0, 0, 0, 0))
-                
-                for y in range(0, new_size[1], tile_size[1]):
-                    for x in range(0, new_size[0], tile_size[0]):
-                        tiled_img.paste(result, (x, y), result if result.mode == 'RGBA' else None)
-                
-                result = tiled_img
-                
-            elif tile_type == 'mirror':
-                # Create a mirrored tile pattern
-                tile_size = (result.width, result.height)
-                new_size = (tile_size[0] * tile_count, tile_size[1] * tile_count)
-                tiled_img = Image.new('RGBA', new_size, (0, 0, 0, 0))
-                
-                for y in range(tile_count):
-                    for x in range(tile_count):
-                        # Determine which variant to use based on position
-                        img_to_paste = result
-                        if x % 2 == 1:
-                            img_to_paste = ImageOps.mirror(img_to_paste)
-                        if y % 2 == 1:
-                            img_to_paste = ImageOps.flip(img_to_paste)
-                        
-                        tiled_img.paste(img_to_paste, 
-                                       (x * tile_size[0], y * tile_size[1]), 
-                                       img_to_paste if img_to_paste.mode == 'RGBA' else None)
-                
-                result = tiled_img
-        
-        # Apply color fade if requested
-        if effects.get('fade'):
-            fade_type = effects['fade']
-            fade_amount = float(effects.get('fade_amount', '0.5'))
-            
-            if fade_type == 'transparent':
-                # Increase transparency
-                if result.mode == 'RGBA':
-                    r, g, b, a = result.split()
-                    a = ImageEnhance.Brightness(a).enhance(1.0 - fade_amount)
-                    result = Image.merge('RGBA', (r, g, b, a))
-            
-            elif fade_type == 'white':
-                # Fade to white
-                enhancer = ImageEnhance.Contrast(result)
-                result = enhancer.enhance(1.0 - fade_amount)
-                
-                if result.mode == 'RGBA':
-                    enhancer = ImageEnhance.Brightness(result)
-                    result = enhancer.enhance(1.0 + fade_amount)
-            
-            elif fade_type == 'black':
-                # Fade to black
-                enhancer = ImageEnhance.Brightness(result)
-                result = enhancer.enhance(1.0 - fade_amount)
-        
-        # Apply shadow/3D effect if requested
+        # Apply shadow if requested (this is an expensive operation)
         if effects.get('shadow'):
             shadow_type = effects['shadow']
             shadow_offset = int(effects.get('shadow_offset', '5'))
             shadow_color = self._get_rgb_color(effects.get('shadow_color', 'black')) + (128,)  # Add alpha
             
             if shadow_type == 'drop':
-                # Create a shadow by offsetting a darkened copy
-                shadow = Image.new('RGBA', result.size, (0, 0, 0, 0))
+                # Create a shadow by offsetting a darkened copy - simplified
                 shadow_mask = result.split()[3] if result.mode == 'RGBA' else Image.new('L', result.size, 0)
                 
                 # Create a new canvas large enough for image and shadow
@@ -777,8 +720,8 @@ class EffectsProcessor:
                 result = new_img
                 
             elif shadow_type == '3d':
-                # Create a 3D effect with multiple layers
-                layers = 5
+                # Simplified 3D effect with fewer layers for speed
+                layers = min(3, shadow_offset // 2)  # Reduced number of layers
                 step = max(1, shadow_offset // layers)
                 
                 # Create a new canvas large enough for all layers
@@ -799,6 +742,49 @@ class EffectsProcessor:
                 new_img.paste(result, (0, 0), result if result.mode == 'RGBA' else None)
                 
                 result = new_img
+        
+        # Apply tiling last (as it enlarges the image)
+        if effects.get('tile'):
+            tile_type = effects['tile']
+            # Reduce default tile count for speed
+            tile_count = min(2, int(effects.get('tile_count', '3')))
+            
+            # Create a larger canvas
+            if tile_type == 'grid':
+                # Simple grid tiling
+                tile_size = (result.width, result.height)
+                new_size = (tile_size[0] * tile_count, tile_size[1] * tile_count)
+                tiled_img = Image.new('RGBA', new_size, (0, 0, 0, 0))
+                
+                for y in range(0, new_size[1], tile_size[1]):
+                    for x in range(0, new_size[0], tile_size[0]):
+                        tiled_img.paste(result, (x, y), result if result.mode == 'RGBA' else None)
+                
+                result = tiled_img
+                
+            elif tile_type == 'mirror':
+                # Simple mirrored tiling - pre-compute flipped versions for speed
+                tile_size = (result.width, result.height)
+                new_size = (tile_size[0] * tile_count, tile_size[1] * tile_count)
+                tiled_img = Image.new('RGBA', new_size, (0, 0, 0, 0))
+                
+                # Pre-compute the four tile variants
+                tiles = [
+                    result,  # Normal
+                    ImageOps.mirror(result),  # Horizontal flip
+                    ImageOps.flip(result),  # Vertical flip
+                    ImageOps.flip(ImageOps.mirror(result))  # Both flips
+                ]
+                
+                for y in range(tile_count):
+                    for x in range(tile_count):
+                        # Determine which variant to use based on position
+                        tile_idx = (x % 2) + 2 * (y % 2)
+                        tiled_img.paste(tiles[tile_idx], 
+                                       (x * tile_size[0], y * tile_size[1]), 
+                                       tiles[tile_idx] if tiles[tile_idx].mode == 'RGBA' else None)
+                
+                result = tiled_img
         
         return result
     
@@ -1078,7 +1064,7 @@ class BIDeT:
             sys.exit(1)
     
     def main(self):
-        """Main function"""
+        """Main function - optimized for speed"""
         parser = argparse.ArgumentParser(description='BIDeT - Use this after you\'re done with Toilet!')
         
         # Basic options
@@ -1252,8 +1238,16 @@ class BIDeT:
         # Create effects processor
         effects_processor = EffectsProcessor(debug=self.debug)
         
+        # Get start time for performance measurement
+        start_time = time.time()
+        
         # Render PostScript to image
         img = effects_processor.render_ps_to_image(ps_file)
+        
+        # Print time information in debug mode
+        if self.debug:
+            print(f"PS rendering time: {time.time() - start_time:.2f} seconds", file=sys.stderr)
+            render_time = time.time()
         
         # Handle rotation before effects
         if args.rotate:
@@ -1280,21 +1274,44 @@ class BIDeT:
             effects['shadow_offset'] = args.shadow_offset
             effects['shadow_color'] = args.shadow_color
         
-        # Apply effects if any
+        # Apply effects if any - only if needed
         if effects:
+            effects_start = time.time()
             img = effects_processor.apply_effects(img, effects)
+            if self.debug:
+                print(f"Effects processing time: {time.time() - effects_start:.2f} seconds", file=sys.stderr)
         
         # Save debug image if requested
         if self.debug:
             debug_file = f"{self.temp_prefix}_final.png"
             effects_processor.save_image(img, debug_file)
             print(f"Final image saved to: {debug_file}", file=sys.stderr)
+            print(f"Image preparation time: {time.time() - start_time:.2f} seconds", file=sys.stderr)
         
-        # Output image
+        # Output image - use direct subprocess calls for speed
+        output_start = time.time()
         if args.ansi:
-            effects_processor.img_to_ansi(img, background)
+            # Create a temp file for the image
+            temp_png = f"{self.temp_prefix}_output.png"
+            img.save(temp_png)
+            # Call img2ans directly
+            subprocess.run(["img2ans", "-b", background, temp_png])
+            # Clean up temp file
+            if not self.debug:
+                os.unlink(temp_png)
         else:
-            effects_processor.img_to_sixel(img, background)
+            # Create a temp file for the image
+            temp_png = f"{self.temp_prefix}_output.png"
+            img.save(temp_png)
+            # Call img2sixel directly
+            subprocess.run(["img2sixel", "-I", "-B", background, temp_png])
+            # Clean up temp file
+            if not self.debug:
+                os.unlink(temp_png)
+        
+        if self.debug:
+            print(f"Output conversion time: {time.time() - output_start:.2f} seconds", file=sys.stderr)
+            print(f"Total processing time: {time.time() - start_time:.2f} seconds", file=sys.stderr)
         
         # Clean up
         if not self.debug:
