@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 BIDeT - Use this after you're done with Toilet!
-Why did I write this? Because I DEcided To. :)
+Enhanced version with multiple effects.
 """
 
 import argparse
@@ -15,6 +15,10 @@ import textwrap
 import shutil
 import re
 from pathlib import Path
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageOps, ImageFont, ImageColor
+import math
+import io
+import time
 
 class PostScriptSimple:
     """Python version of PostScript::Simple"""
@@ -44,15 +48,54 @@ class PostScriptSimple:
         "grey70": [178, 178, 178], "grey80": [204, 204, 204], "grey90": [229, 229, 229],
         "black": [0, 0, 0], "white": [255, 255, 255],
         
-        # X-Windows colours - shortened list for performance
+        # X-Windows colours
         "aliceblue": [240, 248, 255], "antiquewhite": [250, 235, 215], "aqua": [0, 255, 255],
         "aquamarine": [127, 255, 212], "azure": [240, 255, 255], "beige": [245, 245, 220],
         "bisque": [255, 228, 196], "blanchedalmond": [255, 255, 205], "blueviolet": [138, 43, 226],
         "brown": [165, 42, 42], "burlywood": [222, 184, 135], "cadetblue": [95, 158, 160],
-        "cornflowerblue": [100, 149, 237], "cyan": [0, 255, 255],
-        "gold": [255, 215, 0], "gray": [128, 128, 128], "grey": [128, 128, 128],
-        "magenta": [255, 0, 255], "orange": [255, 165, 0], "purple": [128, 0, 128],
-        "silver": [192, 192, 192], "snow": [255, 250, 250], "yellow": [255, 255, 0],
+        "chartreuse": [127, 255, 0], "chocolate": [210, 105, 30], "coral": [255, 127, 80],
+        "cornflowerblue": [100, 149, 237], "cornsilk": [255, 248, 220], "crimson": [220, 20, 60],
+        "cyan": [0, 255, 255], "darkcyan": [0, 139, 139], "darkgoldenrod": [184, 134, 11],
+        "darkgray": [169, 169, 169], "darkgrey": [169, 169, 169], "darkkhaki": [189, 183, 107],
+        "darkmagenta": [139, 0, 139], "darkolivegreen": [85, 107, 47], "darkorange": [255, 140, 0],
+        "darkorchid": [153, 50, 204], "darksalmon": [233, 150, 122], "darkseagreen": [143, 188, 143],
+        "darkslateblue": [72, 61, 139], "darkslategray": [47, 79, 79], "darkslategrey": [47, 79, 79],
+        "darkturquoise": [0, 206, 209], "darkviolet": [148, 0, 211], "deeppink": [255, 20, 147],
+        "deepskyblue": [0, 191, 255], "dimgray": [105, 105, 105], "dimgrey": [105, 105, 105],
+        "dodgerblue": [30, 144, 255], "firebrick": [178, 34, 34], "floralwhite": [255, 250, 240],
+        "forestgreen": [34, 139, 34], "fuchsia": [255, 0, 255], "gainsboro": [220, 220, 220],
+        "ghostwhite": [248, 248, 255], "gold": [255, 215, 0], "goldenrod": [218, 165, 32],
+        "gray": [128, 128, 128], "grey": [128, 128, 128], "greenyellow": [173, 255, 47],
+        "honeydew": [240, 255, 240], "hotpink": [255, 105, 180], "indianred": [205, 92, 92],
+        "indigo": [75, 0, 130], "ivory": [255, 240, 240], "khaki": [240, 230, 140],
+        "lavender": [230, 230, 250], "lavenderblush": [255, 240, 245], "lawngreen": [124, 252, 0],
+        "lemonchiffon": [255, 250, 205], "lightblue": [173, 216, 230], "lightcoral": [240, 128, 128],
+        "lightcyan": [224, 255, 255], "lightgoldenrodyellow": [250, 250, 210], "lightgray": [211, 211, 211],
+        "lightgreen": [144, 238, 144], "lightgrey": [211, 211, 211], "lightpink": [255, 182, 193],
+        "lightsalmon": [255, 160, 122], "lightseagreen": [32, 178, 170], "lightskyblue": [135, 206, 250],
+        "lightslategray": [119, 136, 153], "lightslategrey": [119, 136, 153], "lightsteelblue": [176, 196, 222],
+        "lightyellow": [255, 255, 224], "lime": [0, 255, 0], "limegreen": [50, 205, 50],
+        "linen": [250, 240, 230], "magenta": [255, 0, 255], "maroon": [128, 0, 0],
+        "mediumaquamarine": [102, 205, 170], "mediumblue": [0, 0, 205], "mediumorchid": [186, 85, 211],
+        "mediumpurple": [147, 112, 219], "mediumseagreen": [60, 179, 113], "mediumslateblue": [123, 104, 238],
+        "mediumspringgreen": [0, 250, 154], "mediumturquoise": [72, 209, 204], "mediumvioletred": [199, 21, 133],
+        "midnightblue": [25, 25, 112], "mintcream": [245, 255, 250], "mistyrose": [255, 228, 225],
+        "moccasin": [255, 228, 181], "navajowhite": [255, 222, 173], "navy": [0, 0, 128],
+        "oldlace": [253, 245, 230], "olive": [128, 128, 0], "olivedrab": [107, 142, 35],
+        "orange": [255, 165, 0], "orangered": [255, 69, 0], "orchid": [218, 112, 214],
+        "palegoldenrod": [238, 232, 170], "palegreen": [152, 251, 152], "paleturquoise": [175, 238, 238],
+        "palevioletred": [219, 112, 147], "papayawhip": [255, 239, 213], "peachpuff": [255, 218, 185],
+        "peru": [205, 133, 63], "pink": [255, 192, 203], "plum": [221, 160, 221],
+        "powderblue": [176, 224, 230], "purple": [128, 0, 128], "rosybrown": [188, 143, 143],
+        "royalblue": [65, 105, 225], "saddlebrown": [139, 69, 19], "salmon": [250, 128, 114],
+        "sandybrown": [244, 164, 96], "seagreen": [46, 139, 87], "seashell": [255, 245, 238],
+        "sienna": [160, 82, 45], "silver": [192, 192, 192], "skyblue": [135, 206, 235],
+        "slateblue": [106, 90, 205], "slategray": [112, 128, 144], "slategrey": [112, 128, 144],
+        "snow": [255, 250, 250], "springgreen": [0, 255, 127], "steelblue": [70, 130, 180],
+        "tan": [210, 180, 140], "teal": [0, 128, 128], "thistle": [216, 191, 216],
+        "tomato": [253, 99, 71], "turquoise": [64, 224, 208], "violet": [238, 130, 238],
+        "wheat": [245, 222, 179], "whitesmoke": [245, 245, 245], "yellow": [255, 255, 0],
+        "yellowgreen": [154, 205, 50],
     }
     
     # Paper size definitions
@@ -336,6 +379,502 @@ class PostScriptSimple:
                 f.write(f"{line}\n")
 
 
+class EffectsProcessor:
+    """Process image effects with Pillow"""
+    
+    # Available patterns for backgrounds
+    patterns = [
+        "checkerboard", "dots", "grid", "stripes", "waves", 
+        "zigzag", "crosshatch", "bricks", "diamonds", "bubbles"
+    ]
+    
+    def __init__(self, debug=False):
+        self.debug = debug
+    
+    def _create_pattern_image(self, pattern_name, size, color1, color2, scale=20):
+        """Create a pattern image
+        
+        Args:
+            pattern_name: Name of the pattern
+            size: (width, height) tuple
+            color1, color2: Colors for the pattern
+            scale: Pattern scale factor
+            
+        Returns:
+            PIL Image with the pattern
+        """
+        width, height = size
+        img = Image.new('RGBA', size, color1)
+        draw = ImageDraw.Draw(img)
+        
+        if pattern_name == "checkerboard":
+            # Checkerboard pattern
+            for y in range(0, height, scale):
+                for x in range(0, width, scale):
+                    if (x // scale + y // scale) % 2 == 0:
+                        draw.rectangle([x, y, x + scale - 1, y + scale - 1], fill=color2)
+        
+        elif pattern_name == "dots":
+            # Dots pattern
+            dot_radius = scale // 2
+            for y in range(dot_radius, height, scale):
+                for x in range(dot_radius, width, scale):
+                    draw.ellipse([x - dot_radius, y - dot_radius, 
+                                  x + dot_radius, y + dot_radius], fill=color2)
+        
+        elif pattern_name == "grid":
+            # Grid pattern
+            for y in range(0, height, scale):
+                draw.line([(0, y), (width, y)], fill=color2, width=1)
+            for x in range(0, width, scale):
+                draw.line([(x, 0), (x, height)], fill=color2, width=1)
+        
+        elif pattern_name == "stripes":
+            # Stripes pattern
+            for y in range(0, height, scale*2):
+                draw.rectangle([0, y, width, y + scale - 1], fill=color2)
+        
+        elif pattern_name == "waves":
+            # Waves pattern
+            for y in range(0, height, scale):
+                points = []
+                for x in range(0, width + scale, scale//2):
+                    points.append((x, y + int(math.sin(x * 0.05) * scale/2)))
+                if len(points) > 1:
+                    draw.line(points, fill=color2, width=2)
+        
+        elif pattern_name == "zigzag":
+            # Zigzag pattern
+            for y_offset in range(0, height, scale*2):
+                points = []
+                for x in range(0, width + scale, scale):
+                    y = y_offset + (scale if x % (scale*2) == 0 else 0)
+                    points.append((x, y))
+                if len(points) > 1:
+                    draw.line(points, fill=color2, width=2)
+        
+        elif pattern_name == "crosshatch":
+            # Crosshatch pattern
+            for y in range(-height, height*2, scale):
+                draw.line([(0, y), (width, y + width)], fill=color2, width=1)
+                draw.line([(0, y + width), (width, y)], fill=color2, width=1)
+        
+        elif pattern_name == "bricks":
+            # Bricks pattern
+            brick_height = scale
+            brick_width = scale * 2
+            for y in range(0, height, brick_height):
+                offset = 0 if (y // brick_height) % 2 == 0 else brick_width // 2
+                for x in range(-offset, width, brick_width):
+                    draw.rectangle([x, y, x + brick_width - 1, y + brick_height - 1], 
+                                   outline=color2, width=1)
+        
+        elif pattern_name == "diamonds":
+            # Diamonds pattern
+            for y in range(0, height, scale):
+                for x in range(0, width, scale):
+                    draw.polygon([(x + scale/2, y), (x + scale, y + scale/2), 
+                                   (x + scale/2, y + scale), (x, y + scale/2)], 
+                                 fill=color2)
+        
+        elif pattern_name == "bubbles":
+            # Random bubbles pattern
+            import random
+            for _ in range(width * height // (scale * scale)):
+                x = random.randint(0, width)
+                y = random.randint(0, height)
+                radius = random.randint(scale//4, scale//2)
+                draw.ellipse([x - radius, y - radius, x + radius, y + radius], 
+                             fill=color2, outline=color1)
+        
+        return img
+    
+    def _get_rgb_color(self, color_name):
+        """Convert color name to RGB tuple
+        
+        Args:
+            color_name: Color name or hex value
+            
+        Returns:
+            RGB tuple
+        """
+        if color_name in PostScriptSimple.pscolours:
+            return tuple(PostScriptSimple.pscolours[color_name])
+        
+        try:
+            # Try to parse as hex color
+            return ImageColor.getrgb(color_name)
+        except:
+            print(f"Warning: Unknown color '{color_name}', using black", file=sys.stderr)
+            return (0, 0, 0)
+    
+    def _make_transparent_background(self, img):
+        """Make the white background transparent
+        
+        Args:
+            img: PIL Image
+            
+        Returns:
+            PIL Image with transparent background
+        """
+        img = img.convert("RGBA")
+        datas = img.getdata()
+        
+        new_data = []
+        for item in datas:
+            # Change all white (or nearly white) pixels to transparent
+            if item[0] > 240 and item[1] > 240 and item[2] > 240:
+                new_data.append((255, 255, 255, 0))
+            else:
+                new_data.append(item)
+                
+        img.putdata(new_data)
+        return img
+
+    def render_ps_to_image(self, ps_file):
+        """Render PostScript to PNG using Ghostscript
+        
+        Args:
+            ps_file: PostScript file
+            
+        Returns:
+            PIL Image
+        """
+        # Create a temporary file for the output
+        temp_png = f"{ps_file}.png"
+        
+        # Use Ghostscript to render the PS to PNG
+        gs_cmd = [
+            "gs", 
+            "-dSAFER",
+            "-dBATCH", 
+            "-dNOPAUSE", 
+            "-sDEVICE=pngalpha", 
+            "-r300", 
+            f"-sOutputFile={temp_png}",
+            ps_file
+        ]
+        
+        if self.debug:
+            print(f"Running: {' '.join(gs_cmd)}", file=sys.stderr)
+        
+        proc = subprocess.run(gs_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        if proc.returncode != 0:
+            print(f"Error: Failed to render PostScript: {proc.stderr.decode()}", file=sys.stderr)
+            sys.exit(1)
+            
+        # Load the PNG data into PIL
+        try:
+            img = Image.open(temp_png)
+            
+            # Make white background transparent
+            img = self._make_transparent_background(img)
+            
+            # Auto-crop the image
+            if img.mode == 'RGBA':
+                # Get the alpha channel
+                alpha = img.split()[3]
+                # Get the bounding box of non-transparent pixels
+                bbox = alpha.getbbox()
+                if bbox:
+                    # Crop to bounding box
+                    img = img.crop(bbox)
+            else:
+                # For non-RGBA images, use the normal crop function
+                bbox = ImageOps.invert(img.convert('L')).getbbox()
+                if bbox:
+                    img = img.crop(bbox)
+            
+            # Add a small padding
+            padding = 10
+            padded_size = (img.width + padding*2, img.height + padding*2)
+            padded_img = Image.new('RGBA', padded_size, (255, 255, 255, 0))
+            padded_img.paste(img, (padding, padding), img if img.mode == 'RGBA' else None)
+            
+            # Clean up the temporary PNG file unless in debug mode
+            if not self.debug and os.path.exists(temp_png):
+                os.unlink(temp_png)
+                
+            return padded_img
+            
+        except Exception as e:
+            print(f"Error: Failed to process image: {e}", file=sys.stderr)
+            sys.exit(1)    
+
+    def apply_effects(self, img, effects):
+        """Apply various effects to the image
+        
+        Args:
+            img: PIL Image
+            effects: Dictionary of effects to apply
+            
+        Returns:
+            PIL Image with effects applied
+        """
+        # Make a copy to work with
+        result = img.copy()
+        
+        # Apply flip if requested
+        if effects.get('flip'):
+            flip_type = effects['flip']
+            if flip_type == 'horizontal':
+                result = ImageOps.mirror(result)
+            elif flip_type == 'vertical':
+                result = ImageOps.flip(result)
+            elif flip_type == 'both':
+                result = ImageOps.flip(ImageOps.mirror(result))
+        
+        # Apply color spill (gradient) if requested
+        if effects.get('colorspill'):
+            spill_colors = effects['colorspill'].split(',')
+            if len(spill_colors) == 2:
+                color1 = self._get_rgb_color(spill_colors[0])
+                color2 = self._get_rgb_color(spill_colors[1])
+                
+                # Create a gradient mask
+                gradient = Image.new('L', result.size, 0)
+                draw = ImageDraw.Draw(gradient)
+                
+                for y in range(result.height):
+                    # Calculate gradient intensity (0-255)
+                    intensity = int(255 * y / result.height)
+                    draw.line([(0, y), (result.width, y)], fill=intensity)
+                
+                # Create gradient overlay image
+                gradient_img = Image.new('RGBA', result.size)
+                for y in range(result.height):
+                    # Calculate interpolation factor (0.0-1.0)
+                    t = y / result.height
+                    # Linear interpolation between colors
+                    r = int(color1[0] * (1-t) + color2[0] * t)
+                    g = int(color1[1] * (1-t) + color2[1] * t)
+                    b = int(color1[2] * (1-t) + color2[2] * t)
+                    # Draw a line of this color
+                    ImageDraw.Draw(gradient_img).line(
+                        [(0, y), (result.width, y)], fill=(r, g, b, 128))
+                
+                # Apply gradient overlay where the original image has content
+                if result.mode == 'RGBA':
+                    # Get the alpha channel of the original image
+                    alpha = result.split()[3]
+                    # Create a new image for the result
+                    new_img = Image.new('RGBA', result.size, (0, 0, 0, 0))
+                    # Paste the gradient using the original alpha as mask
+                    new_img.paste(gradient_img, (0, 0), alpha)
+                    # Blend with the original
+                    result = Image.alpha_composite(result, new_img)
+        
+        # Apply pattern to background if requested
+        if effects.get('pattern'):
+            pattern_name = effects['pattern']
+            if pattern_name in self.patterns:
+                # Get pattern colors
+                pattern_colors = effects.get('pattern_colors', 'white,black').split(',')
+                color1 = self._get_rgb_color(pattern_colors[0])
+                color2 = self._get_rgb_color(pattern_colors[1] if len(pattern_colors) > 1 else 'black')
+                
+                # Create pattern image
+                pattern_scale = int(effects.get('pattern_scale', '20'))
+                pattern_img = self._create_pattern_image(
+                    pattern_name, result.size, color1 + (255,), color2 + (255,), pattern_scale)
+                
+                # Create a composite with the pattern as background
+                if result.mode == 'RGBA':
+                    # Create a new image with the pattern
+                    new_img = pattern_img.copy()
+                    # Paste the original image on top
+                    new_img.alpha_composite(result)
+                    result = new_img
+        
+        # Apply tiling if requested
+        if effects.get('tile'):
+            tile_type = effects['tile']
+            tile_count = int(effects.get('tile_count', '3'))
+            
+            # Create a larger canvas
+            if tile_type == 'grid':
+                # Create a grid of tiles
+                tile_size = (result.width, result.height)
+                new_size = (tile_size[0] * tile_count, tile_size[1] * tile_count)
+                tiled_img = Image.new('RGBA', new_size, (0, 0, 0, 0))
+                
+                for y in range(0, new_size[1], tile_size[1]):
+                    for x in range(0, new_size[0], tile_size[0]):
+                        tiled_img.paste(result, (x, y), result if result.mode == 'RGBA' else None)
+                
+                result = tiled_img
+                
+            elif tile_type == 'mirror':
+                # Create a mirrored tile pattern
+                tile_size = (result.width, result.height)
+                new_size = (tile_size[0] * tile_count, tile_size[1] * tile_count)
+                tiled_img = Image.new('RGBA', new_size, (0, 0, 0, 0))
+                
+                for y in range(tile_count):
+                    for x in range(tile_count):
+                        # Determine which variant to use based on position
+                        img_to_paste = result
+                        if x % 2 == 1:
+                            img_to_paste = ImageOps.mirror(img_to_paste)
+                        if y % 2 == 1:
+                            img_to_paste = ImageOps.flip(img_to_paste)
+                        
+                        tiled_img.paste(img_to_paste, 
+                                       (x * tile_size[0], y * tile_size[1]), 
+                                       img_to_paste if img_to_paste.mode == 'RGBA' else None)
+                
+                result = tiled_img
+        
+        # Apply color fade if requested
+        if effects.get('fade'):
+            fade_type = effects['fade']
+            fade_amount = float(effects.get('fade_amount', '0.5'))
+            
+            if fade_type == 'transparent':
+                # Increase transparency
+                if result.mode == 'RGBA':
+                    r, g, b, a = result.split()
+                    a = ImageEnhance.Brightness(a).enhance(1.0 - fade_amount)
+                    result = Image.merge('RGBA', (r, g, b, a))
+            
+            elif fade_type == 'white':
+                # Fade to white
+                enhancer = ImageEnhance.Contrast(result)
+                result = enhancer.enhance(1.0 - fade_amount)
+                
+                if result.mode == 'RGBA':
+                    enhancer = ImageEnhance.Brightness(result)
+                    result = enhancer.enhance(1.0 + fade_amount)
+            
+            elif fade_type == 'black':
+                # Fade to black
+                enhancer = ImageEnhance.Brightness(result)
+                result = enhancer.enhance(1.0 - fade_amount)
+        
+        # Apply shadow/3D effect if requested
+        if effects.get('shadow'):
+            shadow_type = effects['shadow']
+            shadow_offset = int(effects.get('shadow_offset', '5'))
+            shadow_color = self._get_rgb_color(effects.get('shadow_color', 'black')) + (128,)  # Add alpha
+            
+            if shadow_type == 'drop':
+                # Create a shadow by offsetting a darkened copy
+                shadow = Image.new('RGBA', result.size, (0, 0, 0, 0))
+                shadow_mask = result.split()[3] if result.mode == 'RGBA' else Image.new('L', result.size, 0)
+                
+                # Create a new canvas large enough for image and shadow
+                new_size = (result.width + shadow_offset, result.height + shadow_offset)
+                new_img = Image.new('RGBA', new_size, (0, 0, 0, 0))
+                
+                # Create the shadow
+                shadow = Image.new('RGBA', result.size, shadow_color)
+                
+                # Paste shadow first, then original image
+                new_img.paste(shadow, (shadow_offset, shadow_offset), shadow_mask)
+                new_img.paste(result, (0, 0), result if result.mode == 'RGBA' else None)
+                
+                result = new_img
+                
+            elif shadow_type == '3d':
+                # Create a 3D effect with multiple layers
+                layers = 5
+                step = max(1, shadow_offset // layers)
+                
+                # Create a new canvas large enough for all layers
+                new_size = (result.width + shadow_offset, result.height + shadow_offset)
+                new_img = Image.new('RGBA', new_size, (0, 0, 0, 0))
+                
+                # Get alpha mask
+                shadow_mask = result.split()[3] if result.mode == 'RGBA' else Image.new('L', result.size, 0)
+                
+                # Add shadow layers from back to front
+                for i in range(layers, 0, -1):
+                    offset = i * step
+                    shadow_color_with_alpha = shadow_color[0:3] + (int(128 * (i / layers)),)
+                    shadow = Image.new('RGBA', result.size, shadow_color_with_alpha)
+                    new_img.paste(shadow, (offset, offset), shadow_mask)
+                
+                # Finally add the original image on top
+                new_img.paste(result, (0, 0), result if result.mode == 'RGBA' else None)
+                
+                result = new_img
+        
+        return result
+    
+    def save_image(self, img, output_file, format='PNG'):
+        """Save the image to a file
+        
+        Args:
+            img: PIL Image
+            output_file: Output filename
+            format: Image format (PNG, JPEG, etc.)
+            
+        Returns:
+            Path to the saved file
+        """
+        try:
+            img.save(output_file, format=format)
+            return output_file
+        except Exception as e:
+            print(f"Error: Failed to save image: {e}", file=sys.stderr)
+            sys.exit(1)
+    
+    def img_to_sixel(self, img, bg_color):
+        """Convert PIL image to Sixel and output to stdout
+        
+        Args:
+            img: PIL Image
+            bg_color: Background color for Sixel
+        """
+        # Save to a temporary PNG file
+        temp_file = tempfile.mktemp(suffix='.png')
+        self.save_image(img, temp_file)
+        
+        # Check if img2sixel exists
+        if not shutil.which("img2sixel"):
+            print("Error: img2sixel command not found", file=sys.stderr)
+            sys.exit(1)
+        
+        # Run img2sixel
+        try:
+            subprocess.run(["img2sixel", "-I", "-B", bg_color, temp_file], check=True)
+        except Exception as e:
+            print(f"Error: Failed to convert to Sixel: {e}", file=sys.stderr)
+            sys.exit(1)
+        finally:
+            # Remove temporary file
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
+    
+    def img_to_ansi(self, img, bg_color):
+        """Convert PIL image to ANSI and output to stdout
+        
+        Args:
+            img: PIL Image
+            bg_color: Background color for ANSI
+        """
+        # Save to a temporary PNG file
+        temp_file = tempfile.mktemp(suffix='.png')
+        self.save_image(img, temp_file)
+        
+        # Check if img2ans exists
+        if not shutil.which("img2ans"):
+            print("Error: img2ans command not found", file=sys.stderr)
+            sys.exit(1)
+        
+        # Run img2ans
+        try:
+            subprocess.run(["img2ans", "-b", bg_color, temp_file], check=True)
+        except Exception as e:
+            print(f"Error: Failed to convert to ANSI: {e}", file=sys.stderr)
+            sys.exit(1)
+        finally:
+            # Remove temporary file
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
+
+
 class BIDeT:
     """BIDeT - Use this after you're done with Toilet!"""
     
@@ -514,22 +1053,35 @@ class BIDeT:
         
         return r, g, b
     
-    def run_prog(self, cmd):
-        """Run a command and check for errors"""
-        if self.debug:
-            print(f"CMD={cmd}", file=sys.stderr)
+    def list_patterns(self):
+        """List available patterns"""
+        print("Available patterns:")
+        for p in EffectsProcessor.patterns:
+            print(f"  - {p}")
+        sys.exit(0)
+    
+    def check_required_tools(self):
+        """Check if required tools are available"""
+        missing_tools = []
         
-        # Run command directly without redirecting to log file
-        result = subprocess.run(cmd, shell=True, stderr=subprocess.PIPE)
+        # Check for Ghostscript
+        if not shutil.which("gs"):
+            missing_tools.append("gs (Ghostscript)")
         
-        if result.returncode != 0:
-            print(f"Error: System call failed: {cmd}", file=sys.stderr)
-            print(result.stderr.decode(), file=sys.stderr)
+        # Check for image conversion tools
+        if not shutil.which("img2sixel") and not shutil.which("img2ans"):
+            missing_tools.append("img2sixel or img2ans")
+        
+        if missing_tools:
+            print(f"Error: Missing required tools: {', '.join(missing_tools)}", file=sys.stderr)
+            print("Please install the necessary packages", file=sys.stderr)
             sys.exit(1)
     
     def main(self):
         """Main function"""
         parser = argparse.ArgumentParser(description='BIDeT - Use this after you\'re done with Toilet!')
+        
+        # Basic options
         parser.add_argument('-a', '--ansi', action='store_true', help='Use ANSI instead of SIXEL')
         parser.add_argument('-b', '--background', default='transparent', help='Set background color')
         parser.add_argument('-c', '--colour', default='default', help='Set text color')
@@ -541,6 +1093,35 @@ class BIDeT:
         parser.add_argument('-s', '--size', type=int, default=65, help='Set font size')
         parser.add_argument('-w', '--width', type=int, default=20, help='Set width')
         parser.add_argument('-v', '--version', action='store_true', help='Show version')
+        
+        # New effects options
+        parser.add_argument('--flip', choices=['horizontal', 'vertical', 'both'], 
+                          help='Flip the image')
+        parser.add_argument('--colorspill', metavar='COLOR1,COLOR2',
+                          help='Apply a color gradient (e.g., red,blue)')
+        parser.add_argument('--pattern', metavar='PATTERN',
+                          help='Add pattern to background')
+        parser.add_argument('--pattern-colors', metavar='COLOR1,COLOR2', default='white,black',
+                          help='Colors for the pattern (default: white,black)')
+        parser.add_argument('--pattern-scale', type=int, default=20,
+                          help='Scale factor for pattern (default: 20)')
+        parser.add_argument('--list-patterns', action='store_true',
+                          help='List available patterns')
+        parser.add_argument('--tile', choices=['grid', 'mirror'],
+                          help='Tile the image in a grid or mirrored pattern')
+        parser.add_argument('--tile-count', type=int, default=3,
+                          help='Number of tiles in each direction (default: 3)')
+        parser.add_argument('--fade', choices=['transparent', 'white', 'black'],
+                          help='Apply a fade effect')
+        parser.add_argument('--fade-amount', type=float, default=0.5,
+                          help='Amount of fading (0.0-1.0, default: 0.5)')
+        parser.add_argument('--shadow', choices=['drop', '3d'],
+                          help='Add a shadow or 3D effect')
+        parser.add_argument('--shadow-offset', type=int, default=5,
+                          help='Shadow offset in pixels (default: 5)')
+        parser.add_argument('--shadow-color', default='black',
+                          help='Shadow color (default: black)')
+        
         parser.add_argument('text', nargs='*', help='Text to display or filename')
         
         args = parser.parse_args()
@@ -550,15 +1131,22 @@ class BIDeT:
         
         # Show version
         if args.version:
-            print("Version: 1.3")
+            print("Version: 2.0")
             sys.exit(0)
+        
+        # List patterns if requested
+        if args.list_patterns:
+            self.list_patterns()
+        
+        # Check for required tools
+        self.check_required_tools()
         
         # Create temp directory for files
         if os.path.exists("/dev/shm"):
             # Use /dev/shm for better performance on Linux
             shm_path = f"/dev/shm/{os.environ.get('USER', 'bidet')}"
             os.makedirs(shm_path, exist_ok=True)
-            self.temp_prefix = os.path.join(shm_path, "bidet_tmp")
+            self.temp_prefix = os.path.join(shm_path, f"bidet_tmp_{int(time.time())}")
         else:
             # Fallback to regular temp directory
             self.temp_dir = tempfile.mkdtemp(prefix="bidet_")
@@ -660,97 +1248,70 @@ class BIDeT:
         # Debug: print PS file if requested
         if self.debug:
             print(f"PostScript file generated at: {ps_file}", file=sys.stderr)
-            
-        # Check if ImageMagick is available
-        if False: # shutil.which("convert"):
-            # Process with ImageMagick for full portability
-            # Build ImageMagick command with all required operations
-            im_cmd = ["convert"]
-            
-            # Set input options
-            im_cmd.extend(["-density", "300", ps_file])
-            
-            # Trim and add border
-            im_cmd.extend(["-trim", "+repage", "-bordercolor", "white", "-border", "10"])
-            
-            # Change background if needed
-            if background.lower() != 'white':
-                im_cmd.extend(["-background", background, "-alpha", "remove"])
-            
-            # Rotate if needed
-            if args.rotate:
-                im_cmd.extend(["-rotate", "270"])
-            
-            # Set output format
-            png_file = f"{self.temp_prefix}.png"
-            im_cmd.append(png_file)
-            
-            # Run the command
-            subprocess.run(im_cmd, check=True)
-            
-            # Convert to final format
-            if args.ansi:
-                if shutil.which("img2ans"):
-                    self.run_prog(f"img2ans -b'{term_background}' {png_file}")
-                else:
-                    print("Error: img2ans command not found", file=sys.stderr)
-                    sys.exit(1)
-            else:
-                if shutil.which("img2sixel"):
-                    self.run_prog(f"img2sixel -I -B '{term_background}' {png_file}")
-                else:
-                    print("Error: img2sixel command not found", file=sys.stderr)
-                    sys.exit(1)
+        
+        # Create effects processor
+        effects_processor = EffectsProcessor(debug=self.debug)
+        
+        # Render PostScript to image
+        img = effects_processor.render_ps_to_image(ps_file)
+        
+        # Handle rotation before effects
+        if args.rotate:
+            img = img.rotate(270, expand=True)
+        
+        # Collect effects to apply
+        effects = {}
+        if args.flip:
+            effects['flip'] = args.flip
+        if args.colorspill:
+            effects['colorspill'] = args.colorspill
+        if args.pattern:
+            effects['pattern'] = args.pattern
+            effects['pattern_colors'] = args.pattern_colors
+            effects['pattern_scale'] = args.pattern_scale
+        if args.tile:
+            effects['tile'] = args.tile
+            effects['tile_count'] = args.tile_count
+        if args.fade:
+            effects['fade'] = args.fade
+            effects['fade_amount'] = args.fade_amount
+        if args.shadow:
+            effects['shadow'] = args.shadow
+            effects['shadow_offset'] = args.shadow_offset
+            effects['shadow_color'] = args.shadow_color
+        
+        # Apply effects if any
+        if effects:
+            img = effects_processor.apply_effects(img, effects)
+        
+        # Save debug image if requested
+        if self.debug:
+            debug_file = f"{self.temp_prefix}_final.png"
+            effects_processor.save_image(img, debug_file)
+            print(f"Final image saved to: {debug_file}", file=sys.stderr)
+        
+        # Output image
+        if args.ansi:
+            effects_processor.img_to_ansi(img, background)
         else:
-            # Fallback to netpbm if ImageMagick is not available
-            print("Warning: ImageMagick not found, using netpbm tools", file=sys.stderr)
-            
-            # Use netpbm tools in a pipeline for better performance
-            if args.rotate:
-                # With rotation
-                if background.lower() != 'white':
-                    rotate_cmd = f"gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH {ps_file} | pnmcrop | pnmmargin -white 10 | ppmchange -closeok white '{background}' | pnmrotate -background '{background}' -90 | pnmtopng"
-                else:
-                    rotate_cmd = f"gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH {ps_file} | pnmcrop | pnmmargin -white 10 | pnmrotate -background white -90 | pnmtopng"
-                
-                if args.ansi:
-                    # PNG to ANSI
-                    if os.path.exists(f"{self.temp_prefix}.png"):
-                        os.unlink(f"{self.temp_prefix}.png")
-                    self.run_prog(f"{rotate_cmd} > {self.temp_prefix}.png")
-                    self.run_prog(f"img2ans -b'{term_background}' {self.temp_prefix}.png")
-                else:
-                    # PNG to SIXEL - direct pipeline
-                    self.run_prog(f"{rotate_cmd} | img2sixel -I -B '{term_background}'")
-            else:
-                # No rotation needed
-                if background.lower() != 'white':
-                    cmd = f"gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH {ps_file} | pnmcrop | pnmmargin -white 10 | ppmchange -closeok white '{background}' | pnmtopng"
-                else:
-                    cmd = f"gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH {ps_file} | pnmcrop | pnmmargin -white 10 | pnmtopng"
-                
-                if args.ansi:
-                    # PNG to ANSI
-                    if os.path.exists(f"{self.temp_prefix}.png"):
-                        os.unlink(f"{self.temp_prefix}.png")
-                    self.run_prog(f"{cmd} > {self.temp_prefix}.png")
-                    self.run_prog(f"img2ans -b'{term_background}' {self.temp_prefix}.png")
-                else:
-                    # PNG to SIXEL - direct pipeline
-                    self.run_prog(f"{cmd} | img2sixel -I -B '{term_background}'")
+            effects_processor.img_to_sixel(img, background)
         
         # Clean up
         if not self.debug:
             # Clean up temp files
             for ext in ['.ps', '.png', '.log', '.ppm', '.ans', '.six']:
                 if os.path.exists(f"{self.temp_prefix}{ext}"):
-                    os.unlink(f"{self.temp_prefix}{ext}")
+                    try:
+                        os.unlink(f"{self.temp_prefix}{ext}")
+                    except:
+                        pass
             
             # Remove temp directory if we created one
             if self.temp_dir and os.path.exists(self.temp_dir):
-                shutil.rmtree(self.temp_dir)
-        else:
-            print(f"Debug: Temporary files kept at {self.temp_prefix}.*", file=sys.stderr)
+                try:
+                    shutil.rmtree(self.temp_dir)
+                except:
+                    pass
 
 
 if __name__ == "__main__":
