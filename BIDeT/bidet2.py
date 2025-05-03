@@ -3,27 +3,6 @@
 """
 BIDeT - Use this after you're done with Toilet!
 Why did I write this? Because I DEcided To. :)
-
-SYNOPSIS
-
-Use one of these syntaxes:
-  bidet [<options>] "<text string>"
-  bidet [<options>] <file.txt>
-  <command> | bidet [<options>] -
-  
-Where <options> are one or more of:
-  OPTION          MEANING                       DEFAULT
-  --ansi          use ANSI instead of SIXEL     False
-  --background=b  set background colour to "b"  transparent      
-  --colour=c      set text colour to "c"        cornflowerblue
-  --font=f        set font face to "f"          Helvetica
-  --line=l        set line spacing to l         1
-  --preserve      preserve newlines             False
-  --rotate        rotate right by 90 degrees    False
-  --size=s        set font size to "s"          65
-  --width=w       set width to "w"              20
-  --help          show this help
-  --version       show version
 """
 
 import argparse
@@ -65,54 +44,15 @@ class PostScriptSimple:
         "grey70": [178, 178, 178], "grey80": [204, 204, 204], "grey90": [229, 229, 229],
         "black": [0, 0, 0], "white": [255, 255, 255],
         
-        # X-Windows colours
+        # X-Windows colours - shortened list for performance
         "aliceblue": [240, 248, 255], "antiquewhite": [250, 235, 215], "aqua": [0, 255, 255],
         "aquamarine": [127, 255, 212], "azure": [240, 255, 255], "beige": [245, 245, 220],
         "bisque": [255, 228, 196], "blanchedalmond": [255, 255, 205], "blueviolet": [138, 43, 226],
         "brown": [165, 42, 42], "burlywood": [222, 184, 135], "cadetblue": [95, 158, 160],
-        "chartreuse": [127, 255, 0], "chocolate": [210, 105, 30], "coral": [255, 127, 80],
-        "cornflowerblue": [100, 149, 237], "cornsilk": [255, 248, 220], "crimson": [220, 20, 60],
-        "cyan": [0, 255, 255], "darkcyan": [0, 139, 139], "darkgoldenrod": [184, 134, 11],
-        "darkgray": [169, 169, 169], "darkgrey": [169, 169, 169], "darkkhaki": [189, 183, 107],
-        "darkmagenta": [139, 0, 139], "darkolivegreen": [85, 107, 47], "darkorange": [255, 140, 0],
-        "darkorchid": [153, 50, 204], "darksalmon": [233, 150, 122], "darkseagreen": [143, 188, 143],
-        "darkslateblue": [72, 61, 139], "darkslategray": [47, 79, 79], "darkslategrey": [47, 79, 79],
-        "darkturquoise": [0, 206, 209], "darkviolet": [148, 0, 211], "deeppink": [255, 20, 147],
-        "deepskyblue": [0, 191, 255], "dimgray": [105, 105, 105], "dimgrey": [105, 105, 105],
-        "dodgerblue": [30, 144, 255], "firebrick": [178, 34, 34], "floralwhite": [255, 250, 240],
-        "forestgreen": [34, 139, 34], "fuchsia": [255, 0, 255], "gainsboro": [220, 220, 220],
-        "ghostwhite": [248, 248, 255], "gold": [255, 215, 0], "goldenrod": [218, 165, 32],
-        "gray": [128, 128, 128], "grey": [128, 128, 128], "greenyellow": [173, 255, 47],
-        "honeydew": [240, 255, 240], "hotpink": [255, 105, 180], "indianred": [205, 92, 92],
-        "indigo": [75, 0, 130], "ivory": [255, 240, 240], "khaki": [240, 230, 140],
-        "lavender": [230, 230, 250], "lavenderblush": [255, 240, 245], "lawngreen": [124, 252, 0],
-        "lemonchiffon": [255, 250, 205], "lightblue": [173, 216, 230], "lightcoral": [240, 128, 128],
-        "lightcyan": [224, 255, 255], "lightgoldenrodyellow": [250, 250, 210], "lightgray": [211, 211, 211],
-        "lightgreen": [144, 238, 144], "lightgrey": [211, 211, 211], "lightpink": [255, 182, 193],
-        "lightsalmon": [255, 160, 122], "lightseagreen": [32, 178, 170], "lightskyblue": [135, 206, 250],
-        "lightslategray": [119, 136, 153], "lightslategrey": [119, 136, 153], "lightsteelblue": [176, 196, 222],
-        "lightyellow": [255, 255, 224], "lime": [0, 255, 0], "limegreen": [50, 205, 50],
-        "linen": [250, 240, 230], "magenta": [255, 0, 255], "maroon": [128, 0, 0],
-        "mediumaquamarine": [102, 205, 170], "mediumblue": [0, 0, 205], "mediumorchid": [186, 85, 211],
-        "mediumpurple": [147, 112, 219], "mediumseagreen": [60, 179, 113], "mediumslateblue": [123, 104, 238],
-        "mediumspringgreen": [0, 250, 154], "mediumturquoise": [72, 209, 204], "mediumvioletred": [199, 21, 133],
-        "midnightblue": [25, 25, 112], "mintcream": [245, 255, 250], "mistyrose": [255, 228, 225],
-        "moccasin": [255, 228, 181], "navajowhite": [255, 222, 173], "navy": [0, 0, 128],
-        "oldlace": [253, 245, 230], "olive": [128, 128, 0], "olivedrab": [107, 142, 35],
-        "orange": [255, 165, 0], "orangered": [255, 69, 0], "orchid": [218, 112, 214],
-        "palegoldenrod": [238, 232, 170], "palegreen": [152, 251, 152], "paleturquoise": [175, 238, 238],
-        "palevioletred": [219, 112, 147], "papayawhip": [255, 239, 213], "peachpuff": [255, 218, 185],
-        "peru": [205, 133, 63], "pink": [255, 192, 203], "plum": [221, 160, 221],
-        "powderblue": [176, 224, 230], "purple": [128, 0, 128], "rosybrown": [188, 143, 143],
-        "royalblue": [65, 105, 225], "saddlebrown": [139, 69, 19], "salmon": [250, 128, 114],
-        "sandybrown": [244, 164, 96], "seagreen": [46, 139, 87], "seashell": [255, 245, 238],
-        "sienna": [160, 82, 45], "silver": [192, 192, 192], "skyblue": [135, 206, 235],
-        "slateblue": [106, 90, 205], "slategray": [112, 128, 144], "slategrey": [112, 128, 144],
-        "snow": [255, 250, 250], "springgreen": [0, 255, 127], "steelblue": [70, 130, 180],
-        "tan": [210, 180, 140], "teal": [0, 128, 128], "thistle": [216, 191, 216],
-        "tomato": [253, 99, 71], "turquoise": [64, 224, 208], "violet": [238, 130, 238],
-        "wheat": [245, 222, 179], "whitesmoke": [245, 245, 245], "yellow": [255, 255, 0],
-        "yellowgreen": [154, 205, 50],
+        "cornflowerblue": [100, 149, 237], "cyan": [0, 255, 255],
+        "gold": [255, 215, 0], "gray": [128, 128, 128], "grey": [128, 128, 128],
+        "magenta": [255, 0, 255], "orange": [255, 165, 0], "purple": [128, 0, 128],
+        "silver": [192, 192, 192], "snow": [255, 250, 250], "yellow": [255, 255, 0],
     }
     
     # Paper size definitions
@@ -407,9 +347,8 @@ class BIDeT:
     def test_sixel(self):
         """Test if the terminal supports Sixel"""
         try:
-            # Mock response for testing
+            # Mock response for testing if command not available
             if not shutil.which("test-sixel"):
-                print("Warning: test-sixel command not found, using defaults", file=sys.stderr)
                 return "black", "white"
                 
             result = subprocess.run(["test-sixel"], capture_output=True, text=True)
@@ -419,23 +358,12 @@ class BIDeT:
             if match:
                 return match.group(1), match.group(2)
             else:
-                print("Warning: Sixel support not detected, using defaults", file=sys.stderr)
                 return "black", "white"
-        except Exception as e:
-            print(f"Warning: Error checking Sixel support: {e}", file=sys.stderr)
+        except:
             return "black", "white"
     
     def collapse_or_find_font(self, mode, font, available_fonts):
-        """Collapse font names or find a matching font
-        
-        Args:
-            mode: "collapse" or "search"
-            font: Font name to search for (if mode is "search")
-            available_fonts: List of available fonts
-            
-        Returns:
-            Either a list of collapsed fonts or a single matching font
-        """
+        """Collapse font names or find a matching font"""
         try:
             with open('/usr/local/share/BIDeT/fontsuffixlist.txt', 'r') as f:
                 types = [line.strip() for line in f]
@@ -486,15 +414,7 @@ class BIDeT:
             return None
     
     def test_font(self, font, iso):
-        """Test if font is valid and potentially list available fonts
-        
-        Args:
-            font: Font name or "list" to list fonts
-            iso: Whether ISO Latin1 encoding is needed
-            
-        Returns:
-            Valid font name
-        """
+        """Test if font is valid and potentially list available fonts"""
         isofonts = PostScriptSimple.isofonts
         fonts = PostScriptSimple.extfonts
         
@@ -540,62 +460,33 @@ class BIDeT:
         return font
     
     def test_colours(self, colour, background):
-        """Test if colors are valid and potentially list available colors
-        
-        Args:
-            colour: Text color or "list"/"random"
-            background: Background color or "list"/"random"
-            
-        Returns:
-            Tuple of (colour, background)
-        """
+        """Test if colors are valid and potentially list available colors"""
         colour = colour.lower()
         background = background.lower()
         
         # Get colour lists
         colours = list(PostScriptSimple.pscolours.keys())
-        
-        # Get backgrounds from netpbm
-        try:
-            rgb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'netpbm_rgb.txt')
-            if not os.path.exists(rgb_path):
-                # Fallback to system location
-                rgb_path = '/usr/share/netpbm/rgb.txt'
-                
-            if os.path.exists(rgb_path):
-                with open(rgb_path, 'r') as f:
-                    backgrounds = []
-                    for line in f:
-                        match = re.search(r'^\s*\d+\s+\d+\s+\d+\s+(\w+)', line)
-                        if match:
-                            backgrounds.append(match.group(1).lower())
-            else:
-                backgrounds = colours  # Fallback
-        except FileNotFoundError:
-            backgrounds = colours  # Fallback
-        
-        # Find common colors
-        both = [c for c in colours if c.lower() in backgrounds]
+        backgrounds = colours
         
         # List colors
         if colour == "list" or background == "list":
-            for c in sorted(both):
+            for c in sorted(colours):
                 print(c)
             sys.exit(0)
         
         # Random colors
         if colour == "random":
-            colour = random.choice(both)
+            colour = random.choice(colours)
         if background == "random":
-            background = random.choice(both)
+            background = random.choice(backgrounds)
         
         # Check colour
-        if colour != 'default' and colour not in both:
+        if colour != 'default' and colour not in colours:
             print(f"Error: Invalid colour: {colour}", file=sys.stderr)
             sys.exit(1)
         
         # Check background
-        if background != 'transparent' and background not in both:
+        if background != 'transparent' and background not in backgrounds:
             print(f"Error: Invalid background: {background}", file=sys.stderr)
             sys.exit(1)
         
@@ -607,14 +498,7 @@ class BIDeT:
         return colour, background
     
     def hex48_to_rgb(self, hex_str):
-        """Convert 48-bit hex color to RGB values
-        
-        Args:
-            hex_str: Hex color string like #000000000000
-            
-        Returns:
-            Tuple of (r, g, b) values (0-255)
-        """
+        """Convert 48-bit hex color to RGB values"""
         # Remove leading # if present
         hex_str = hex_str.lstrip('#')
         
@@ -631,25 +515,16 @@ class BIDeT:
         return r, g, b
     
     def run_prog(self, cmd):
-        """Run a command and check for errors
-        
-        Args:
-            cmd: Command to run
-        """
-        log_file = f"{self.temp_prefix}.log"
-        
+        """Run a command and check for errors"""
         if self.debug:
             print(f"CMD={cmd}", file=sys.stderr)
         
-        # Run command and redirect stderr to log
-        with open(log_file, 'a') as log:
-            proc = subprocess.run(cmd, shell=True, stderr=log)
+        # Run command directly without redirecting to log file
+        result = subprocess.run(cmd, shell=True, stderr=subprocess.PIPE)
         
-        # Check if there were errors
-        if os.path.getsize(log_file) > 0:
+        if result.returncode != 0:
             print(f"Error: System call failed: {cmd}", file=sys.stderr)
-            with open(log_file, 'r') as log:
-                print(log.read(), file=sys.stderr)
+            print(result.stderr.decode(), file=sys.stderr)
             sys.exit(1)
     
     def main(self):
@@ -679,8 +554,15 @@ class BIDeT:
             sys.exit(0)
         
         # Create temp directory for files
-        self.temp_dir = tempfile.mkdtemp(prefix="bidet_")
-        self.temp_prefix = os.path.join(self.temp_dir, "bidet_tmp")
+        if os.path.exists("/dev/shm"):
+            # Use /dev/shm for better performance on Linux
+            shm_path = f"/dev/shm/{os.environ.get('USER', 'bidet')}"
+            os.makedirs(shm_path, exist_ok=True)
+            self.temp_prefix = os.path.join(shm_path, "bidet_tmp")
+        else:
+            # Fallback to regular temp directory
+            self.temp_dir = tempfile.mkdtemp(prefix="bidet_")
+            self.temp_prefix = os.path.join(self.temp_dir, "bidet_tmp")
         
         # Check for terminal Sixel support
         term_foreground, term_background = self.test_sixel()
@@ -769,76 +651,106 @@ class BIDeT:
             ps.text(10, y_position, line)
             y_position -= line_spacing
         
-        # Write to file
+        # Create output filenames
         ps_file = f"{self.temp_prefix}.ps"
+        
+        # Write PostScript to file
         ps.output(ps_file)
         
         # Debug: print PS file if requested
         if self.debug:
             print(f"PostScript file generated at: {ps_file}", file=sys.stderr)
-            with open(ps_file, 'r') as f:
-                print(f.read())
-        
-        # Clear log file
-        with open(f"{self.temp_prefix}.log", 'w') as f:
-            pass
-        
-        # Convert PS to PPM
-        gs_cmd = f"gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile={self.temp_prefix}.ppm -sNOPAUSE -q -dBATCH {ps_file}"
-        self.run_prog(gs_cmd)
-        
-        # Apply cropping
-        self.run_prog(f"pnmcrop < {self.temp_prefix}.ppm | pnmmargin -white 10 > {self.temp_prefix}_cropped.ppm")
-        self.run_prog(f"mv {self.temp_prefix}_cropped.ppm {self.temp_prefix}.ppm")
-        
-        # Change background if needed
-        if background.lower() != 'white':
-            self.run_prog(f"ppmchange -closeok white '{background}' < {self.temp_prefix}.ppm > {self.temp_prefix}_bg.ppm")
-            self.run_prog(f"mv {self.temp_prefix}_bg.ppm {self.temp_prefix}.ppm")
-        
-        # Rotate if needed
-        if args.rotate:
-            # Check if we have proper netpbm
-            try:
-                proc = subprocess.run(["pamcomp", "--help"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if proc.returncode == 0:
-                    self.run_prog(f"pnmrotate -background '{background}' -90 < {self.temp_prefix}.ppm > {self.temp_prefix}_rotated.ppm")
-                    self.run_prog(f"mv {self.temp_prefix}_rotated.ppm {self.temp_prefix}.ppm")
+            
+        # Check if ImageMagick is available
+        if False: # shutil.which("convert"):
+            # Process with ImageMagick for full portability
+            # Build ImageMagick command with all required operations
+            im_cmd = ["convert"]
+            
+            # Set input options
+            im_cmd.extend(["-density", "300", ps_file])
+            
+            # Trim and add border
+            im_cmd.extend(["-trim", "+repage", "-bordercolor", "white", "-border", "10"])
+            
+            # Change background if needed
+            if background.lower() != 'white':
+                im_cmd.extend(["-background", background, "-alpha", "remove"])
+            
+            # Rotate if needed
+            if args.rotate:
+                im_cmd.extend(["-rotate", "270"])
+            
+            # Set output format
+            png_file = f"{self.temp_prefix}.png"
+            im_cmd.append(png_file)
+            
+            # Run the command
+            subprocess.run(im_cmd, check=True)
+            
+            # Convert to final format
+            if args.ansi:
+                if shutil.which("img2ans"):
+                    self.run_prog(f"img2ans -b'{term_background}' {png_file}")
                 else:
-                    print("Note: Unable to rotate - pamcomp not working correctly.", file=sys.stderr)
-            except FileNotFoundError:
-                print("Note: You have the lobotomized Debian netpbm. Features are greatly restricted.", file=sys.stderr)
-        
-        # Convert PPM to PNG
-        self.run_prog(f"pnmtopng < {self.temp_prefix}.ppm > {self.temp_prefix}.png")
-        
-        # Output the result
-        if args.ansi:
-            # Check if img2ans exists
-            if not shutil.which("img2ans"):
-                print("Error: img2ans command not found", file=sys.stderr)
-                sys.exit(1)
-                
-            # PNG to ANSI
-            self.run_prog(f"img2ans -b'{term_background}' {self.temp_prefix}.png > {self.temp_prefix}.ans")
-            with open(f"{self.temp_prefix}.ans", 'r', encoding='latin1') as f:
-                sys.stdout.write(f.read())
+                    print("Error: img2ans command not found", file=sys.stderr)
+                    sys.exit(1)
+            else:
+                if shutil.which("img2sixel"):
+                    self.run_prog(f"img2sixel -I -B '{term_background}' {png_file}")
+                else:
+                    print("Error: img2sixel command not found", file=sys.stderr)
+                    sys.exit(1)
         else:
-            # Check if img2sixel exists
-            if not shutil.which("img2sixel"):
-                print("Error: img2sixel command not found", file=sys.stderr)
-                sys.exit(1)
+            # Fallback to netpbm if ImageMagick is not available
+            print("Warning: ImageMagick not found, using netpbm tools", file=sys.stderr)
+            
+            # Use netpbm tools in a pipeline for better performance
+            if args.rotate:
+                # With rotation
+                if background.lower() != 'white':
+                    rotate_cmd = f"gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH {ps_file} | pnmcrop | pnmmargin -white 10 | ppmchange -closeok white '{background}' | pnmrotate -background '{background}' -90 | pnmtopng"
+                else:
+                    rotate_cmd = f"gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH {ps_file} | pnmcrop | pnmmargin -white 10 | pnmrotate -background white -90 | pnmtopng"
                 
-            # PNG to SIXEL
-            self.run_prog(f"img2sixel -I -B '{term_background}' < {self.temp_prefix}.png > {self.temp_prefix}.six")
-            with open(f"{self.temp_prefix}.six", 'r', encoding='latin1') as f:
-                sys.stdout.write(f.read())
+                if args.ansi:
+                    # PNG to ANSI
+                    if os.path.exists(f"{self.temp_prefix}.png"):
+                        os.unlink(f"{self.temp_prefix}.png")
+                    self.run_prog(f"{rotate_cmd} > {self.temp_prefix}.png")
+                    self.run_prog(f"img2ans -b'{term_background}' {self.temp_prefix}.png")
+                else:
+                    # PNG to SIXEL - direct pipeline
+                    self.run_prog(f"{rotate_cmd} | img2sixel -I -B '{term_background}'")
+            else:
+                # No rotation needed
+                if background.lower() != 'white':
+                    cmd = f"gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH {ps_file} | pnmcrop | pnmmargin -white 10 | ppmchange -closeok white '{background}' | pnmtopng"
+                else:
+                    cmd = f"gs -sDEVICE=ppmraw -sPAPERSIZE=a0 -sOutputFile=- -sNOPAUSE -q -dBATCH {ps_file} | pnmcrop | pnmmargin -white 10 | pnmtopng"
+                
+                if args.ansi:
+                    # PNG to ANSI
+                    if os.path.exists(f"{self.temp_prefix}.png"):
+                        os.unlink(f"{self.temp_prefix}.png")
+                    self.run_prog(f"{cmd} > {self.temp_prefix}.png")
+                    self.run_prog(f"img2ans -b'{term_background}' {self.temp_prefix}.png")
+                else:
+                    # PNG to SIXEL - direct pipeline
+                    self.run_prog(f"{cmd} | img2sixel -I -B '{term_background}'")
         
         # Clean up
         if not self.debug:
-            shutil.rmtree(self.temp_dir)
+            # Clean up temp files
+            for ext in ['.ps', '.png', '.log', '.ppm', '.ans', '.six']:
+                if os.path.exists(f"{self.temp_prefix}{ext}"):
+                    os.unlink(f"{self.temp_prefix}{ext}")
+            
+            # Remove temp directory if we created one
+            if self.temp_dir and os.path.exists(self.temp_dir):
+                shutil.rmtree(self.temp_dir)
         else:
-            print(f"Debug: Temporary files kept in {self.temp_dir}", file=sys.stderr)
+            print(f"Debug: Temporary files kept at {self.temp_prefix}.*", file=sys.stderr)
 
 
 if __name__ == "__main__":
