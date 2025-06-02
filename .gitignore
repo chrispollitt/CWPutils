@@ -41,12 +41,16 @@ a.out
 *.bak
 *.BAK
 *-BAK
-BAK/*
-tmp/*
+BAK/
+tmp/
+OLD/
 
 # OS files
 .DS_Store
 .nfs*
+
+# Python
+__pycache__/
 
 # Local stuff
 config.*

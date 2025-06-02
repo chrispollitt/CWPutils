@@ -29,6 +29,8 @@ import argparse
 import subprocess
 import shlex
 import configparser
+import socket  # Added for hostname
+from datetime import datetime  # Added for timestamp
 
 # --- Default Configuration Values ---
 DEFAULT_SSH_PORT = 22
@@ -162,7 +164,26 @@ def main():
         parser.error("Recipients must be provided on the command line if '-t' is not part of --remote-sendmail-options.")
 
     # 5. Read the entire email message from stdin
-    email_message = sys.stdin.read()
+    original_email_message = sys.stdin.read()
+
+    # --- START: Add custom trace header ---
+    try:
+        # Get fully qualified domain name if possible, otherwise just hostname
+        hostname = socket.getfqdn()
+        if not hostname or hostname == 'localhost': # Fallback if FQDN is not useful
+            hostname = socket.gethostname()
+    except Exception:
+        hostname = "unknown_host" # Fallback in case of any error
+
+    timestamp = datetime.now().isoformat()
+
+    # Construct the trace header. It must end with a newline.
+    trace_header_value = f"Handled by sendmail.py on {hostname} at {timestamp} (forwarding to {args.ssh_user}@{args.ssh_host})"
+    trace_header = f"X-SendmailPy-Trace: {trace_header_value}\n"
+
+    # Prepend the trace header to the original email message
+    email_message_to_send = trace_header + original_email_message
+    # --- END: Add custom trace header ---
 
     # 6. Construct the SSH command
     ssh_command = ['ssh']
@@ -184,17 +205,19 @@ def main():
         remote_sendmail_cmd_parts.extend(shlex.split(remote_opts_str))
     if args.recipients:
         remote_sendmail_cmd_parts.extend([shlex.quote(rcpt) for rcpt in args.recipients])
-    
+
     full_remote_command = ' '.join(remote_sendmail_cmd_parts)
     ssh_command.append(full_remote_command)
 
     if args.verbose:
+        print(f"Info: Adding trace header: X-SendmailPy-Trace: {trace_header_value}", file=sys.stderr)
         print(f"Info: Attempting to send email via: {' '.join(ssh_command)}", file=sys.stderr)
         print(f"Info: Remote sendmail command: {full_remote_command}", file=sys.stderr)
-        if len(email_message) > 500:
-            print(f"Info: Email message (first 500 chars):\n{email_message[:500]}...", file=sys.stderr)
+        # Log the message that will be sent, including the added header
+        if len(email_message_to_send) > 500:
+            print(f"Info: Email message to send (first 500 chars with added header):\n{email_message_to_send[:500]}...", file=sys.stderr)
         else:
-            print(f"Info: Email message:\n{email_message}", file=sys.stderr)
+            print(f"Info: Email message to send (with added header):\n{email_message_to_send}", file=sys.stderr)
         print("---", file=sys.stderr)
 
 
@@ -208,7 +231,8 @@ def main():
             text=True,
             errors='replace' # Handle potential encoding issues in the email message
         )
-        stdout, stderr = process.communicate(input=email_message)
+        # Send the modified email message (with the prepended header)
+        stdout, stderr = process.communicate(input=email_message_to_send)
 
         if process.returncode != 0:
             print(f"Error: SSH/Sendmail command failed with exit code {process.returncode}", file=sys.stderr)
@@ -217,7 +241,7 @@ def main():
             if stderr:
                 print(f"Stderr:\n{stderr}", file=sys.stderr)
             sys.exit(process.returncode)
-        
+
         if args.verbose:
             print("Info: Email sent successfully.", file=sys.stderr)
             if stdout:
