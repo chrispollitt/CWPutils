@@ -20,6 +20,8 @@ User = sendmail_forwarder
 RemoteSendmailPath = /usr/sbin/sendmail
 # RemoteSendmailOptions = -oi
 # Verbose = false
+# FromAddress = sender@example.com
+# IgnoreDots = false
 
 """
 
@@ -37,6 +39,8 @@ DEFAULT_SSH_PORT = 22
 DEFAULT_REMOTE_SENDMAIL_PATH = "/usr/sbin/sendmail"
 DEFAULT_REMOTE_SENDMAIL_OPTIONS = "" # e.g., "-t -oi"
 DEFAULT_VERBOSE = False
+DEFAULT_FROM_ADDRESS = None # ADDED: Default for From Address
+DEFAULT_IGNORE_DOTS = False # ADDED: Default for Ignore Dots
 
 # --- Configuration File Paths ---
 GLOBAL_CONFIG_FILE = '/etc/sendmailrc'
@@ -63,7 +67,6 @@ def load_config_from_files(cfg_to_update: dict):
         ssh_section = parser['SSH']
         cfg_to_update['ssh_host'] = ssh_section.get('Host', cfg_to_update.get('ssh_host'))
         cfg_to_update['ssh_user'] = ssh_section.get('User', cfg_to_update.get('ssh_user'))
-        # Ensure port is int, fallback to existing or default if conversion fails
         try:
             cfg_to_update['ssh_port'] = ssh_section.getint('Port', cfg_to_update.get('ssh_port'))
         except ValueError:
@@ -73,22 +76,38 @@ def load_config_from_files(cfg_to_update: dict):
         cfg_to_update['ssh_key_file'] = ssh_section.get('KeyFile', cfg_to_update.get('ssh_key_file'))
         cfg_to_update['remote_sendmail_path'] = ssh_section.get('RemoteSendmailPath', cfg_to_update.get('remote_sendmail_path'))
         cfg_to_update['remote_sendmail_options'] = ssh_section.get('RemoteSendmailOptions', cfg_to_update.get('remote_sendmail_options'))
-        # Verbose can also be in config
+        
+        # ADDED: Load new config options
+        cfg_to_update['from_address'] = ssh_section.get('FromAddress', cfg_to_update.get('from_address'))
+        try:
+            cfg_to_update['ignore_dots'] = ssh_section.getboolean('IgnoreDots', cfg_to_update.get('ignore_dots'))
+        except ValueError:
+            if cfg_to_update.get('verbose', DEFAULT_VERBOSE):
+                print(f"Warning: Invalid IgnoreDots value in config. Using {cfg_to_update.get('ignore_dots')}.", file=sys.stderr)
+        
         try:
             cfg_to_update['verbose'] = ssh_section.getboolean('Verbose', cfg_to_update.get('verbose'))
         except ValueError:
-             if cfg_to_update.get('verbose', DEFAULT_VERBOSE): # Check initial verbose if current is not set
+             if cfg_to_update.get('verbose', DEFAULT_VERBOSE):
                 print(f"Warning: Invalid Verbose value in config. Using {cfg_to_update.get('verbose')}.", file=sys.stderr)
 
 
 def get_env_var(var_name: str, default_value: any, type_conv=str):
     """Gets an environment variable with a prefix, applying type conversion."""
-    env_val_str = os.getenv(f"{ENV_PREFIX}{var_name}")
+    env_val_str = os.getenv(f"{ENV_PREFIX}{var_name.upper()}") # MODIFIED: Ensure var_name is upper for env var
     if env_val_str is not None:
         try:
+            # Special handling for boolean string conversion if type_conv is bool
+            if type_conv == bool:
+                if env_val_str.lower() in ('true', '1', 'yes', 'on'):
+                    return True
+                elif env_val_str.lower() in ('false', '0', 'no', 'off'):
+                    return False
+                else:
+                    raise ValueError(f"Invalid boolean string: {env_val_str}")
             return type_conv(env_val_str)
-        except ValueError:
-            print(f"Warning: Invalid environment variable {ENV_PREFIX}{var_name}='{env_val_str}'. Using default/config.", file=sys.stderr)
+        except ValueError as e:
+            print(f"Warning: Invalid environment variable {ENV_PREFIX}{var_name.upper()}='{env_val_str}'. Error: {e}. Using default/config.", file=sys.stderr)
     return default_value
 
 def main():
@@ -101,14 +120,15 @@ def main():
         'remote_sendmail_path': DEFAULT_REMOTE_SENDMAIL_PATH,
         'remote_sendmail_options': DEFAULT_REMOTE_SENDMAIL_OPTIONS,
         'verbose': DEFAULT_VERBOSE,
-        'recipients': []
+        'recipients': [],
+        'from_address': DEFAULT_FROM_ADDRESS, # ADDED
+        'ignore_dots': DEFAULT_IGNORE_DOTS,   # ADDED
     }
 
     # 2. Load configuration from files (updates config dict)
     load_config_from_files(config)
 
     # 3. Prepare argparse, using values from (Defaults -> Config Files -> Env) as defaults for CLI args
-    #    The ArgumentDefaultsHelpFormatter shows these defaults in --help
     parser = argparse.ArgumentParser(
         description="Forward email from stdin to remote sendmail via SSH.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -116,6 +136,9 @@ def main():
 
     # Helper to get default for argparse, respecting ENV > Config > Hardcoded default
     def arg_default(env_key_suffix, config_key, type_conv=str):
+        # For booleans where action='store_true', type_conv should handle string to bool
+        if type_conv == bool:
+             return get_env_var(env_key_suffix, config[config_key], type_conv=bool)
         return get_env_var(env_key_suffix, config[config_key], type_conv)
 
     # SSH Arguments
@@ -138,20 +161,28 @@ def main():
                         help="Path to sendmail executable on the remote host.")
     parser.add_argument('--remote-sendmail-options', type=str,
                         default=arg_default('REMOTE_SENDMAIL_OPTIONS', 'remote_sendmail_options'),
-                        help="Options to pass to the remote sendmail command (e.g., '-t -oi').")
+                        help="Options to pass to the remote sendmail command (e.g., '-oident=foo'). Note: some options like -f may be overridden by dedicated arguments.")
+    
+    # ADDED: New arguments for sendmail options
+    parser.add_argument('-f', '--from-address', type=str,
+                        default=arg_default('FROM_ADDRESS', 'from_address'),
+                        help="Envelope sender address (passed as -f to remote sendmail). Overrides -f in --remote-sendmail-options.")
+    parser.add_argument('-i', '--ignore-dots', action='store_true',
+                        default=arg_default('IGNORE_DOTS', 'ignore_dots', type_conv=bool), # MODIFIED type_conv
+                        help="Pass -i to remote sendmail (ignores dots on lines by themselves). Added if not in --remote-sendmail-options.")
 
     # Other Arguments
-    verbose_env_str = os.getenv(f"{ENV_PREFIX}VERBOSE", str(config['verbose'])).lower()
+    # MODIFIED: Use arg_default for verbose as well for consistency
+    verbose_cli_default = arg_default('VERBOSE', 'verbose', type_conv=bool)
     parser.add_argument('-v', '--verbose', action='store_true',
-                        default=(verbose_env_str == 'true'),
-                        help="Enable verbose output.")
+                        default=verbose_cli_default,
+                        help="Enable verbose output for this script. Also passes -v to remote sendmail if not already specified in --remote-sendmail-options.")
     parser.add_argument('recipients', nargs='*',
                         help="Recipient email addresses. Usually not needed if '-t' is in remote_sendmail_options.")
 
     args = parser.parse_args()
 
-    # 4. Final configuration is now in `args` object, respecting full precedence.
-    #    (CLI > ENV > User Config > Global Config > Defaults)
+    # 4. Final configuration is now in `args` object.
 
     # Validation
     if not args.ssh_host:
@@ -160,66 +191,101 @@ def main():
         parser.error("SSH user is required. Set via --ssh-user, environment, or config file.")
 
     remote_opts_str = args.remote_sendmail_options if args.remote_sendmail_options else ""
-    if '-t' not in remote_opts_str.split() and not args.recipients:
-        parser.error("Recipients must be provided on the command line if '-t' is not part of --remote-sendmail-options.")
+    
+    # MODIFIED: Check for -t considers options that will be added later too.
+    # For now, this validation remains based on the raw remote_opts_str and recipients.
+    # A more sophisticated check would analyze the final command.
+    temp_final_opts_check = list(shlex.split(remote_opts_str))
+    if args.ignore_dots and '-i' not in temp_final_opts_check: temp_final_opts_check.append('-i')
+    # -t is often used with recipients in the header, so this validation is key
+    if '-t' not in temp_final_opts_check and not args.recipients:
+        parser.error("Recipients must be provided on the command line if '-t' is not effectively part of the remote sendmail options (via --remote-sendmail-options or other flags that imply recipient handling).")
+
 
     # 5. Read the entire email message from stdin
     original_email_message = sys.stdin.read()
 
     # --- START: Add custom trace header ---
     try:
-        # Get fully qualified domain name if possible, otherwise just hostname
         hostname = socket.getfqdn()
-        if not hostname or hostname == 'localhost': # Fallback if FQDN is not useful
+        if not hostname or hostname == 'localhost': 
             hostname = socket.gethostname()
     except Exception:
-        hostname = "unknown_host" # Fallback in case of any error
+        hostname = "unknown_host" 
 
     timestamp = datetime.now().isoformat()
-
-    # Construct the trace header. It must end with a newline.
     trace_header_value = f"Handled by sendmail.py on {hostname} at {timestamp} (forwarding to {args.ssh_user}@{args.ssh_host})"
     trace_header = f"X-SendmailPy-Trace: {trace_header_value}\n"
-
-    # Prepend the trace header to the original email message
     email_message_to_send = trace_header + original_email_message
     # --- END: Add custom trace header ---
 
     # 6. Construct the SSH command
     ssh_command = ['ssh']
-
-    # --- Add BatchMode to ensure non-interactive operation ---
     ssh_command.extend(['-o', 'BatchMode=yes'])
-    # --- End of addition ---
-
-    if args.ssh_port != DEFAULT_SSH_PORT: # Only add if not default
+    if args.ssh_port != DEFAULT_SSH_PORT:
         ssh_command.extend(['-p', str(args.ssh_port)])
     if args.ssh_key_file:
         ssh_command.extend(['-i', args.ssh_key_file])
     ssh_command.append(f"{args.ssh_user}@{args.ssh_host}")
 
-    # Construct the remote sendmail command string
+    # --- MODIFIED: Construct the remote sendmail command string with new options ---
     remote_sendmail_cmd_parts = [shlex.quote(args.remote_sendmail_path)]
+    
+    options_from_remote_opts_str = []
     if remote_opts_str:
-        # shlex.split handles options that might be quoted, e.g., "-F 'Sender Name'"
-        remote_sendmail_cmd_parts.extend(shlex.split(remote_opts_str))
+        options_from_remote_opts_str = shlex.split(remote_opts_str)
+
+    # If --from-address is given, it takes precedence. Filter out any -f from options_from_remote_opts_str.
+    final_remote_options = []
+    if args.from_address:
+        skip_next = False
+        # Iterate through the options parsed from --remote-sendmail-options
+        for i in range(len(options_from_remote_opts_str)):
+            if skip_next:
+                skip_next = False
+                continue
+            # If we find '-f', we skip it and its argument
+            if options_from_remote_opts_str[i] == '-f':
+                skip_next = True 
+            else:
+                # Otherwise, keep the option
+                final_remote_options.append(options_from_remote_opts_str[i])
+        # Add the -f and its value from the dedicated --from-address argument
+        final_remote_options.extend(['-f', shlex.quote(args.from_address)])
+    else:
+        # If --from-address is not used, just use the options as they came from --remote-sendmail-options
+        final_remote_options.extend(options_from_remote_opts_str)
+
+    # Handle -i (ignore dots)
+    # Add if args.ignore_dots is true and -i is not already in final_remote_options
+    if args.ignore_dots and '-i' not in final_remote_options:
+        final_remote_options.append('-i')
+        
+    # Handle -v (verbose for remote sendmail, triggered by this script's verbose flag)
+    # Add if args.verbose is true (meaning sendmail.py is verbose) and -v is not already in final_remote_options
+    #if args.verbose and '-v' not in final_remote_options:
+    #    final_remote_options.append('-vv')
+        
+    # Add all processed options to the command
+    remote_sendmail_cmd_parts.extend(final_remote_options)
+
+    # Add recipients (these are positional arguments to sendmail)
     if args.recipients:
         remote_sendmail_cmd_parts.extend([shlex.quote(rcpt) for rcpt in args.recipients])
+    # --- END MODIFIED section for remote sendmail command construction ---
 
     full_remote_command = ' '.join(remote_sendmail_cmd_parts)
     ssh_command.append(full_remote_command)
 
     if args.verbose:
         print(f"Info: Adding trace header: X-SendmailPy-Trace: {trace_header_value}", file=sys.stderr)
-        print(f"Info: Attempting to send email via: {' '.join(ssh_command)}", file=sys.stderr)
-        print(f"Info: Remote sendmail command: {full_remote_command}", file=sys.stderr)
-        # Log the message that will be sent, including the added header
+        print(f"Info: Attempting to send email via: {' '.join(map(shlex.quote, ssh_command))}", file=sys.stderr) # MODIFIED: quote for safety
+        print(f"Info: Remote sendmail command to be executed: {full_remote_command}", file=sys.stderr)
         if len(email_message_to_send) > 500:
             print(f"Info: Email message to send (first 500 chars with added header):\n{email_message_to_send[:500]}...", file=sys.stderr)
         else:
             print(f"Info: Email message to send (with added header):\n{email_message_to_send}", file=sys.stderr)
         print("---", file=sys.stderr)
-
 
     # 7. Execute the command
     try:
@@ -229,9 +295,8 @@ def main():
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            errors='replace' # Handle potential encoding issues in the email message
+            errors='replace'
         )
-        # Send the modified email message (with the prepended header)
         stdout, stderr = process.communicate(input=email_message_to_send)
 
         if process.returncode != 0:
@@ -246,13 +311,13 @@ def main():
             print("Info: Email sent successfully.", file=sys.stderr)
             if stdout:
                 print(f"Stdout:\n{stdout}", file=sys.stderr)
-            if stderr: # sendmail -v often prints to stderr even on success
+            if stderr: 
                 print(f"Stderr:\n{stderr}", file=sys.stderr)
         sys.exit(0)
 
     except FileNotFoundError:
         print(f"Error: The 'ssh' command was not found. Please ensure it is installed and in your PATH.", file=sys.stderr)
-        sys.exit(127) # Standard exit code for command not found
+        sys.exit(127)
     except Exception as e:
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
         sys.exit(1)
