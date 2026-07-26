@@ -1,0 +1,111 @@
+.TH CUT2 1 "February 2025" "cut2 1.0" "User Commands"
+.SH NAME
+cut2 \- enhanced field and character selection utility with PCRE delimiter support
+
+.SH SYNOPSIS
+.B cut2
+[\-f LIST | \-c LIST] [\-d DELIM] [FILE...]
+
+.SH DESCRIPTION
+The
+.B cut2
+command extracts fields or characters from input files or standard input. Unlike GNU cut, it correctly handles quoted fields, escaped characters, and supports PCRE regular expressions for field delimiters.
+
+By default, fields are separated by one or more tabs or spaces ([\et ]+).
+
+.SH OPTIONS
+.TP
+.B \-f LIST
+Select fields to extract. LIST can be a comma-separated list of field numbers and ranges (e.g., 1,3,5-7). Fields are delimited by the pattern specified with \-d, or by default [\et ]+ (one or more tabs or spaces).
+
+.TP
+.B \-c LIST
+Select specific character positions. LIST can be a comma-separated list of positions and ranges (e.g., 1-3,5,7-).
+
+.TP
+.B \-d DELIM
+Use DELIM as the field delimiter PCRE pattern. Default is [\et ]+ (one or more tabs or spaces). The delimiter is interpreted as a Perl Compatible Regular Expression (PCRE).
+
+.SH FIELD LISTS
+Field and character lists support the following formats:
+.TP
+.B N
+The Nth field or character (starting from 1)
+.TP
+.B N\-M
+Fields or characters from N to M (inclusive)
+.TP
+.B N\-
+Fields or characters from N to the end of the line
+.TP
+.B N,M,P
+Multiple individual fields or characters
+
+.SH EXAMPLES
+Extract the second field from space/tab-separated input:
+.RS
+.B echo 'John    Doe    30' | cut2 \-f2
+.br
+Doe
+.RE
+
+Extract fields with quoted values:
+.RS
+.B echo 'John "Doe Smith" 30' | cut2 \-f2
+.br
+Doe Smith
+.RE
+
+Extract fields 1 and 3 from comma-separated values:
+.RS
+.B echo 'Alice,Bob,25' | cut2 \-f1,3 \-d','
+.br
+Alice	25
+.RE
+
+Extract fields using a regex delimiter (comma or semicolon):
+.RS
+.B echo 'a,b;c,d' | cut2 \-f2,4 \-d'[,;]'
+.br
+b	d
+.RE
+
+Extract character positions 1-3:
+.RS
+.B echo "abcdef" | cut2 \-c1\-3
+.br
+abc
+.RE
+
+Extract fields from files with multiple spaces:
+.RS
+.B echo 'foo  bar    baz' | cut2 \-f1,3
+.br
+foo	baz
+.RE
+
+.SH NOTES
+.IP \(bu 2
+The output delimiter for field mode is always a tab character, regardless of the input delimiter pattern.
+.IP \(bu 2
+Quoted fields (using single or double quotes) are preserved as single fields even if they contain the delimiter pattern.
+.IP \(bu 2
+Escaped characters within fields are handled correctly (e.g., \e" or \e').
+.IP \(bu 2
+The PCRE pattern must be valid; invalid patterns will cause the program to exit with an error.
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success
+.TP
+.B 1
+Error (file not found, invalid PCRE pattern, etc.)
+
+.SH AUTHOR
+Written by OpenAI.
+
+.SH SEE ALSO
+.BR cut (1),
+.BR awk (1),
+.BR pcre (3)

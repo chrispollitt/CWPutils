@@ -68,6 +68,8 @@ class MailxWrapper:
                           help='Read from mailbox file')
         parser.add_argument('-u', '--user',
                           help='Read user\'s mailbox')
+        parser.add_argument('-p', '--sendmail-path',
+                          help='sendmail program path')
 
         # Positional arguments (recipients)
         parser.add_argument('recipients', nargs='*',
@@ -355,6 +357,7 @@ class MailxWrapper:
         self.verbose = args.verbose
         self.ignore_interrupts = args.ignore_interrupts
         self.no_network = args.no_network # Currently not used, but kept for mailx compatibility
+        self.sendmail_path = args.sendmail_path
 
         # Handle mailbox operations
         if args.file is not None or args.user is not None:
