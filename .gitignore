@@ -67,3 +67,6 @@ env2.pod-middle
 */t/out*
 */t/exp*
 BIDeT/netpbm-sf-10.73.33_amd64.deb
+BIDeT/fontlist-c.txt
+BIDeT/fontlist.txt
+BIDeT/fontsuffixlist.txt
