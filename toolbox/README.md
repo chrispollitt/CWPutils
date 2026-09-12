@@ -1,9 +1,9 @@
-# CWPutils/cut2 - text-filtering utilities
+# CWPutils/toolbox - command-line utilities
 
 A small collection of standalone Python 3 command-line utilities for
-slicing and filtering text streams. Each tool is a single
-dependency-free script; no build step or third-party packages are
-required.
+slicing/filtering text streams and doing quick network diagnostics.
+Each tool is a single dependency-free script; no build step or
+third-party packages are required.
 
 | Tool | Purpose |
 | --- | --- |
@@ -11,14 +11,16 @@ required.
 | [`pullout`](#pullout) | Pull a substring out of a stream using before/after context regexes |
 | [`rpullout`](#rpullout) | Like `pullout`, but finds the *last* match before an after-context regex |
 | [`ghgrep`](#ghgrep) | `grep` that also prints the group/section header a match belongs to |
+| [`tcping`](#tcping) | Time a TCP connect/disconnect and report any welcome banner |
 
 Full details for each tool are in its man page (`cut2.1`, `pullout.1`,
-`rpullout.1`, `ghgrep.1`); this file is a quick-start summary.
+`rpullout.1`, `ghgrep.1`, `tcping.1`); this file is a quick-start
+summary.
 
 ## Requirements
 
-Python 3.8+ and nothing else. All four scripts use only the standard
-library (`argparse`, `re`, `sys`).
+Python 3.8+ and nothing else. All scripts use only the standard
+library (`argparse`, `re`, `socket`, `sys`).
 
 ## Installation
 
@@ -104,6 +106,32 @@ ghgrep -i "listening" netstat.txt
 ghgrep --brackets "ESTABLISHED" ports.txt
 ghgrep --separator="----" "SysWOW64" handles.txt
 ```
+
+## tcping
+
+Times how long a TCP connect takes (wall-clock ms), then disconnects
+immediately. Along the way it takes one brief, passive look at
+whether the server sent an unsolicited "welcome" banner (SSH, FTP,
+SMTP and POP3 servers greet before you say anything) - no data is
+ever sent to the server.
+
+```bash
+tcping github.com 22
+# github.com:22 connected in 110.37 ms
+# banner: SSH-2.0-49aff2e
+
+tcping example.com 443
+# example.com:443 connected in 40.09 ms
+# banner: (none within 1.0s)
+```
+
+```
+tcping [-w TIMEOUT] [-b BANNER_WAIT] [--no-banner] HOST PORT
+```
+
+- `-w, --timeout SECONDS`: connect timeout (default 5).
+- `-b, --banner-wait SECONDS`: how long to wait for an unsolicited banner (default 1).
+- `--no-banner`: skip the banner check; close the socket immediately on connect.
 
 ## Testing
 

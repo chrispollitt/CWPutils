@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""
+tcping - time a TCP connect, then disconnect; report any welcome banner.
+
+Opens a TCP connection to HOST:PORT, measures the wall-clock time the
+connect() call took (in milliseconds), and immediately closes the
+connection again. Right after connecting - before closing - it takes a
+brief, passive look at whether the server sent anything unsolicited
+(a "banner"), such as the greeting lines SSH, FTP, SMTP or POP3
+servers send as soon as a client connects, before any request is made.
+
+No data is ever sent to the server: this only connects, listens
+briefly, and disconnects.
+
+Usage:
+    tcping HOST PORT [-w TIMEOUT] [-b BANNER_WAIT] [--no-banner]
+
+Options:
+    -w, --timeout SECONDS       connect timeout (default: 5)
+    -b, --banner-wait SECONDS   how long to wait for an unsolicited
+                                 banner after connecting (default: 1)
+    --no-banner                 skip the banner check entirely (close
+                                 the socket immediately on connect)
+
+Exit status:
+    0   connected successfully (with or without a banner)
+    1   could not connect (refused, timed out, DNS failure, etc.)
+    2   usage error
+
+Examples:
+    tcping example.com 443
+        -> example.com:443 connected in 8.42 ms
+        -> banner: (none within 1.0s)
+
+    tcping mail.example.com 25
+        -> mail.example.com:25 connected in 41.07 ms
+        -> banner: 220 mail.example.com ESMTP Postfix
+
+    tcping example.com 9999 -w 2
+        -> example.com:9999 failed after 2000.31 ms: timed out
+"""
+
+import argparse
+import socket
+import sys
+import time
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="tcping",
+        description="Time a TCP connect/disconnect and report any welcome banner.",
+    )
+    parser.add_argument("host", help="hostname or IP address")
+    parser.add_argument("port", type=int, help="TCP port number")
+    parser.add_argument(
+        "-w", "--timeout", type=float, default=5.0,
+        metavar="SECONDS", help="connect timeout (default: 5)",
+    )
+    parser.add_argument(
+        "-b", "--banner-wait", type=float, default=1.0,
+        metavar="SECONDS", help="time to wait for an unsolicited banner (default: 1)",
+    )
+    parser.add_argument(
+        "--no-banner", action="store_true",
+        help="skip the banner check; close the socket immediately on connect",
+    )
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    target = f"{args.host}:{args.port}"
+    start = time.perf_counter()
+    try:
+        sock = socket.create_connection((args.host, args.port), timeout=args.timeout)
+    except OSError as e:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        print(f"{target} failed after {elapsed_ms:.2f} ms: {e.strerror or e}", file=sys.stderr)
+        return 1
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    print(f"{target} connected in {elapsed_ms:.2f} ms")
+
+    if not args.no_banner:
+        banner = ""
+        sock.settimeout(args.banner_wait)
+        try:
+            data = sock.recv(4096)
+            if data:
+                banner = data.decode("utf-8", errors="replace").rstrip("\r\n")
+        except socket.timeout:
+            pass
+        except OSError:
+            pass
+
+        if banner:
+            print(f"banner: {banner}")
+        else:
+            print(f"banner: (none within {args.banner_wait:g}s)")
+
+    sock.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

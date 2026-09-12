@@ -1,0 +1,93 @@
+.TH TCPING 1 "September 2026" "tcping 1.0" "User Commands"
+.SH NAME
+tcping \- time a TCP connect/disconnect and report any welcome banner
+
+.SH SYNOPSIS
+.B tcping
+[\-w SECONDS] [\-b SECONDS] [\-\-no\-banner]
+.I host port
+
+.SH DESCRIPTION
+.B tcping
+opens a TCP connection to
+.IR host : port ,
+measures the wall-clock time the connect took, in milliseconds, and immediately closes the connection
+again. No data is ever sent to the server.
+
+Right after connecting, and before closing the socket,
+.B tcping
+takes one brief, passive look at whether the server sent anything unsolicited (a "banner") \- the kind of
+greeting line that SSH, FTP, SMTP or POP3 servers send as soon as a client connects, before any request is
+made. This is a single non-blocking read with a short timeout, not an interactive session: nothing is sent
+back to the server and no further conversation is attempted.
+
+.SH ARGUMENTS
+.TP
+.I host
+Hostname or IP address (IPv4 or IPv6) to connect to.
+.TP
+.I port
+TCP port number to connect to.
+
+.SH OPTIONS
+.TP
+.B \-w, \-\-timeout SECONDS
+Connect timeout. Default: 5.
+.TP
+.B \-b, \-\-banner\-wait SECONDS
+How long to wait for an unsolicited banner after connecting. Default: 1.
+.TP
+.B \-\-no\-banner
+Skip the banner check entirely; close the socket immediately upon a successful connect.
+
+.SH OUTPUT
+On success, prints the elapsed connect time, then either the banner text received or a note that none
+arrived within the wait window (omitted entirely if \-\-no\-banner was given):
+.RS
+.nf
+host:port connected in 8.42 ms
+banner: (none within 1.0s)
+.fi
+.RE
+On failure, prints the elapsed time until the connection attempt gave up, and the underlying error, to
+stderr:
+.RS
+.nf
+host:port failed after 2000.31 ms: timed out
+.fi
+.RE
+
+.SH EXAMPLES
+Time a plain connect (HTTPS servers don't speak first, so no banner is expected):
+.RS
+.B tcping example.com 443
+.RE
+
+Check an SMTP server's greeting and how long the TCP handshake itself takes:
+.RS
+.B tcping mail.example.com 25
+.RE
+
+Confirm a port is closed/filtered, with a short timeout instead of the 5s default:
+.RS
+.B tcping example.com 9999 \-w 2
+.RE
+
+.SH EXIT STATUS
+.TP
+.B 0
+Connected successfully (with or without a banner).
+.TP
+.B 1
+Could not connect (refused, timed out, unreachable, DNS failure, etc.).
+.TP
+.B 2
+Usage error (missing arguments).
+
+.SH AUTHOR
+Chris Pollitt.
+
+.SH SEE ALSO
+.BR nc (1),
+.BR telnet (1),
+.BR nmap (1)
