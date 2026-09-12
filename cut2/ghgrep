@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""
+groupgrep - A smart group-header grep tool.
+
+Searches for matching lines in a file and also prints their group headers.
+Intelligently detects what constitutes a "header" based on heuristics.
+
+Usage:
+    groupgrep [options] PATTERN [FILE...]
+    cat file | groupgrep [options] PATTERN
+
+Options:
+    -i, --ignore-case      Case-insensitive matching
+    -v, --invert-match     Invert match (show non-matching lines with headers)
+    -n, --line-number      Show line numbers
+    -H, --with-filename    Show filename
+    --no-filename          Never show filename
+    -C, --context N        Show N lines of context after header (default: all)
+    --header-pattern REGEX Use explicit regex for header detection
+    --separator STR        Use separator line to detect headers (e.g., "----")
+    --brackets             Treat [xxx] lines as headers
+    --no-smart             Disable smart header detection
+    --only-headers         Only print headers, not matching detail lines
+    --color                Colorize output
+    --help                 Show this help
+
+Header Detection Heuristics (in priority order):
+    1. Explicit --header-pattern or --separator or --brackets
+    2. Bracketed lines: [something]
+    3. Separator lines (----, ====, ****) followed by a non-empty line
+    4. Non-indented lines that look like headers (shorter, no leading space)
+    5. Non-empty lines after blank lines
+"""
+
+import sys
+import re
+import argparse
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Group-header grep: search with group context",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=r"""
+Examples:
+    groupgrep "System32" handles.txt
+    groupgrep -i "listening" netstat.txt
+    groupgrep --brackets "ESTABLISHED" ports.txt
+    groupgrep --separator="----" "SysWOW64" handles.txt
+    groupgrep --header-pattern '^\[.*\]$' "1042" ports.txt
+        """
+    )
+    parser.add_argument("pattern", help="Regex pattern to search for")
+    parser.add_argument("files", nargs="*", help="Files to search (default: stdin)")
+    parser.add_argument("-i", "--ignore-case", action="store_true", help="Case-insensitive")
+    parser.add_argument("-v", "--invert-match", action="store_true", help="Invert match")
+    parser.add_argument("-n", "--line-number", action="store_true", help="Show line numbers")
+    parser.add_argument("-H", "--with-filename", action="store_true", help="Show filename")
+    parser.add_argument("--no-filename", action="store_true", help="Never show filename")
+    parser.add_argument("-C", "--context", type=int, default=None, help="Context lines after header")
+    parser.add_argument("--header-pattern", help="Regex for header lines")
+    parser.add_argument("--separator", help="Separator string that precedes headers")
+    parser.add_argument("--brackets", action="store_true", help="Treat [xxx] as headers")
+    parser.add_argument("--no-smart", action="store_true", help="Disable smart detection")
+    parser.add_argument("--only-headers", action="store_true", help="Only print headers")
+    parser.add_argument("--color", action="store_true", help="Colorize output")
+    return parser.parse_args()
+
+
+def is_separator_line(line):
+    """Check if line is a separator (----, ====, ****, etc.)."""
+    stripped = line.strip()
+    if len(stripped) < 3:
+        return False
+    first_char = stripped[0]
+    if first_char not in "-=#*~+":
+        return False
+    return all(c == first_char for c in stripped)
+
+
+def is_bracket_header(line):
+    """Check if line is a bracketed header like [something]."""
+    stripped = line.strip()
+    return stripped.startswith("[") and stripped.endswith("]")
+
+
+def looks_like_header(line, prev_line, next_line):
+    """Smart heuristic: does this line look like a group header?"""
+    stripped = line.rstrip()
+    
+    # Empty lines are never headers
+    if not stripped:
+        return False
+    
+    # Separator lines themselves are never headers
+    if is_separator_line(line):
+        return False
+    
+    # Bracketed lines are headers
+    if is_bracket_header(stripped):
+        return True
+    
+    # Line after separator is a header
+    if prev_line is not None and is_separator_line(prev_line):
+        return True
+    
+    # Non-indented line followed by indented lines
+    if not line.startswith(" ") and not line.startswith("\t"):
+        if next_line is not None and (next_line.startswith(" ") or next_line.startswith("\t")):
+            return True
+    
+    # Line after blank line that starts a new "section"
+    if prev_line is not None and not prev_line.strip():
+        # And the line itself is not indented
+        if not line.startswith(" ") and not line.startswith("\t"):
+            return True
+    
+    # Short non-indented lines with colons or PIDs look like metadata headers
+    if not line.startswith(" ") and not line.startswith("\t"):
+        if any(marker in stripped for marker in ["pid:", "PID:", "exe", "Name:", "Process"]):
+            return True
+    
+    return False
+
+
+def detect_headers(lines, args):
+    """Return list of booleans indicating header lines."""
+    headers = [False] * len(lines)
+    
+    # Explicit header pattern
+    if args.header_pattern:
+        pattern = re.compile(args.header_pattern, re.IGNORECASE if args.ignore_case else 0)
+        for i, line in enumerate(lines):
+            if pattern.search(line):
+                headers[i] = True
+        return headers
+    
+    # Separator-based detection
+    if args.separator:
+        sep = args.separator
+        # Build a regex that matches lines composed of one or more repetitions of sep
+        sep_escaped = re.escape(sep)
+        sep_pattern = re.compile(r'^' + sep_escaped + r'+$')
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if sep_pattern.match(stripped):
+                # Next non-empty line is the header
+                for j in range(i + 1, len(lines)):
+                    if lines[j].strip():
+                        headers[j] = True
+                        break
+        return headers
+    
+    # Bracket mode
+    if args.brackets:
+        for i, line in enumerate(lines):
+            if is_bracket_header(line):
+                headers[i] = True
+        return headers
+    
+    # Smart detection
+    if not args.no_smart:
+        for i, line in enumerate(lines):
+            prev_line = lines[i - 1] if i > 0 else None
+            next_line = lines[i + 1] if i < len(lines) - 1 else None
+            if looks_like_header(line, prev_line, next_line):
+                headers[i] = True
+    
+    return headers
+
+
+def colorize(text, color_code):
+    return f"\033[{color_code}m{text}\033[0m"
+
+
+def format_line(line, line_num, filename, args, is_header=False, is_match=False):
+    """Format a line for output."""
+    parts = []
+    
+    if args.with_filename and filename:
+        parts.append(filename)
+    
+    if args.line_number:
+        parts.append(str(line_num))
+    
+    prefix = ":".join(parts)
+    if prefix:
+        prefix += ":"
+    
+    text = line.rstrip("\n")
+    
+    if args.color:
+        if is_header:
+            text = colorize(text, "1;36")  # Bold cyan
+        elif is_match:
+            text = colorize(text, "1;33")  # Bold yellow
+    
+    return prefix + text
+
+
+def groupgrep_file(lines, pattern, args, filename=None):
+    """Process a single file and yield output lines."""
+    flags = re.IGNORECASE if args.ignore_case else 0
+    try:
+        regex = re.compile(pattern, flags)
+    except re.error as e:
+        print(f"groupgrep: invalid regex: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    headers = detect_headers(lines, args)
+    
+    # Build groups: each group starts at a header and continues until next header or EOF
+    groups = []
+    current_group = []
+    current_header = None
+    
+    for i, line in enumerate(lines):
+        if headers[i]:
+            if current_group:
+                groups.append((current_header, current_group))
+            current_header = i
+            current_group = [i]
+        else:
+            current_group.append(i)
+    
+    if current_group:
+        groups.append((current_header, current_group))
+    
+    # If no headers detected, treat entire file as one group with no header
+    if not groups:
+        groups = [(None, list(range(len(lines))))]
+    
+    # Find matching groups
+    results = []
+    for header_idx, group_indices in groups:
+        matching_lines = []
+        for idx in group_indices:
+            line = lines[idx]
+            is_match = bool(regex.search(line))
+            if args.invert_match:
+                is_match = not is_match
+            if is_match and line.strip():  # Skip empty lines for matching
+                matching_lines.append(idx)
+        
+        if matching_lines:
+            results.append((header_idx, group_indices, matching_lines))
+    
+    # Output results
+    output_lines = []
+    for header_idx, group_indices, match_indices in results:
+        # Print header if exists
+        if header_idx is not None:
+            output_lines.append(format_line(
+                lines[header_idx], header_idx + 1, filename, args,
+                is_header=True, is_match=False
+            ))
+        
+        if args.only_headers:
+            continue
+        
+        # Determine which lines to print
+        if args.context is not None:
+            # Print header context + matching lines
+            lines_to_print = set()
+            if header_idx is not None:
+                lines_to_print.add(header_idx)
+            for match_idx in match_indices:
+                lines_to_print.add(match_idx)
+            # Add context lines after header
+            if header_idx is not None:
+                for i in range(header_idx + 1, min(header_idx + 1 + args.context, len(lines))):
+                    lines_to_print.add(i)
+            # Also add context around matches
+            for match_idx in match_indices:
+                for i in range(max(0, match_idx - 1), min(match_idx + 2, len(lines))):
+                    lines_to_print.add(i)
+            
+            sorted_indices = sorted(lines_to_print)
+            # Only print lines that are in this group
+            sorted_indices = [i for i in sorted_indices if i in group_indices]
+        else:
+            # Print all lines in the group (or just matches)
+            sorted_indices = group_indices
+        
+        prev_idx = None
+        for idx in sorted_indices:
+            if idx == header_idx:
+                continue  # Already printed
+            
+            # Add blank line separator between non-contiguous sections
+            if prev_idx is not None and idx > prev_idx + 1:
+                output_lines.append("")
+            
+            is_match = idx in match_indices
+            output_lines.append(format_line(
+                lines[idx], idx + 1, filename, args,
+                is_header=False, is_match=is_match
+            ))
+            prev_idx = idx
+        
+        # Add blank line between groups
+        output_lines.append("")
+    
+    return output_lines
+
+
+def main():
+    args = parse_args()
+    
+    # Auto-enable color if stdout is a tty
+    if sys.stdout.isatty():
+        args.color = True
+    
+    # Determine if we should show filenames
+    files = args.files if args.files else [None]
+    if len(files) > 1 and not args.no_filename:
+        args.with_filename = True
+    
+    all_output = []
+    
+    for filepath in files:
+        if filepath is None:
+            lines = sys.stdin.readlines()
+            filename = None
+        else:
+            try:
+                with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                filename = filepath if args.with_filename else None
+            except FileNotFoundError:
+                print(f"groupgrep: {filepath}: No such file", file=sys.stderr)
+                continue
+            except PermissionError:
+                print(f"groupgrep: {filepath}: Permission denied", file=sys.stderr)
+                continue
+        
+        output = groupgrep_file(lines, args.pattern, args, filename)
+        all_output.extend(output)
+    
+    # Print output, stripping trailing blank lines
+    while all_output and all_output[-1] == "":
+        all_output.pop()
+    
+    for line in all_output:
+        print(line)
+
+
+if __name__ == "__main__":
+    main()

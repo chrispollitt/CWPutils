@@ -1,0 +1,89 @@
+#!/usr/bin/perl
+use Getopt::Long;
+use IO::Handle;
+use strict;
+use warnings;
+
+sub usage() {
+  print STDERR <<"__EOT__";
+Usage:
+  <prog> | rpullout [-d] [-m] '<want>' '<amatch>'
+
+Where:
+  <prog>   = the program whos output you want to filter
+  rpullout = this program
+  -d       = don't add the .*? between  <want> and <match> patterns
+  -m       = multiline match mode (. can match a newline)
+  <want>     = the bit that you want to see
+  <amatch>   = a regex to match that occurs after the <want> param  
+__EOT__
+  exit 2;
+}
+
+sub main() {
+  STDERR->autoflush(1);
+  STDOUT->autoflush(1);
+  my $dont  = 0;
+  my $multi = 0;
+  my $span  = '.*?';
+  Getopt::Long::Configure ("bundling");
+  GetOptions(
+    "dont|d"  => \$dont,
+    "multi|m" => \$multi
+  ) or usage();
+  my $a = $ARGV[0]; # thing to capture
+  my $c = $ARGV[1]; # thing to match
+  my @matches;
+
+  if(!defined $a or !defined $c) {
+    usage();
+  }
+  if(!length($a)) {
+    print STDERR "error: <want> must not be empty\n";
+    exit(1);
+  }
+  if(!length($c)) {
+    print STDERR "error: <amatch> must not be empty\n";
+    exit(1);
+  }
+  $span = '' if($dont);
+  if($multi) {
+    undef $/;
+    my $lines = <STDIN>;
+    while($lines =~ m~($a)($span)($c)~sig) {
+      my(@a);
+      chomp(@a = ($1,$2,$3));
+      push(@matches, [@a]);
+    }
+  } else {
+    my @lines;
+    chomp(@lines = <STDIN>);
+    @matches = map {m~($a)($span)($c)~ig ? [$1,$2,$3] : ()} @lines;
+  }
+  
+  for my $match (@matches) {
+    my($a1,$b1,$c1,$d1,$e1) = @{$match};
+    $c1 =~ s~^\n~~;
+    while(1) {
+      if(length($b1) and $b1 =~ m~^.*?($a)(.*?)$~si) {
+        $a1 = $1;
+        $b1 = $2;
+        next;
+      } else {
+        $a1 =~ s~^\n~~;
+        print "$a1\n";
+        last;
+      }
+    }
+  }
+}
+
+main();
+
+# cat /etc/hosts | rpullout '^\d\S+' 'cmdesktop'
+
+# CR LF
+# \r \n
+# 15 12 oct
+# 13 10 dec
+# 0d 0a hex

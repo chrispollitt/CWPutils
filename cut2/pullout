@@ -1,0 +1,88 @@
+#!/usr/bin/perl
+use Getopt::Long;
+use IO::Handle;
+use strict;
+use warnings;
+
+sub usage() {
+  print STDERR <<"__EOT__";
+Usage:
+  <prog> | pullout [-opts] '<bmatch>' '<want>' ['<amatch>']
+
+Where:
+  <prog>   = the program whos output you want to filter
+  pullout  = this program
+  -A       = print all parts, including gaps
+  -a       = print all parts (tab sep): <bmatch> <want> <amatch>
+  -d       = don't add the .*? gap between <match> and <want> patterns
+  -m       = multiline match mode (. can match a newline)
+  <bmatch> = a regex to match that occurs before the <want> param  
+  <want>   = the bit that you want to see
+  <amatch> = a regex to match that occurs after the <want> param 
+__EOT__
+  exit 2;
+}
+
+sub main() {
+  STDERR->autoflush(1);
+  STDOUT->autoflush(1);
+  my $All   = 0;
+  my $all   = 0;
+  my $dont  = 0;
+  my $multi = 0;
+  my $span  = '.*?';
+  Getopt::Long::Configure ("bundling");
+  GetOptions(
+    "all2|A"  => \$All,
+    "all|a"   => \$all,
+    "dont|d"  => \$dont,
+    "multi|m" => \$multi
+  ) or usage();
+  my $a = $ARGV[0]; # thing to match before
+  my $c = $ARGV[1]; # thing to capture
+  my $e = $ARGV[2] || '';      # thing to match after
+  my @matches;
+
+  if(!defined $a or !defined $c) {
+    usage();
+  }
+  if(!length($a)) {
+    print STDERR "error: <bmatch> must not be empty\n";
+    print STDERR "Perhaps use rpullout?\n";
+    exit(1);
+  }
+  if(!length($c)) {
+    print STDERR "error: <want> must not be empty\n";
+    exit(1);
+  }
+  $span = '' if($dont);
+  if($multi) {
+    undef $/;
+    my $lines = <STDIN>;
+    while($lines =~ m~($a)($span)($c)($span)($e)~sig) {
+      my(@a);
+      chomp(@a = ($1,$2,$3,$4,$5));
+      push(@matches, [@a]);
+    }
+  } else {
+    my @lines;
+    chomp(@lines = <STDIN>);
+    @matches = map {m~($a)($span)($c)($span)($e)~ig ? [$1,$2,$3,$4,$5] : ()} @lines;
+  }
+  
+  for my $match (@matches) {
+    my($a1,$b1,$c1,$d1,$e1) = @{$match};
+    $c1 =~ s~^\n~~;
+    if($All) {
+      print "$a1\t$b1\t$c1\t$d1\t$e1\n";
+    } elsif($all) {
+      print "$a1\t$c1\t$e1\n";
+    } else {
+      print "$c1\n";
+    }
+  }
+}
+
+main();
+
+# nslookup 'whatwelove.org' | pullout -m 'answer' '\b\d\S+'

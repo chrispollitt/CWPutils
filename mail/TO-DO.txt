@@ -1,0 +1,102 @@
+# Build sendmail command
+cmd = [self.sendmail_path, "-i"] # -i to ignore dots on lines by themselves in message
+
+# Add sendmail options
+if args.verbose: # bsd-mailx -v maps to sendmail -v
+    cmd.append('-v')
+# Add recipients
+if args.from_addr: # sendmail uses -f for envelope sender
+     cmd.extend(['-f', args.from_addr])
+
+===============
+
+Steps:
+
+mailx.py on cmlaptop:
+
+When you run mailx.py, ensure the sender address is set to your u-l.ca address:
+bash
+
+Copy
+./mailx.py -s "Test Subject" -r "chris@u-l.ca" recipient@example.com
+This sets the From: header correctly.
+sendmail.py on cmlaptop:
+
+No changes needed here. It's just a transport.
+Postfix on cmpi:
+
+Crucial: You need to ensure that Postfix on cmpi rewrites the envelope sender from any local address (like chris@cmpi.localdomain or chris@d66-183-145-34.bchsia.telus.net) to chris@u-l.ca before it relays the email to the Exim server at u-l.ca.
+Configuration (main.cf on cmpi):
+ini
+
+Copy
+# /etc/postfix/main.cf
+
+# This is the most important part for sender rewriting
+sender_canonical_maps = hash:/etc/postfix/sender_canonical
+# Or, if you prefer, for all outgoing mail via relay:
+# smtp_generic_maps = hash:/etc/postfix/generic
+
+# Ensure Postfix knows its "identity" for mail originating here,
+# though canonical maps will override.
+# If /etc/mailname exists and contains u-l.ca, that's good.
+# myorigin = /etc/mailname
+# Or explicitly:
+myorigin = u-l.ca # This helps Postfix default to the correct domain for unqualified senders
+
+# Ensure your relayhost is correctly set to u-l.ca's mail server
+relayhost = [mail.u-l.ca] # Or whatever the MX/submission host for u-l.ca is.
+                         # Using brackets [] prevents MX lookups if it's an A record.
+Create/Edit /etc/postfix/sender_canonical on cmpi:
+sql
+
+Copy
+# /etc/postfix/sender_canonical
+chris@cmpi.localdomain         chris@u-l.ca
+root@cmpi.localdomain          admin@u-l.ca  # Or your preferred admin address at u-l.ca
+@cmpi.localdomain              default-user@u-l.ca # Catch-all for other local users
+chris                          chris@u-l.ca # If sender is just 'chris'
+# Add any other local users or unqualified hostnames that might be used
+chris@d66-183-145-34.bchsia.telus.net chris@u-l.ca
+@d66-183-145-34.bchsia.telus.net    default-user@u-l.ca
+Apply changes:
+bash
+
+Copy
+sudo postmap /etc/postfix/sender_canonical
+sudo postfix reload
+Exim on u-l.ca:
+
+This server receives mail from cmpi. After the Postfix changes on cmpi, Exim should receive the mail with an envelope sender of chris@u-l.ca.
+Exim then delivers this mail to the final recipient (e.g., Google). The IP address that Exim uses for this final hop is what matters for the SPF check.
+DNS SPF Record for u-l.ca (Your Responsibility as Domain Owner):
+
+This is where you fix the spf=none. You need a TXT record in the DNS for u-l.ca.
+This SPF record must authorize the outbound mail server IP addresses of your Exim server(s) at u-l.ca.
+What should be in the SPF record?
+If your Exim server (e.g., mail.u-l.ca) has a static IP address, say 192.81.170.8 (the client-ip Google saw), then your SPF record could be:
+"v=spf1 ip4:192.81.170.8 -all"
+If u-l.ca's MX records point to the same server(s) that send outbound mail, you could use:
+"v=spf1 mx -all" (This means "allow servers listed in MX records for u-l.ca to send mail")
+If the server sending mail has an A record (e.g., mail.u-l.ca points to 192.81.170.8), you could use:
+"v=spf1 a:mail.u-l.ca -all" or simply "v=spf1 a -all" if u-l.ca itself has an A record pointing to the mail server.
+If you have multiple outbound mail servers for u-l.ca, list all their IPs or use appropriate mechanisms (a, mx, include).
+Example (assuming 192.81.170.8 is the primary outbound IP for Exim on u-l.ca):
+In your DNS management for u-l.ca, create/update a TXT record:
+Host: @ (or u-l.ca.)
+Value: "v=spf1 ip4:192.81.170.8 -all"
+(Start with ~all (soft fail) if you want to be cautious during testing: "v=spf1 ip4:192.81.170.8 ~all")
+Important: The IP address d66-183-145-34.bchsia.telus.net (your cmpi's external dynamic IP) should NOT be in the SPF record for u-l.ca. All mail is relayed through Exim on u-l.ca, so only Exim's IP(s) need authorization.
+Verification:
+
+After making Postfix changes on cmpi and updating the SPF record for u-l.ca (allow time for DNS propagation, typically a few hours but can be faster or slower).
+Send a test email from cmlaptop through the whole chain to an external address like a Gmail account.
+Inspect the headers of the received email in Gmail ("Show original").
+You should now see something like:
+spf=pass (google.com: domain of chris@u-l.ca designates 192.81.170.8 as permitted sender) client-ip=192.81.170.8;
+The smtp.mailfrom should also be chris@u-l.ca.
+Next Steps (After SPF is pass):
+
+DKIM for u-l.ca: Configure Exim on u-l.ca to DKIM-sign outgoing mail for the u-l.ca domain. This adds another layer of authentication.
+DMARC for u-l.ca: Publish a DMARC record for u-l.ca to specify policy for messages failing SPF/DKIM and to receive reports.
+By ensuring Postfix on cmpi correctly sets the envelope sender to your u-l.ca address, and that the SPF record for u-l.ca authorizes its own Exim mail server's IP(s), you will resolve the spf=none issue.
