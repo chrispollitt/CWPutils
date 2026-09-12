@@ -1,53 +1,64 @@
-# Variables
-CC = gcc
-CFLAGS = -Wall -Wextra -O2
-LDFLAGS = -lpcre
-BIN = cut2
-MANPAGE = cut2.1
+# CWPutils/cut2 - Makefile for a set of standalone Python 3 CLI utilities.
+#
+# All four tools (cut2, pullout, rpullout, ghgrep) are dependency-free
+# Python 3 scripts, so "build" is just making sure they are executable
+# and syntactically valid; there is nothing to compile.
+
+PYTHON = python3
 PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man/man1
 SUDO =
 
+BINS     = cut2 pullout rpullout ghgrep
+MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1
+
 # Default target
 all: build
 
-# Compile cut2
-build: $(BIN).c
-	$(CC) $(CFLAGS) -c $(BIN).c
-	$(CC) -o $(BIN) $(BIN).o $(LDFLAGS)
+# "Build": verify each script is syntactically valid and executable.
+build:
+	@for bin in $(BINS); do \
+		$(PYTHON) -m py_compile $$bin || exit 1; \
+		chmod +x $$bin; \
+	done
+	@echo "Build OK: $(BINS)"
 
-# Run test cases
+# Run the unittest suite for every tool.
 test: build
-	@echo "Running tests..."
-	@echo 'John "Doe Smith" 30' | ./cut2 -f2 | grep -q "Doe Smith" && echo "[PASS] Quoted field" || echo "[FAIL] Quoted field"
-	@echo 'Alice,Bob,25' | ./cut2 -f1,3 -d',' | grep -q "Alice" && echo "[PASS] Delimited fields (comma)" || echo "[FAIL] Delimited fields (comma)"
-	@echo "abcdef" | ./cut2 -c1-3 | grep -q "abc" && echo "[PASS] Character selection" || echo "[FAIL] Character selection"
-	@echo 'foo  bar    baz' | ./cut2 -f1,3 | grep -q "foo" && echo "[PASS] Default delimiter (multiple spaces)" || echo "[FAIL] Default delimiter (multiple spaces)"
-	@echo 'a,b;c,d' | ./cut2 -f2,4 -d'[,;]' | grep -q "b" && echo "[PASS] PCRE delimiter" || echo "[FAIL] PCRE delimiter"
-	@echo -e 'a\t\tb\tc' | ./cut2 -f1,3 | grep -q "a" && echo "[PASS] Tab delimiter" || echo "[FAIL] Tab delimiter"
+	@$(PYTHON) -m unittest discover -s tests -v
 
-# Install the binary and man page
+# Install the scripts and man pages.
 install: build
-	@echo "Installing $(BIN) to $(BINDIR)..."
-	@$(SUDO) install -m 755 $(BIN) $(BINDIR)/
-	@echo "Installing man page to $(MANDIR)..."
-	@$(SUDO) install -m 644 $(MANPAGE) $(MANDIR)/
-	@$(SUDO) mandb
+	@echo "Installing $(BINS) to $(BINDIR)..."
+	@$(SUDO) mkdir -p $(BINDIR)
+	@for bin in $(BINS); do \
+		$(SUDO) install -m 755 $$bin $(BINDIR)/ || exit 1; \
+	done
+	@echo "Installing man pages to $(MANDIR)..."
+	@$(SUDO) mkdir -p $(MANDIR)
+	@for man in $(MANPAGES); do \
+		$(SUDO) install -m 644 $$man $(MANDIR)/ || exit 1; \
+	done
+	-@$(SUDO) mandb >/dev/null 2>&1
 	@echo "Installation complete."
 
-# Uninstall the binary and man page
+# Uninstall the scripts and man pages.
 uninstall:
-	@echo "Removing $(BIN) from $(BINDIR)..."
-	@$(SUDO) rm -f $(BINDIR)/$(BIN)
-	@echo "Removing man page from $(MANDIR)..."
-	@$(SUDO) rm -f $(MANDIR)/$(MANPAGE)
-	@$(SUDO) mandb
+	@echo "Removing $(BINS) from $(BINDIR)..."
+	@for bin in $(BINS); do \
+		$(SUDO) rm -f $(BINDIR)/$$bin; \
+	done
+	@echo "Removing man pages from $(MANDIR)..."
+	@for man in $(MANPAGES); do \
+		$(SUDO) rm -f $(MANDIR)/$$man; \
+	done
+	-@$(SUDO) mandb >/dev/null 2>&1
 	@echo "Uninstallation complete."
 
-# Clean build artifacts
+# Clean build artifacts (bytecode caches from py_compile/testing).
 clean:
-	@rm -f $(BIN) $(BIN).o
+	@rm -rf __pycache__ tests/__pycache__ */__pycache__
 	@echo "Cleaned up."
 
 .PHONY: all build test install uninstall clean

@@ -1,88 +1,147 @@
-#!/usr/bin/perl
-use Getopt::Long;
-use IO::Handle;
-use strict;
-use warnings;
+#!/usr/bin/env python3
+"""
+pullout - Pull the bit you want out of a stream, using surrounding context.
 
-sub usage() {
-  print STDERR <<"__EOT__";
+Reads lines (or, with -m, the whole input) from a program's output on
+stdin and, for each match of
+
+    <bmatch> ... <want> ... <amatch>
+
+prints the text that matched <want>. All three arguments are regular
+expressions; matching is always case-insensitive.
+
 Usage:
-  <prog> | pullout [-opts] '<bmatch>' '<want>' ['<amatch>']
+    <prog> | pullout [-opts] '<bmatch>' '<want>' ['<amatch>']
 
 Where:
-  <prog>   = the program whos output you want to filter
-  pullout  = this program
-  -A       = print all parts, including gaps
-  -a       = print all parts (tab sep): <bmatch> <want> <amatch>
-  -d       = don't add the .*? gap between <match> and <want> patterns
-  -m       = multiline match mode (. can match a newline)
-  <bmatch> = a regex to match that occurs before the <want> param  
-  <want>   = the bit that you want to see
-  <amatch> = a regex to match that occurs after the <want> param 
-__EOT__
-  exit 2;
-}
+    <prog>   = the program whose output you want to filter
+    pullout  = this program
+    -A       = print all parts, tab separated: bmatch gap1 want gap2 amatch
+    -a       = print all parts, tab separated: bmatch want amatch
+    -d       = don't add the .*? gap between <bmatch>/<want>/<amatch>
+    -m       = multiline match mode (. can match a newline; the whole
+               input is read at once and every match is reported)
+    <bmatch> = a regex to match that occurs before the <want> param
+    <want>   = the bit that you want to see
+    <amatch> = a regex to match that occurs after the <want> param
+                (defaults to an empty pattern if omitted)
 
-sub main() {
-  STDERR->autoflush(1);
-  STDOUT->autoflush(1);
-  my $All   = 0;
-  my $all   = 0;
-  my $dont  = 0;
-  my $multi = 0;
-  my $span  = '.*?';
-  Getopt::Long::Configure ("bundling");
-  GetOptions(
-    "all2|A"  => \$All,
-    "all|a"   => \$all,
-    "dont|d"  => \$dont,
-    "multi|m" => \$multi
-  ) or usage();
-  my $a = $ARGV[0]; # thing to match before
-  my $c = $ARGV[1]; # thing to capture
-  my $e = $ARGV[2] || '';      # thing to match after
-  my @matches;
+By default, a single ".*?" gap is inserted between <bmatch> and <want>,
+and between <want> and <amatch>, so the arguments do not need to be
+adjacent in the input. Pass -d to require them to be adjacent instead.
 
-  if(!defined $a or !defined $c) {
-    usage();
-  }
-  if(!length($a)) {
-    print STDERR "error: <bmatch> must not be empty\n";
-    print STDERR "Perhaps use rpullout?\n";
-    exit(1);
-  }
-  if(!length($c)) {
-    print STDERR "error: <want> must not be empty\n";
-    exit(1);
-  }
-  $span = '' if($dont);
-  if($multi) {
-    undef $/;
-    my $lines = <STDIN>;
-    while($lines =~ m~($a)($span)($c)($span)($e)~sig) {
-      my(@a);
-      chomp(@a = ($1,$2,$3,$4,$5));
-      push(@matches, [@a]);
-    }
-  } else {
-    my @lines;
-    chomp(@lines = <STDIN>);
-    @matches = map {m~($a)($span)($c)($span)($e)~ig ? [$1,$2,$3,$4,$5] : ()} @lines;
-  }
-  
-  for my $match (@matches) {
-    my($a1,$b1,$c1,$d1,$e1) = @{$match};
-    $c1 =~ s~^\n~~;
-    if($All) {
-      print "$a1\t$b1\t$c1\t$d1\t$e1\n";
-    } elsif($all) {
-      print "$a1\t$c1\t$e1\n";
-    } else {
-      print "$c1\n";
-    }
-  }
-}
+Without -m, each input line is matched independently (so <bmatch>,
+<want> and <amatch> must all appear on the same line) and only the
+first match per line is used. With -m, the entire input is treated as
+one block of text and every non-overlapping match is reported.
 
-main();
+Examples:
+    nslookup 'example.com' | pullout -m 'answer' '\\b\\d\\S+'
 
-# nslookup 'whatwelove.org' | pullout -m 'answer' '\b\d\S+'
+    echo 'name: Alice, age: 30' | pullout 'name: ' '\\w+'
+        -> Alice
+
+    echo 'a=1 b=2 c=3' | pullout -a 'b=' '\\d+' ' c'
+        -> b=	2	 c
+"""
+
+import argparse
+import re
+import sys
+
+
+def usage(parser):
+    parser.print_usage(sys.stderr)
+    sys.exit(2)
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="pullout",
+        add_help=False,
+        description="Pull the <want> substring found between <bmatch> and <amatch>.",
+    )
+    parser.add_argument("-A", dest="all2", action="store_true", help="print all parts, including gaps")
+    parser.add_argument("-a", dest="all", action="store_true", help="print all parts (tab separated)")
+    parser.add_argument("-d", dest="dont", action="store_true", help="don't add the .*? gap")
+    parser.add_argument("-m", dest="multi", action="store_true", help="multiline match mode")
+    parser.add_argument("bmatch", nargs="?")
+    parser.add_argument("want", nargs="?")
+    parser.add_argument("amatch", nargs="?", default="")
+    return parser
+
+
+def strip_leading_newline(s):
+    return s[1:] if s.startswith("\n") else s
+
+
+def strip_trailing_newline(s):
+    return s[:-1] if s.endswith("\n") else s
+
+
+def find_matches(text_or_lines, pattern, multi):
+    """Return a list of 5-tuples (bmatch, gap1, want, gap2, amatch)."""
+    matches = []
+    if multi:
+        regex = re.compile(pattern, re.IGNORECASE | re.DOTALL)
+        pos = 0
+        text = text_or_lines
+        while True:
+            m = regex.search(text, pos)
+            if not m:
+                break
+            groups = [g if g is not None else "" for g in m.groups()]
+            groups = [strip_trailing_newline(g) for g in groups]
+            matches.append(tuple(groups))
+            pos = m.end()
+            if m.end() == m.start():
+                pos += 1
+    else:
+        regex = re.compile(pattern, re.IGNORECASE)
+        for line in text_or_lines:
+            m = regex.search(line)
+            if m:
+                groups = [g if g is not None else "" for g in m.groups()]
+                matches.append(tuple(groups))
+    return matches
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.bmatch is None or args.want is None:
+        usage(parser)
+
+    if not args.bmatch:
+        print("error: <bmatch> must not be empty", file=sys.stderr)
+        print("Perhaps use rpullout?", file=sys.stderr)
+        return 1
+    if not args.want:
+        print("error: <want> must not be empty", file=sys.stderr)
+        return 1
+
+    span = "" if args.dont else ".*?"
+    pattern = f"({args.bmatch})({span})({args.want})({span})({args.amatch})"
+
+    if args.multi:
+        text = sys.stdin.read()
+        matches = find_matches(text, pattern, True)
+    else:
+        lines = sys.stdin.read().splitlines()
+        matches = find_matches(lines, pattern, False)
+
+    for bmatch, gap1, want, gap2, amatch in matches:
+        want = strip_leading_newline(want)
+        if args.all2:
+            print(f"{bmatch}\t{gap1}\t{want}\t{gap2}\t{amatch}")
+        elif args.all:
+            print(f"{bmatch}\t{want}\t{amatch}")
+        else:
+            print(want)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

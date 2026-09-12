@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-groupgrep - A smart group-header grep tool.
+ghgrep - A smart group-header grep tool.
 
 Searches for matching lines in a file and also prints their group headers.
 Intelligently detects what constitutes a "header" based on heuristics.
 
 Usage:
-    groupgrep [options] PATTERN [FILE...]
-    cat file | groupgrep [options] PATTERN
+    ghgrep [options] PATTERN [FILE...]
+    cat file | ghgrep [options] PATTERN
 
 Options:
     -i, --ignore-case      Case-insensitive matching
@@ -43,11 +43,11 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=r"""
 Examples:
-    groupgrep "System32" handles.txt
-    groupgrep -i "listening" netstat.txt
-    groupgrep --brackets "ESTABLISHED" ports.txt
-    groupgrep --separator="----" "SysWOW64" handles.txt
-    groupgrep --header-pattern '^\[.*\]$' "1042" ports.txt
+    ghgrep "System32" handles.txt
+    ghgrep -i "listening" netstat.txt
+    ghgrep --brackets "ESTABLISHED" ports.txt
+    ghgrep --separator="----" "SysWOW64" handles.txt
+    ghgrep --header-pattern '^\[.*\]$' "1042" ports.txt
         """
     )
     parser.add_argument("pattern", help="Regex pattern to search for")
@@ -198,13 +198,13 @@ def format_line(line, line_num, filename, args, is_header=False, is_match=False)
     return prefix + text
 
 
-def groupgrep_file(lines, pattern, args, filename=None):
+def ghgrep_file(lines, pattern, args, filename=None):
     """Process a single file and yield output lines."""
     flags = re.IGNORECASE if args.ignore_case else 0
     try:
         regex = re.compile(pattern, flags)
     except re.error as e:
-        print(f"groupgrep: invalid regex: {e}", file=sys.stderr)
+        print(f"ghgrep: invalid regex: {e}", file=sys.stderr)
         sys.exit(1)
     
     headers = detect_headers(lines, args)
@@ -328,13 +328,13 @@ def main():
                     lines = f.readlines()
                 filename = filepath if args.with_filename else None
             except FileNotFoundError:
-                print(f"groupgrep: {filepath}: No such file", file=sys.stderr)
+                print(f"ghgrep: {filepath}: No such file", file=sys.stderr)
                 continue
             except PermissionError:
-                print(f"groupgrep: {filepath}: Permission denied", file=sys.stderr)
+                print(f"ghgrep: {filepath}: Permission denied", file=sys.stderr)
                 continue
         
-        output = groupgrep_file(lines, args.pattern, args, filename)
+        output = ghgrep_file(lines, args.pattern, args, filename)
         all_output.extend(output)
     
     # Print output, stripping trailing blank lines

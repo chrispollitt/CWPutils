@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""
+cut2 - An improved version of GNU cut with proper quoting and regex delimiters.
+
+Splits each input line into fields (like GNU cut -f) or characters
+(like GNU cut -c) and prints a selection of them.
+
+Unlike GNU cut, the field delimiter (-d) is a full Python regular
+expression rather than a single literal character, and single- or
+double-quoted spans are treated as a single field even if they contain
+the delimiter pattern.
+
+Usage:
+    cut2 [-f LIST | -c LIST] [-d DELIM] [FILE...]
+    cat FILE | cut2 [-f LIST | -c LIST] [-d DELIM]
+
+Options:
+    -f LIST    Select fields (comma-separated, supports N, N-M, N-)
+    -c LIST    Select characters (comma-separated, supports N, N-M, N-)
+    -d DELIM   Field delimiter regex pattern (default: [\\t ]+)
+
+Field/character lists:
+    N          the Nth field or character (1-based)
+    N-M        fields/characters N through M inclusive
+    N-         fields/characters N through the end of the line
+    N,M,P      any combination of the above, comma separated, in any
+               order; a field/character may be selected more than once
+
+Quoting:
+    While splitting fields, a run of text wrapped in matching single or
+    double quotes is treated as one field even if it contains the
+    delimiter. The quote characters themselves are kept in the output
+    (they are not stripped) and a backslash-escaped quote does not end
+    the quoted span. Quoting has no effect in character mode (-c).
+
+Examples:
+    echo 'John    Doe    30' | cut2 -f2
+        -> Doe
+
+    echo 'John "Doe Smith" 30' | cut2 -f2
+        -> "Doe Smith"          (quotes are preserved)
+
+    echo 'Alice,Bob,25' | cut2 -f1,3 -d','
+        -> Alice<TAB>25
+
+    echo 'a,b;c,d' | cut2 -f2,4 -d'[,;]'
+        -> b<TAB>d
+
+    echo 'abcdef' | cut2 -c1-3
+        -> abc
+
+The output field delimiter is always a single tab, regardless of the
+input delimiter pattern.
+"""
+
+import argparse
+import re
+import sys
+
+DEFAULT_DELIMITER = r"[\t ]+"
+
+# A parsed selection is a list of items, each either:
+#   int            -> a single 1-based index
+#   ('range', lo, hi) -> inclusive closed range lo..hi
+#   ('open', lo)   -> lo..end-of-line/end-of-fields (resolved per input line)
+_SINGLE_RE = re.compile(r"^\d+$")
+_RANGE_RE = re.compile(r"^(\d+)-(\d+)$")
+_OPEN_RE = re.compile(r"^(\d+)-$")
+
+
+def parse_list(spec):
+    """Parse a comma-separated field/character list into selection items.
+
+    Malformed tokens are silently ignored, matching the historical
+    behavior of this tool.
+    """
+    items = []
+    for token in spec.split(","):
+        if not token:
+            continue
+        m = _RANGE_RE.match(token)
+        if m:
+            lo, hi = int(m.group(1)), int(m.group(2))
+            items.append(("range", lo, hi))
+            continue
+        m = _OPEN_RE.match(token)
+        if m:
+            items.append(("open", int(m.group(1))))
+            continue
+        if _SINGLE_RE.match(token):
+            items.append(int(token))
+    return items
+
+
+def expand_selection(items, length):
+    """Expand parsed selection items into concrete 1-based indices.
+
+    `length` is the number of fields (field mode) or characters
+    (character mode) available on the current line, used to resolve
+    open-ended ranges ("N-").
+    """
+    indices = []
+    for item in items:
+        if isinstance(item, tuple):
+            kind = item[0]
+            if kind == "range":
+                _, lo, hi = item
+                indices.extend(range(lo, hi + 1))
+            elif kind == "open":
+                _, lo = item
+                indices.extend(range(lo, length + 1))
+        else:
+            indices.append(item)
+    return indices
+
+
+def split_fields(line, delim_re):
+    """Split a line into fields on delim_re, honoring quoted spans.
+
+    Quote characters are preserved in the returned fields. A run of
+    text opened with a single or double quote is immune to delimiter
+    matching until the matching (non-backslash-escaped) quote is seen.
+    """
+    fields = []
+    field_start = 0
+    in_quotes = False
+    quote_char = ""
+    offset = 0
+    n = len(line)
+
+    while offset < n:
+        ch = line[offset]
+        if not in_quotes and ch in ("'", '"'):
+            in_quotes = True
+            quote_char = ch
+        elif in_quotes and ch == quote_char and (offset == 0 or line[offset - 1] != "\\"):
+            in_quotes = False
+            quote_char = ""
+
+        if not in_quotes:
+            m = delim_re.match(line, offset)
+            if m and m.start() == offset:
+                fields.append(line[field_start:offset])
+                offset = m.end()
+                field_start = offset
+                continue
+
+        offset += 1
+
+    fields.append(line[field_start:offset])
+    return fields
+
+
+def process_field_mode(line, selection, delim_re):
+    fields = split_fields(line, delim_re)
+    indices = expand_selection(selection, len(fields))
+    out = []
+    for i in indices:
+        idx = i - 1
+        if 0 <= idx < len(fields):
+            out.append(fields[idx])
+    return "\t".join(out)
+
+
+def process_char_mode(line, selection):
+    indices = expand_selection(selection, len(line))
+    out = []
+    for i in indices:
+        idx = i - 1
+        if 0 <= idx < len(line):
+            out.append(line[idx])
+    return "".join(out)
+
+
+def process_stream(stream, selection, mode, delim_re, out):
+    for raw_line in stream:
+        line = raw_line[:-1] if raw_line.endswith("\n") else raw_line
+        if mode == "f":
+            out.write(process_field_mode(line, selection, delim_re))
+        else:
+            out.write(process_char_mode(line, selection))
+        out.write("\n")
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="cut2",
+        description="An improved cut with quote-aware, regex-delimited field splitting.",
+        add_help=True,
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("-f", metavar="LIST", dest="fields", help="select fields")
+    group.add_argument("-c", metavar="LIST", dest="chars", help="select characters")
+    parser.add_argument(
+        "-d",
+        metavar="DELIM",
+        dest="delim",
+        default=DEFAULT_DELIMITER,
+        help=r"field delimiter regex (default: [\t ]+)",
+    )
+    parser.add_argument("files", nargs="*", help="input files (default: stdin)")
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    mode = "f" if args.fields is not None else "c"
+    selection = parse_list(args.fields if mode == "f" else args.chars)
+
+    delim_re = None
+    if mode == "f":
+        try:
+            delim_re = re.compile(args.delim)
+        except re.error as e:
+            print(f"cut2: invalid delimiter pattern: {e}", file=sys.stderr)
+            return 1
+
+    if args.files:
+        for path in args.files:
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    process_stream(f, selection, mode, delim_re, sys.stdout)
+            except OSError as e:
+                print(f"cut2: cannot open '{path}': {e.strerror}", file=sys.stderr)
+                return 1
+    else:
+        process_stream(sys.stdin, selection, mode, delim_re, sys.stdout)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

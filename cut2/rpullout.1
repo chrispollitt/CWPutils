@@ -1,0 +1,90 @@
+.TH RPULLOUT 1 "September 2026" "rpullout 2.0" "User Commands"
+.SH NAME
+rpullout \- pull the last matching substring before a regex, out of a stream
+
+.SH SYNOPSIS
+.B rpullout
+[\-d] [\-m]
+.I want amatch
+
+.SH DESCRIPTION
+.B rpullout
+is like
+.BR pullout (1),
+but anchored from the end instead of the start: it has no
+.I bmatch
+argument. For each match of
+.RI ' want ... amatch '
+it prints the
+.B last
+(rightmost) occurrence of
+.I want
+that appears before
+.IR amatch ", "
+not simply the first one a lazy regex search would find. This is useful when you know what comes
+.I after
+the value you want but nothing reliable comes before it.
+
+Without \-m, each input line is matched independently and only the first (outermost) match per line is
+used. With \-m, the whole input is read at once, "." is allowed to match a newline, and every
+non-overlapping match is reported. Matching is always case-insensitive.
+
+.SH OPTIONS
+.TP
+.B \-d
+Do not insert the default ".*?" gap between
+.I want
+and
+.I amatch
+in the initial search; require them to be adjacent. (The internal scan that finds the
+.B last
+occurrence of
+.I want
+within the gap is unaffected by this flag.)
+.TP
+.B \-m
+Multiline mode: read all of stdin at once, let "." match newlines, and report every match instead of one
+per line.
+
+.SH ARGUMENTS
+.TP
+.I want
+The regex for the substring you want printed. Must not be empty.
+.TP
+.I amatch
+A regex that must occur after
+.IR want .
+Must not be empty.
+
+.SH EXAMPLES
+.RS
+.B echo 'one two three STOP' | rpullout '\ew+' 'STOP'
+.br
+three
+.RE
+
+.RS
+.B cat /etc/hosts | rpullout '^\ed\eS+' 'cmdesktop'
+.RE
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success (including "no lines matched").
+.TP
+.B 1
+.I want
+or
+.I amatch
+was empty.
+.TP
+.B 2
+Usage error (missing arguments).
+
+.SH AUTHOR
+Chris Pollitt.
+
+.SH SEE ALSO
+.BR pullout (1),
+.BR grep (1),
+.BR re (7)

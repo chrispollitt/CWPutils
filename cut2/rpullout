@@ -1,89 +1,143 @@
-#!/usr/bin/perl
-use Getopt::Long;
-use IO::Handle;
-use strict;
-use warnings;
+#!/usr/bin/env python3
+"""
+rpullout - Like pullout, but anchored from the end instead of the start.
 
-sub usage() {
-  print STDERR <<"__EOT__";
+Reads lines (or, with -m, the whole input) from a program's output on
+stdin and, for each match of
+
+    <want> ... <amatch>
+
+prints the *last* (rightmost) occurrence of <want> that appears before
+<amatch> - not simply the first one a lazy regex would find. This is
+useful when you know what comes *after* the value you want but not
+what comes before it.
+
 Usage:
-  <prog> | rpullout [-d] [-m] '<want>' '<amatch>'
+    <prog> | rpullout [-d] [-m] '<want>' '<amatch>'
 
 Where:
-  <prog>   = the program whos output you want to filter
-  rpullout = this program
-  -d       = don't add the .*? between  <want> and <match> patterns
-  -m       = multiline match mode (. can match a newline)
-  <want>     = the bit that you want to see
-  <amatch>   = a regex to match that occurs after the <want> param  
-__EOT__
-  exit 2;
-}
+    <prog>     = the program whose output you want to filter
+    rpullout   = this program
+    -d         = don't add the .*? gap between <want> and <amatch>
+    -m         = multiline match mode (. can match a newline; the whole
+                 input is read at once and every match is reported)
+    <want>     = the bit that you want to see
+    <amatch>   = a regex to match that occurs after the <want> param
 
-sub main() {
-  STDERR->autoflush(1);
-  STDOUT->autoflush(1);
-  my $dont  = 0;
-  my $multi = 0;
-  my $span  = '.*?';
-  Getopt::Long::Configure ("bundling");
-  GetOptions(
-    "dont|d"  => \$dont,
-    "multi|m" => \$multi
-  ) or usage();
-  my $a = $ARGV[0]; # thing to capture
-  my $c = $ARGV[1]; # thing to match
-  my @matches;
+Without -m, each input line is matched independently and only the
+first match per line is used. With -m, the entire input is treated as
+one block of text and every non-overlapping match is reported.
 
-  if(!defined $a or !defined $c) {
-    usage();
-  }
-  if(!length($a)) {
-    print STDERR "error: <want> must not be empty\n";
-    exit(1);
-  }
-  if(!length($c)) {
-    print STDERR "error: <amatch> must not be empty\n";
-    exit(1);
-  }
-  $span = '' if($dont);
-  if($multi) {
-    undef $/;
-    my $lines = <STDIN>;
-    while($lines =~ m~($a)($span)($c)~sig) {
-      my(@a);
-      chomp(@a = ($1,$2,$3));
-      push(@matches, [@a]);
-    }
-  } else {
-    my @lines;
-    chomp(@lines = <STDIN>);
-    @matches = map {m~($a)($span)($c)~ig ? [$1,$2,$3] : ()} @lines;
-  }
-  
-  for my $match (@matches) {
-    my($a1,$b1,$c1,$d1,$e1) = @{$match};
-    $c1 =~ s~^\n~~;
-    while(1) {
-      if(length($b1) and $b1 =~ m~^.*?($a)(.*?)$~si) {
-        $a1 = $1;
-        $b1 = $2;
-        next;
-      } else {
-        $a1 =~ s~^\n~~;
-        print "$a1\n";
-        last;
-      }
-    }
-  }
-}
+Example:
+    cat /etc/hosts | rpullout '^\\d\\S+' 'cmdesktop'
 
-main();
+    echo 'one two three STOP' | rpullout '\\w+' 'STOP'
+        -> three
+"""
 
-# cat /etc/hosts | rpullout '^\d\S+' 'cmdesktop'
+import argparse
+import re
+import sys
 
-# CR LF
-# \r \n
-# 15 12 oct
-# 13 10 dec
-# 0d 0a hex
+
+def usage(parser):
+    parser.print_usage(sys.stderr)
+    sys.exit(2)
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="rpullout",
+        add_help=False,
+        description="Print the last occurrence of <want> found before <amatch>.",
+    )
+    parser.add_argument("-d", dest="dont", action="store_true", help="don't add the .*? gap")
+    parser.add_argument("-m", dest="multi", action="store_true", help="multiline match mode")
+    parser.add_argument("want", nargs="?")
+    parser.add_argument("amatch", nargs="?")
+    return parser
+
+
+def strip_leading_newline(s):
+    return s[1:] if s.startswith("\n") else s
+
+
+def strip_trailing_newline(s):
+    return s[:-1] if s.endswith("\n") else s
+
+
+def find_matches(text_or_lines, pattern, multi):
+    """Return a list of (want, gap, amatch) tuples for the outer match."""
+    matches = []
+    if multi:
+        regex = re.compile(pattern, re.IGNORECASE | re.DOTALL)
+        pos = 0
+        text = text_or_lines
+        while True:
+            m = regex.search(text, pos)
+            if not m:
+                break
+            groups = [g if g is not None else "" for g in m.groups()]
+            groups = [strip_trailing_newline(g) for g in groups]
+            matches.append(tuple(groups))
+            pos = m.end()
+            if m.end() == m.start():
+                pos += 1
+    else:
+        regex = re.compile(pattern, re.IGNORECASE)
+        for line in text_or_lines:
+            m = regex.search(line)
+            if m:
+                groups = [g if g is not None else "" for g in m.groups()]
+                matches.append(tuple(groups))
+    return matches
+
+
+def refine_to_last(want_pattern, a1, b1):
+    """Walk the gap b1, repeatedly re-matching want_pattern, to find the
+    rightmost occurrence of <want> that precedes <amatch>."""
+    refine_re = re.compile(r"^.*?(" + want_pattern + r")(.*?)$", re.IGNORECASE | re.DOTALL)
+    while True:
+        if b1:
+            m = refine_re.match(b1)
+        else:
+            m = None
+        if m:
+            a1 = m.group(1)
+            b1 = m.group(2)
+            continue
+        return strip_leading_newline(a1)
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.want is None or args.amatch is None:
+        usage(parser)
+
+    if not args.want:
+        print("error: <want> must not be empty", file=sys.stderr)
+        return 1
+    if not args.amatch:
+        print("error: <amatch> must not be empty", file=sys.stderr)
+        return 1
+
+    span = "" if args.dont else ".*?"
+    pattern = f"({args.want})({span})({args.amatch})"
+
+    if args.multi:
+        text = sys.stdin.read()
+        matches = find_matches(text, pattern, True)
+    else:
+        lines = sys.stdin.read().splitlines()
+        matches = find_matches(lines, pattern, False)
+
+    for want, gap, _amatch in matches:
+        print(refine_to_last(args.want, want, gap))
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

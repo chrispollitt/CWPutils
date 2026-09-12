@@ -1,20 +1,122 @@
-# cut2 - A Smarter `cut`
+# CWPutils/cut2 - text-filtering utilities
 
-`cut2` is an enhanced version of `cut` that **correctly handles quoted fields**, **escaped delimiters**, and **embedded spaces**.
+A small collection of standalone Python 3 command-line utilities for
+slicing and filtering text streams. Each tool is a single
+dependency-free script; no build step or third-party packages are
+required.
 
-## 🚀 Features
-- **Full `cut` replacement**: Supports `-f` (fields) and `-c` (characters)
-- **Handles quoted fields correctly**: `"foo bar"` is treated as one field
-- **Supports custom delimiters (`-d`)**: Works with spaces, commas, tabs, etc.
-- **Works on Linux, BSD, macOS, and Cygwin**
-- **Debian (`.deb`) and RPM (`.rpm`) packages available**
+| Tool | Purpose |
+| --- | --- |
+| [`cut2`](#cut2) | `cut`-alike with regex delimiters and quote-aware field splitting |
+| [`pullout`](#pullout) | Pull a substring out of a stream using before/after context regexes |
+| [`rpullout`](#rpullout) | Like `pullout`, but finds the *last* match before an after-context regex |
+| [`ghgrep`](#ghgrep) | `grep` that also prints the group/section header a match belongs to |
 
-## 📦 Installation
+Full details for each tool are in its man page (`cut2.1`, `pullout.1`,
+`rpullout.1`, `ghgrep.1`); this file is a quick-start summary.
 
-### **Linux/macOS (Manual)**
+## Requirements
+
+Python 3.8+ and nothing else. All four scripts use only the standard
+library (`argparse`, `re`, `sys`).
+
+## Installation
+
 ```bash
-git clone https://github.com/yourname/cut2.git
-cd cut2
-./configure
-make
-sudo make install
+make install            # installs to /usr/local/bin and /usr/local/share/man/man1
+make PREFIX=$HOME/.local install   # or install to your home directory
+```
+
+`make uninstall` removes what `make install` put in place. See the
+[Makefile](Makefile) for all targets.
+
+## cut2
+
+An improved `cut` with proper quoting and regex field delimiters.
+
+```bash
+echo 'John    Doe    30' | cut2 -f2
+# Doe
+
+echo 'John "Doe Smith" 30' | cut2 -f2
+# "Doe Smith"        (quotes are preserved, not stripped)
+
+echo 'Alice,Bob,25' | cut2 -f1,3 -d','
+# Alice   25
+
+echo 'a,b;c,d' | cut2 -f2,4 -d'[,;]'
+# b       d
+
+echo 'abcdef' | cut2 -c1-3
+# abc
+```
+
+- `-f LIST` / `-c LIST`: select fields or characters (`N`, `N-M`, `N-`, comma-separated, repeatable/reorderable).
+- `-d DELIM`: field delimiter, a full regular expression (default `[\t ]+`).
+- Quoted spans (`'...'` or `"..."`) are treated as one field even if they contain the delimiter; the quote characters stay in the output.
+
+## pullout
+
+Pulls the bit you want out of a stream, given regexes for what comes
+before and after it.
+
+```bash
+echo 'name: Alice, age: 30' | pullout 'name: ' '\w+'
+# Alice
+
+nslookup 'example.com' | pullout -m 'answer' '\b\d\S+'
+```
+
+```
+pullout [-A | -a] [-d] [-m] '<bmatch>' '<want>' ['<amatch>']
+```
+
+- `-a` / `-A`: also print the matched context (3 or 5 tab-separated parts).
+- `-d`: require `<bmatch>`/`<want>`/`<amatch>` to be adjacent (no default `.*?` gap).
+- `-m`: multiline mode - read all of stdin at once, `.` matches newlines, every match is reported (not just one per line).
+
+## rpullout
+
+Like `pullout`, but for when you know what comes *after* the value you
+want and nothing reliable comes before it. Unlike a plain lazy regex,
+it returns the **last** match of `<want>` before `<amatch>`, not the
+first.
+
+```bash
+echo 'one two three STOP' | rpullout '\w+' 'STOP'
+# three
+```
+
+```
+rpullout [-d] [-m] '<want>' '<amatch>'
+```
+
+## ghgrep
+
+A `grep` that understands "groups": search for a pattern and get back
+each match's group header too (a `[Section]` heading, the line after a
+`----` separator, or a heuristically-detected header), not just the
+bare matching line.
+
+```bash
+ghgrep "System32" handles.txt
+ghgrep -i "listening" netstat.txt
+ghgrep --brackets "ESTABLISHED" ports.txt
+ghgrep --separator="----" "SysWOW64" handles.txt
+```
+
+## Testing
+
+Each tool has a standalone `unittest` suite under `tests/` that drives
+the real script via `subprocess`, so it exercises the actual CLI
+behavior (no internal mocking).
+
+```bash
+make test
+# or directly:
+python3 -m unittest discover -s tests -v
+```
+
+## License
+
+MIT - see [LICENSE.txt](LICENSE.txt).

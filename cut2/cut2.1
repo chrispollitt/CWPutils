@@ -1,45 +1,59 @@
-.TH CUT2 1 "February 2025" "cut2 1.0" "User Commands"
+.TH CUT2 1 "September 2026" "cut2 2.0" "User Commands"
 .SH NAME
-cut2 \- enhanced field and character selection utility with PCRE delimiter support
+cut2 \- quote-aware field/character selection with regex delimiters
 
 .SH SYNOPSIS
 .B cut2
-[\-f LIST | \-c LIST] [\-d DELIM] [FILE...]
+(\-f LIST | \-c LIST) [\-d DELIM] [FILE...]
 
 .SH DESCRIPTION
 The
 .B cut2
-command extracts fields or characters from input files or standard input. Unlike GNU cut, it correctly handles quoted fields, escaped characters, and supports PCRE regular expressions for field delimiters.
+command extracts fields or characters from input files or standard input. Unlike GNU cut, its field delimiter
+(\-d) is a full Python regular expression rather than a single literal character, and it treats single- or
+double-quoted spans as one field even if they contain the delimiter pattern.
 
 By default, fields are separated by one or more tabs or spaces ([\et ]+).
 
 .SH OPTIONS
 .TP
 .B \-f LIST
-Select fields to extract. LIST can be a comma-separated list of field numbers and ranges (e.g., 1,3,5-7). Fields are delimited by the pattern specified with \-d, or by default [\et ]+ (one or more tabs or spaces).
+Select fields to extract. LIST is a comma-separated list of field numbers and ranges (e.g., 1,3,5-7). Fields
+are delimited by the pattern given with \-d, or by default [\et ]+ (one or more tabs/spaces). Mutually
+exclusive with \-c.
 
 .TP
 .B \-c LIST
-Select specific character positions. LIST can be a comma-separated list of positions and ranges (e.g., 1-3,5,7-).
+Select specific character positions. LIST is a comma-separated list of positions and ranges (e.g., 1-3,5,7-).
+Mutually exclusive with \-f.
 
 .TP
 .B \-d DELIM
-Use DELIM as the field delimiter PCRE pattern. Default is [\et ]+ (one or more tabs or spaces). The delimiter is interpreted as a Perl Compatible Regular Expression (PCRE).
+Use DELIM as the field delimiter regular expression. Default is [\et ]+ (one or more tabs or spaces). Only
+meaningful with \-f.
 
 .SH FIELD LISTS
-Field and character lists support the following formats:
+Field and character lists support:
 .TP
 .B N
-The Nth field or character (starting from 1)
+The Nth field or character (starting from 1).
 .TP
 .B N\-M
-Fields or characters from N to M (inclusive)
+Fields or characters from N to M, inclusive.
 .TP
 .B N\-
-Fields or characters from N to the end of the line
+Fields or characters from N to the end of the line.
 .TP
 .B N,M,P
-Multiple individual fields or characters
+Any combination of the above, comma separated. A field or character may be selected more than once, and
+selections are printed in the order given (not sorted).
+
+.SH QUOTING
+While splitting fields, a run of text opened with a single or double quote is treated as a single field
+even if it contains the delimiter pattern. The quote characters themselves are
+.B preserved
+in the output field (they are not stripped). A backslash immediately before the matching quote character
+prevents that quote from closing the span. Quoting has no effect in character mode (\-c).
 
 .SH EXAMPLES
 Extract the second field from space/tab-separated input:
@@ -49,25 +63,25 @@ Extract the second field from space/tab-separated input:
 Doe
 .RE
 
-Extract fields with quoted values:
+Extract a field containing embedded spaces via quoting (quotes are kept):
 .RS
 .B echo 'John "Doe Smith" 30' | cut2 \-f2
 .br
-Doe Smith
+"Doe Smith"
 .RE
 
 Extract fields 1 and 3 from comma-separated values:
 .RS
 .B echo 'Alice,Bob,25' | cut2 \-f1,3 \-d','
 .br
-Alice	25
+Alice\et25
 .RE
 
 Extract fields using a regex delimiter (comma or semicolon):
 .RS
 .B echo 'a,b;c,d' | cut2 \-f2,4 \-d'[,;]'
 .br
-b	d
+b\etd
 .RE
 
 Extract character positions 1-3:
@@ -77,22 +91,13 @@ Extract character positions 1-3:
 abc
 .RE
 
-Extract fields from files with multiple spaces:
-.RS
-.B echo 'foo  bar    baz' | cut2 \-f1,3
-.br
-foo	baz
-.RE
-
 .SH NOTES
 .IP \(bu 2
-The output delimiter for field mode is always a tab character, regardless of the input delimiter pattern.
+The output field delimiter is always a single tab, regardless of the input delimiter pattern.
 .IP \(bu 2
-Quoted fields (using single or double quotes) are preserved as single fields even if they contain the delimiter pattern.
+An invalid \-d regex causes the program to exit with an error before reading any input.
 .IP \(bu 2
-Escaped characters within fields are handled correctly (e.g., \e" or \e').
-.IP \(bu 2
-The PCRE pattern must be valid; invalid patterns will cause the program to exit with an error.
+Lines are decoded as UTF\-8; "characters" in \-c mode are Unicode code points, not bytes.
 
 .SH EXIT STATUS
 .TP
@@ -100,12 +105,15 @@ The PCRE pattern must be valid; invalid patterns will cause the program to exit 
 Success
 .TP
 .B 1
-Error (file not found, invalid PCRE pattern, etc.)
+A named input file could not be opened, or the \-d pattern is not a valid regex.
+.TP
+.B 2
+Usage error (missing or conflicting options).
 
 .SH AUTHOR
-Written by OpenAI.
+Chris Pollitt.
 
 .SH SEE ALSO
 .BR cut (1),
 .BR awk (1),
-.BR pcre (3)
+.BR re (7)

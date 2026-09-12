@@ -1,0 +1,111 @@
+.TH PULLOUT 1 "September 2026" "pullout 2.0" "User Commands"
+.SH NAME
+pullout \- pull a regex-delimited substring out of a stream, by context
+
+.SH SYNOPSIS
+.B pullout
+[\-A | \-a] [\-d] [\-m]
+.I bmatch want
+[\fIamatch\fR]
+
+.SH DESCRIPTION
+.B pullout
+reads a program's output on standard input and, for each match of
+.RI ' bmatch ... want ... amatch '
+prints the text that matched
+.IR want .
+.IR bmatch ", " want " and " amatch
+are all regular expressions; matching is always case-insensitive.
+
+By default a lazy ".*?" gap is inserted between
+.IR bmatch " and " want ,
+and between
+.IR want " and " amatch ,
+so the three arguments need not be adjacent in the input. Use \-d to require them to be adjacent instead.
+
+Without \-m, each input line is matched independently: all of
+.IR bmatch ", " want " and " amatch
+must appear on that one line, and only the first match per line is used. With \-m, the whole input is read
+at once, "." is allowed to match a newline, and every non-overlapping match anywhere in the input is
+reported.
+
+.SH OPTIONS
+.TP
+.B \-A
+Print all five matched parts, tab separated:
+.IR bmatch ,
+the gap before
+.IR want ,
+.IR want ,
+the gap after it, and
+.IR amatch .
+.TP
+.B \-a
+Print three parts, tab separated:
+.IR bmatch ", " want " and " amatch .
+.TP
+.B \-d
+Do not insert the default ".*?" gap; require the patterns to match back-to-back.
+.TP
+.B \-m
+Multiline mode: read all of stdin at once, let "." match newlines, and report every match instead of one
+per line.
+With neither \-A nor \-a, only
+.I want
+is printed (one per line).
+
+.SH ARGUMENTS
+.TP
+.I bmatch
+A regex that must occur before
+.IR want .
+Must not be empty (use
+.BR rpullout (1)
+if you don't have a "before" pattern).
+.TP
+.I want
+The regex for the substring you want printed. Must not be empty.
+.TP
+.I amatch
+A regex that must occur after
+.IR want .
+Optional; defaults to an empty pattern (matches immediately).
+
+.SH EXAMPLES
+.RS
+.B echo 'name: Alice, age: 30' | pullout 'name: ' '\ew+'
+.br
+Alice
+.RE
+
+.RS
+.B echo 'a=1 b=2 c=3' | pullout \-a 'b=' '\ed+' ' c'
+.br
+b=\et2\et c
+.RE
+
+.RS
+.B nslookup 'example.com' | pullout \-m 'answer' '\eb\ed\eS+'
+.RE
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success (including "no lines matched").
+.TP
+.B 1
+.I bmatch
+or
+.I want
+was empty.
+.TP
+.B 2
+Usage error (missing arguments).
+
+.SH AUTHOR
+Chris Pollitt.
+
+.SH SEE ALSO
+.BR rpullout (1),
+.BR grep (1),
+.BR re (7)

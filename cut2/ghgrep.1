@@ -1,0 +1,128 @@
+.TH GHGREP 1 "September 2026" "ghgrep 2.0" "User Commands"
+.SH NAME
+ghgrep \- smart group-header grep: search with group context
+
+.SH SYNOPSIS
+.B ghgrep
+[OPTIONS]
+.I PATTERN
+[FILE...]
+
+.SH DESCRIPTION
+.B ghgrep
+searches text for lines matching a regular expression, like
+.BR grep (1),
+but for each match it also prints the "group header" that the matching line belongs to \- e.g. a
+.RI [ section ]
+heading, a line following a
+.B ----
+separator, or (by default) a heuristically-detected header line.
+
+If no FILE is given, or FILE is
+.BR \- ,
+input is read from standard input.
+
+.SH HEADER DETECTION
+Headers are detected in this priority order:
+.TP
+.B 1.
+An explicit \-\-header\-pattern, \-\-separator, or \-\-brackets given on the command line.
+.TP
+.B 2.
+Bracketed lines: [something]
+.TP
+.B 3.
+A separator line (----, ====, ****, ...) marks the following non-empty line as a header.
+.TP
+.B 4.
+A non-indented line immediately followed by an indented line.
+.TP
+.B 5.
+A non-indented, non-empty line immediately following a blank line.
+.TP
+.B 6.
+A non-indented line containing a metadata-like marker (pid:, PID:, exe, Name:, Process).
+
+Each header starts a new group; a group runs until the next header or end of file. If no headers are
+detected at all, the whole input is treated as a single headerless group.
+
+.SH OPTIONS
+.TP
+.B \-i, \-\-ignore\-case
+Case-insensitive matching.
+.TP
+.B \-v, \-\-invert\-match
+Invert the sense of matching for group selection: a line "matches" if it does
+.B not
+match PATTERN. A group is included if it has at least one matching line by this rule; an included group
+is still printed in full (subject to \-\-context / \-\-only\-headers), so an originally-matching line can
+still appear if its group also contains non-matching lines.
+.TP
+.B \-n, \-\-line\-number
+Prefix each printed line with its 1-based line number.
+.TP
+.B \-H, \-\-with\-filename
+Prefix each printed line with its file name. Enabled automatically when more than one FILE is given.
+.TP
+.B \-\-no\-filename
+Never prefix lines with the file name.
+.TP
+.B \-C, \-\-context N
+After a header, also print the following N lines (in addition to the matching lines and one line of
+context around each match). If omitted, the whole group is printed.
+.TP
+.B \-\-header\-pattern REGEX
+Use REGEX to decide which lines are headers, instead of the smart heuristic.
+.TP
+.B \-\-separator STR
+Treat a line consisting solely of one or more repetitions of STR as a separator; the next non-empty line
+after it is a header.
+.TP
+.B \-\-brackets
+Treat lines of the form [something] as headers.
+.TP
+.B \-\-no\-smart
+Disable the heuristic header detector (used when none of \-\-header\-pattern / \-\-separator /
+\-\-brackets apply); with this and no other detector selected, no headers are found.
+.TP
+.B \-\-only\-headers
+Print only the headers of matching groups, not the matching detail lines.
+.TP
+.B \-\-color
+Colorize headers and matching lines with ANSI escapes. Enabled automatically when stdout is a terminal.
+.TP
+.B \-\-help
+Show a brief usage summary and exit.
+
+.SH EXAMPLES
+.RS
+.B ghgrep "System32" handles.txt
+.RE
+.RS
+.B ghgrep \-i "listening" netstat.txt
+.RE
+.RS
+.B ghgrep \-\-brackets "ESTABLISHED" ports.txt
+.RE
+.RS
+.B ghgrep \-\-separator="----" "SysWOW64" handles.txt
+.RE
+.RS
+.B ghgrep \-\-header\-pattern '^\e[.*\e]$' "1042" ports.txt
+.RE
+
+.SH EXIT STATUS
+.TP
+.B 0
+Success, even if a named file was missing/unreadable or no lines matched (a diagnostic is printed to
+stderr for each such file).
+.TP
+.B 1
+PATTERN is not a valid regular expression.
+
+.SH AUTHOR
+Chris Pollitt.
+
+.SH SEE ALSO
+.BR grep (1),
+.BR re (7)
