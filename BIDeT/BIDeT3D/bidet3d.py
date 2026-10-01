@@ -21,6 +21,7 @@ import subprocess
 import sys
 import textwrap
 import time
+import types
 
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont
@@ -145,6 +146,8 @@ PRESETS = {n: _P[n] for n in PRESET_ORDER}
 
 DEFAULT_PRESET = "rainbow"
 DEFAULT_VIEW = (-20.0, 8.0, 0.0)
+MAX_LOOP_FRAMES = 120     # longest pre-rendered animation loop
+SIDE_LEVELS = 48          # distinct extrusion shades (cached per level)
 SLICE_DENSITY = 2.0      # slices per output pixel of extrusion; higher = smoother near edge-on
 
 
@@ -484,6 +487,7 @@ def build_layer(lines, p, px, ss, args, tex_dir):
         avg = fill[u8 > 128].mean(axis=0) if (u8 > 128).any() else np.array([128.0] * 3)
         back, front = avg * 0.25, avg * 0.55
     L.back, L.front = back, front
+    L.side_cache = {}
     L.depth = (args.depth if args.depth is not None else p["depth"]) * sz
     return L
 
@@ -547,7 +551,8 @@ def view_bounds(L, p, views, persp, args):
 
 
 def render(L, p, view, persp, bg, args, bounds=None):
-    """Returns an RGB PIL image (supersampled, background filled)."""
+    """Returns an RGB PIL image (supersampled, background filled), or with bg=None an
+    RGBA one whose background is truly transparent."""
     M = model_matrix(p, view, args)
     f = persp * max(L.w, L.h)
     q0, q1 = layer_quads(L, M, f, (0.0, L.depth))
@@ -558,7 +563,7 @@ def render(L, p, view, persp, bg, args, bounds=None):
     cw, ch = int(hi[0] - lo[0]), int(hi[1] - lo[1])
     if cw * ch > 60_000_000:
         sys.exit("bidet3d: image too large (%dx%d); lower -s or --ss" % (cw, ch))
-    canvas = Image.new("RGBA", (cw, ch), tuple(bg) + (255,))
+    canvas = Image.new("RGBA", (cw, ch), (0, 0, 0, 0) if bg is None else tuple(bg) + (255,))
 
     n = 1
     if L.depth > 0:
@@ -574,16 +579,30 @@ def render(L, p, view, persp, bg, args, bounds=None):
         if k == 0 and M[2, 2] > 0:
             img = L.face                      # front cap, facing us
         else:
-            t = k / float(max(1, n - 1))
-            col = L.front * (1 - t) + L.back * t
-            rgb = np.clip(shade3 * col, 0, 255).astype(np.uint8)
-            img = Image.fromarray(np.dstack([rgb, L.sil]))
+            # side colour depends only on depth, so quantize it and reuse the images
+            # across slices and across animation frames
+            lvl = int(round(k / float(max(1, n - 1)) * SIDE_LEVELS))
+            img = L.side_cache.get(lvl)
+            if img is None:
+                t = lvl / float(SIDE_LEVELS)
+                col = L.front * (1 - t) + L.back * t
+                rgb = np.clip(shade3 * col, 0, 255).astype(np.uint8)
+                img = L.side_cache[lvl] = Image.fromarray(np.dstack([rgb, L.sil]))
+        q = quads[k] - lo
+        x0 = max(0, int(math.floor(q[:, 0].min())) - 1)
+        y0 = max(0, int(math.floor(q[:, 1].min())) - 1)
+        x1 = min(cw, int(math.ceil(q[:, 0].max())) + 1)
+        y1 = min(ch, int(math.ceil(q[:, 1].max())) + 1)
+        if x1 <= x0 or y1 <= y0:
+            continue
         try:
-            co = persp_coeffs(quads[k] - lo, src)
+            co = persp_coeffs(q - (x0, y0), src)
         except np.linalg.LinAlgError:
             continue                          # edge-on: slice has no area
-        canvas.alpha_composite(img.transform((cw, ch), Image.PERSPECTIVE, tuple(co), Image.BILINEAR))
-    return canvas.convert("RGB")
+        # rasterize only the slice's own bounding box, not the whole canvas
+        canvas.alpha_composite(img.transform((x1 - x0, y1 - y0), Image.PERSPECTIVE, tuple(co),
+                                             Image.BILINEAR), (x0, y0))
+    return canvas if bg is None else canvas.convert("RGB")
 
 
 def finish(img, ss, max_w, max_h):
@@ -621,60 +640,117 @@ def term_geometry(args):
     return cols, rows, cw, ch
 
 
-def query_bg(timeout=0.25):
-    """Ask the terminal for its background colour (OSC 11). POSIX tty only."""
+def query_terminal(want_bg=True, timeout=0.25, da_timeout=1.0, debug=False):
+    """Ask the terminal two things in one raw-mode session (POSIX tty only):
+    does it report SIXEL (DA1 attribute 4, like BIDeT's test-sixel), and what is its
+    background colour (OSC 11).  Returns (sixel, bg): sixel is True/False, or None when
+    we cannot ask or it did not answer; bg is an (r, g, b) tuple or None."""
     if os.name != "posix" or not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return None
+        return None, None
+    if os.environ.get("TERM", "").startswith("yaft"):
+        return True, (0, 0, 0)            # yaft cannot answer DA1 (as in test-sixel.sh)
     try:
         import select, termios, tty
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
     except Exception:
-        return None
-    try:
-        tty.setcbreak(fd)
-        sys.stdout.write("\x1b]11;?\x1b\\")
+        return None, None
+
+    def ask(seq, done, to):
+        sys.stdout.write(seq)
         sys.stdout.flush()
         buf = ""
-        while select.select([fd], [], [], timeout)[0]:
+        while select.select([fd], [], [], to)[0]:
             buf += os.read(fd, 64).decode("latin1")
-            if buf.endswith("\\") or buf.endswith("\x07"):
+            if done(buf):
                 break
-        m = re.search(r"rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+)", buf)
+        return buf
+
+    sixel = bg = None
+    try:
+        tty.setcbreak(fd)
+        da = ask("\x1b[c", lambda b: b.endswith("c"), da_timeout)
+        if debug:
+            print("terminal: DA1 reply %r" % da, file=sys.stderr)
+        m = re.search(r"\x1b\[\?([0-9;]*)c", da)
         if m:
-            return tuple(int(int(g, 16) / float(16 ** len(g) - 1) * 255) for g in m.groups())
+            sixel = "4" in m.group(1).split(";")
+        if want_bg:
+            buf = ask("\x1b]11;?\x1b\\", lambda b: b.endswith("\\") or b.endswith("\x07"), timeout)
+            if debug:
+                print("terminal: OSC 11 (background) reply %r" % buf, file=sys.stderr)
+            m = re.search(r"rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+)", buf)
+            if m:
+                bg = tuple(int(round(int(g, 16) / float(16 ** len(g) - 1) * 255)) for g in m.groups())
     except Exception:
         pass
     finally:
+        try:
+            termios.tcflush(fd, termios.TCIFLUSH)      # drop any reply that arrived too late
+        except Exception:
+            pass
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
-    return None
+    return sixel, bg
 
 
 _backend = None
 
 
+def _keyed_header(six, key):
+    """P2=1 in the DCS header: unpainted pixels stay as they are (transparent) rather than
+    being filled with a background colour the terminal may choose differently."""
+    if key is not None and six.startswith(b"\x1bPq"):
+        return b"\x1bP0;1;q" + six[3:]
+    return six
+
+
 def to_sixel(img, ncolors=256, debug=False):
-    """RGB PIL image -> SIXEL bytes.  libsixel's Python binding if present,
-    otherwise the img2sixel program from the same package."""
+    """PIL image -> SIXEL bytes.  libsixel's Python binding if present, otherwise the
+    img2sixel program from the same package.  A P-mode image whose info["transparency"]
+    is a palette index gets that colour left unpainted (a transparent background)."""
     global _backend
     w, h = img.size
+    key = img.info.get("transparency") if img.mode == "P" else None
+    if not isinstance(key, int):
+        key = None
     if _backend in (None, "binding"):
         try:
             import libsixel
             data = img.convert("RGB").tobytes()
             buf = io.BytesIO()
             out = libsixel.sixel_output_new(lambda d, fp: fp.write(d), buf)
-            dither = libsixel.sixel_dither_new(ncolors)
-            libsixel.sixel_dither_initialize(dither, data, w, h, libsixel.SIXEL_PIXELFORMAT_RGB888,
-                                             libsixel.SIXEL_LARGE_AUTO, libsixel.SIXEL_REP_AUTO,
-                                             libsixel.SIXEL_QUALITY_HIGH)
+            dither = None
+            if img.mode == "P":
+                # We quantized already (exact background): give libsixel that very palette.
+                # Its own quantizer would average the flat background with nearby colours.
+                # The binding's sixel_dither_set_palette() is Python-2 code (a str handed to
+                # a c_char_p), so call the underlying ctypes function with bytes.
+                try:
+                    import ctypes
+                    nent = img.getextrema()[1] + 1
+                    d = libsixel.sixel_dither_new(nent)
+                    libsixel._sixel.sixel_dither_set_palette.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+                    libsixel._sixel.sixel_dither_set_palette(d, bytes(img.getpalette()[:3 * nent]))
+                    libsixel.sixel_dither_set_diffusion_type(d, libsixel.SIXEL_DIFFUSE_NONE)
+                    if key is not None:
+                        libsixel.sixel_dither_set_transparent(d, key)
+                    dither = d
+                except Exception as e:
+                    if debug:
+                        print("sixel: cannot set exact palette (%s); letting libsixel quantize" % e,
+                              file=sys.stderr)
+            if dither is None:
+                dither = libsixel.sixel_dither_new(ncolors)
+                libsixel.sixel_dither_initialize(dither, data, w, h, libsixel.SIXEL_PIXELFORMAT_RGB888,
+                                                 libsixel.SIXEL_LARGE_AUTO, libsixel.SIXEL_REP_AUTO,
+                                                 libsixel.SIXEL_QUALITY_HIGH)
             status = libsixel.sixel_encode(data, w, h, 3, dither, out)
             if libsixel.SIXEL_FAILED(status):
                 raise RuntimeError(libsixel.sixel_helper_format_error(status))
             if debug and _backend is None:
                 print("sixel: libsixel python binding", file=sys.stderr)
             _backend = "binding"
-            return buf.getvalue()
+            return _keyed_header(buf.getvalue(), key)
         except (ImportError, OSError, RuntimeError) as e:
             # OSError: the binding is ctypes, so a missing libsixel.so surfaces here
             if debug and not isinstance(e, ImportError):
@@ -692,7 +768,7 @@ def to_sixel(img, ncolors=256, debug=False):
     r = subprocess.run([exe, "-p", str(ncolors)], input=bio.getvalue(), stdout=subprocess.PIPE)
     if r.returncode:
         sys.exit("bidet3d: img2sixel failed")
-    return r.stdout
+    return _keyed_header(r.stdout, key)     # (PNG saving writes the tRNS chunk img2sixel keys on)
 
 
 # --------------------------------------------------------------------------
@@ -756,43 +832,271 @@ def emit(out, sixel):
     out.flush()
 
 
-def do_spin(args, p, L, view, bg, max_w, max_h, cell_h):
+_SPINNER = "|/-\\"
+_verbose = False      # -d: show the full progress text instead of a spinner
+
+
+def busy(i, text=""):
+    """Show that we are working: a spinning cursor on stderr (the text itself with -d).
+    Nothing at all when stderr is not a terminal."""
+    if not sys.stderr.isatty():
+        return
+    sys.stderr.write(("\r%s " % text) if _verbose else (_SPINNER[i % 4] + "\b"))
+    sys.stderr.flush()
+
+
+def busy_done():
+    if sys.stderr.isatty():
+        sys.stderr.write("\r\x1b[K" if _verbose else " \b")
+        sys.stderr.flush()
+
+
+_W = {}
+
+
+def _worker_init(state):
+    _W.update(state)
+
+
+def _worker_frame(view):
+    s = _W
+    return finish(render(s["L"], s["p"], view, s["persp"], s["bg"], s["args"], s["bounds"]),
+                  s["ss"], s["max_w"], s["max_h"])
+
+
+def render_frames(views, state, debug=False):
+    """Render every view, spread over the CPU cores; plain loop if a pool can't be had."""
+    n = len(views)
+
+    def progress(i):
+        busy(i, "pre-rendering %d/%d frames" % (i, n))
+
+    _worker_init(state)
+    t = time.time()
+    imgs = [_worker_frame(views[0])]
+    per_frame = time.time() - t
+    progress(1)
+    # Starting a pool costs ~1-2 s, so only use one when the rest of the loop is long
+    # enough to repay it.  Physical cores ~ half the logical ones.
+    workers = min(4, max(2, (os.cpu_count() or 2) // 2), n - 1)
+    if (n - 1) * per_frame > 4.0 and workers > 1 and not os.environ.get("BIDET3D_SERIAL"):
+        try:
+            from concurrent.futures import ProcessPoolExecutor
+            more = []
+            with ProcessPoolExecutor(workers, initializer=_worker_init, initargs=(state,)) as ex:
+                for im in ex.map(_worker_frame, views[1:]):
+                    more.append(im)
+                    progress(1 + len(more))
+            if debug:
+                print("rendered on %d processes" % workers, file=sys.stderr)
+            return imgs + more
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:     # fork/spawn trouble (e.g. Cygwin): just do it serially
+            if debug:
+                print("process pool failed (%s: %s); rendering serially" % (type(e).__name__, e), file=sys.stderr)
+    for v in views[len(imgs):]:
+        imgs.append(_worker_frame(v))
+        progress(len(imgs))
+    return imgs
+
+
+def to_sixel_many(imgs, ncolors, debug=False):
+    """SIXEL for many frames.  The libsixel binding is cheap per call; img2sixel is a
+    process per run (slow to fork on Cygwin), so hand it all the frames in one run."""
+    first = to_sixel(imgs[0], ncolors, debug)
+    rest = imgs[1:]
+    if not rest:
+        return [first]
+    exe = shutil.which("img2sixel")
+    if _backend != "binding" and exe:
+        import tempfile
+        try:
+            with tempfile.TemporaryDirectory(prefix="bidet3d_") as d:
+                names = []
+                for i, im in enumerate(rest):
+                    names.append("f%04d.png" % i)
+                    im.save(os.path.join(d, names[-1]))
+                proc = subprocess.Popen([exe, "-p", str(ncolors)] + names, cwd=d, stdout=subprocess.PIPE)
+                tick = 0
+                while True:
+                    try:
+                        out_bytes, _ = proc.communicate(timeout=0.15)
+                        break
+                    except subprocess.TimeoutExpired:
+                        tick += 1
+                        busy(tick, "encoding SIXEL")
+                r = types.SimpleNamespace(returncode=proc.returncode, stdout=out_bytes)
+            key = rest[0].info.get("transparency")
+            key = key if isinstance(key, int) else None
+            segs = [_keyed_header(b"\x1bP" + s.split(b"\x1b\\")[0] + b"\x1b\\", key)
+                    for s in r.stdout.split(b"\x1bP")[1:]]
+            if r.returncode == 0 and len(segs) == len(rest):
+                return [first] + segs
+            if debug:
+                print("batch img2sixel gave %d images for %d frames; encoding one by one" %
+                      (len(segs), len(rest)), file=sys.stderr)
+        except OSError as e:
+            if debug:
+                print("batch img2sixel failed (%s); encoding one by one" % e, file=sys.stderr)
+    return [first] + [to_sixel(im, ncolors) for im in rest]
+
+
+BG_TOL = 2     # pixels this close to the background colour count as background
+
+
+def _bg_mask(a, bg):
+    return (np.abs(a.astype(np.int16) - np.array(bg, np.int16)) <= BG_TOL).all(-1)
+
+
+def palette_with_bg(imgs, bg, ncolors, masks=None):
+    """Palette for everything that is not background (at most ncolors-1 colours).  The
+    background gets its own index, one past the end, added by quantize_exact.  libsixel's
+    own quantizer averages a big flat background with nearby colours (white came out as
+    247), and a background kept in the nearest-colour search would swallow real pixels
+    that happen to be close to it.  masks: per-image boolean "this is background" arrays
+    (e.g. alpha < 128); default: pixels within BG_TOL of the colour bg.
+    Returns (palette image, index the background will have)."""
+    parts = []
+    for n, im in enumerate(imgs):
+        a = np.asarray(im.convert("RGB"))
+        m = _bg_mask(a, bg) if masks is None else masks[n]
+        px = a[~m]
+        if len(px) > 50000:
+            px = px[np.random.default_rng(0).choice(len(px), 50000, replace=False)]
+        parts.append(px)
+    px = np.concatenate(parts)
+    pal = [0, 0, 0]
+    if len(px):
+        q = Image.fromarray(px.reshape(1, -1, 3)).quantize(
+            max(1, ncolors - 1), method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+        used = max(i for _n, i in q.getcolors()) + 1
+        pal = list(q.getpalette()[:3 * used])
+    pimg = Image.new("P", (1, 1))
+    # exactly the entries we use: a PNG palette padded past the requested colour count
+    # makes img2sixel re-quantize it (and average the background again)
+    pimg.putpalette(pal)
+    return pimg, len(pal) // 3
+
+
+def quantize_exact(img, pimg, bg_index, bg, dither, mask=None):
+    """Map img onto the palette; every background pixel becomes exactly index bg_index."""
+    pal = list(pimg.getpalette()[:3 * bg_index])
+    a = np.array(img.convert("RGB"))
+    m = _bg_mask(a, bg) if mask is None else mask
+    # an exact palette colour has zero quantization error, so no dither error leaks from
+    # the background into the pixels beside it
+    a[m] = pal[:3]
+    q = Image.fromarray(a).quantize(palette=pimg, dither=Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE)
+    idx = np.array(q)
+    idx[m] = bg_index
+    out = Image.frombytes("P", q.size, idx.tobytes())
+    out.putpalette(pal + list(bg))
+    return out
+
+
+def sixel_ready(img, bg, ncolors, dither=False, transparent=False):
+    """Quantize for SIXEL.  An RGBA image (see render with bg=None) is treated as having a
+    transparent background: pixels with alpha < 128 are the background.  With
+    transparent=True that entry is marked transparent, so the terminal shows its own
+    background there."""
+    mask = None
+    if img.mode == "RGBA":
+        mask = np.asarray(img.getchannel("A")) < 128
+    pimg, bi = palette_with_bg([img], bg, ncolors, None if mask is None else [mask])
+    q = quantize_exact(img, pimg, bi, bg, dither, mask)
+    if transparent:
+        q.info["transparency"] = bi
+    return q
+
+
+def do_spin(args, p, L, view, bg, max_w, max_h, cell_w, cell_h, transparent=False):
+    """Pre-render one seamless loop, encode it once, then replay the cached
+    SIXEL on a steady clock.  Rendering/encoding per frame while playing made
+    the frame rate (and the angle jumps) depend on how slow the machine was."""
     out = sys.stdout.buffer
-    speed = args.spin_speed
     fps = max(1.0, args.fps)
+    speed = max(1.0, abs(args.spin_speed))
+    n = max(4, int(round(360.0 / speed * fps)))                              # frames per loop
+    if n > MAX_LOOP_FRAMES:      # keep the rotation speed; just show fewer frames per second
+        n = MAX_LOOP_FRAMES
+        fps = n * speed / 360.0
+        if args.debug:
+            print("loop capped at %d frames: playing at %.1f fps" % (n, fps), file=sys.stderr)
+    sgn = 1.0 if args.spin_speed >= 0 else -1.0
     if args.sway:
-        views = [(view[0] + args.sway * math.sin(2 * math.pi * i / 36.0), view[1], view[2]) for i in range(36)]
+        views = [(view[0] + args.sway * math.sin(2 * math.pi * i / n), view[1], view[2]) for i in range(n)]
     else:
-        views = [(view[0] + i * 10.0, view[1], view[2]) for i in range(36)]
+        views = [(view[0] + sgn * 360.0 * i / n, view[1], view[2]) for i in range(n)]
     bounds = view_bounds(L, p, views, args.perspective, args)
+    keys = [tuple(round(x, 3) for x in v) for v in views]      # sway repeats itself: render each look once
+    first_of = {}
+    for key, v in zip(keys, views):
+        first_of.setdefault(key, v)
+    uviews = list(first_of.values())
+    slot = {key: i for i, key in enumerate(first_of)}
+    order = [slot[key] for key in keys]
+
     t0 = time.time()
-    nframes = 0
-    rows = None
+    state = dict(L=L, p=p, persp=args.perspective, bg=None if transparent else bg, args=args, bounds=bounds,
+                 ss=args.ss, max_w=max_w, max_h=max_h)
     try:
-        while args.frames == 0 or nframes < args.frames:
-            ts = time.time()
-            t = ts - t0 if not args.frames else nframes / fps
-            if args.sway:
-                yaw = view[0] + args.sway * math.sin(2 * math.pi * t * speed / 360.0)
-            else:
-                yaw = view[0] + speed * t
-            img = finish(render(L, p, (yaw, view[1], view[2]), args.perspective, bg, args, bounds),
-                         args.ss, max_w, max_h)
-            if rows is None:
-                rows = int(math.ceil(img.height / cell_h)) + 1
-                out.write(b"\n" * rows + ("\x1b[%dA" % rows).encode() + b"\x1b7\x1b[?25l")
-            out.write(b"\x1b8")
-            emit(out, to_sixel(img, args.colors, args.debug and nframes == 0))
-            nframes += 1
-            dt = 1.0 / fps - (time.time() - ts)
-            if dt > 0:
-                time.sleep(dt)
+        imgs = render_frames(uviews, state, args.debug)
+        t_render = time.time() - t0
+        # one shared palette (colours don't shimmer between frames), exact background
+        masks = [np.asarray(im.getchannel("A")) < 128 for im in imgs] if transparent else None
+        pick = list(range(0, len(imgs), max(1, len(imgs) // 8)))[:8]
+        pimg, bi = palette_with_bg([imgs[i] for i in pick], bg, args.colors,
+                                   [masks[i] for i in pick] if masks else None)
+        qs = [quantize_exact(im, pimg, bi, bg, False, masks[k] if masks else None)
+              for k, im in enumerate(imgs)]
+        if transparent:
+            for q in qs:
+                q.info["transparency"] = bi
+        busy(0, "encoding SIXEL")
+        usixels = to_sixel_many(qs, args.colors, args.debug)
+        sixels = [usixels[j] for j in order]
+    except KeyboardInterrupt:
+        busy_done()
+        return
+    busy_done()
+    if args.debug:
+        print("loop: %d frames (%d distinct), %dx%d; render %.1fs + encode %.1fs; avg %.0f KB/frame" %
+              (n, len(uviews), imgs[0].width, imgs[0].height, t_render, time.time() - t0 - t_render,
+               sum(map(len, sixels)) / n / 1024.0), file=sys.stderr)
+
+    rows = int(math.ceil(imgs[0].height / cell_h)) + 1
+    clear = b""
+    if transparent:
+        cols = int(math.ceil(imgs[0].width / cell_w)) + 1
+        clear = b"\x1b8" + (b"\x1b[%dX\x1b[B" % cols) * (rows - 1)      # ECH each row of the picture
+    out.write(b"\n" * rows + ("\x1b[%dA" % rows).encode() + b"\x1b7\x1b[?25l")
+    start = time.monotonic()
+    last = -1
+    shown = 0
+    blocked = 0.0
+    try:
+        while args.frames == 0 or shown < args.frames:
+            tick = int((time.monotonic() - start) * fps)
+            if tick == last:
+                time.sleep(max(0.0, (last + 1) / fps - (time.monotonic() - start)))
+                continue
+            last = tick                     # a slow terminal skips ticks instead of slowing the motion
+            tw = time.monotonic()
+            # ?2026: synchronized output (no tearing where supported, ignored elsewhere)
+            out.write(b"\x1b[?2026h\x1b8" + clear + b"\x1b8" + sixels[tick % n] + b"\x1b[?2026l")
+            out.flush()
+            blocked += time.monotonic() - tw
+            shown += 1
     except KeyboardInterrupt:
         pass
     finally:
-        if rows is not None:
-            out.write(b"\x1b8" + ("\x1b[%dB" % rows).encode() + b"\x1b[?25h\n")
-            out.flush()
+        out.write(b"\x1b[?2026l\x1b8" + ("\x1b[%dB" % rows).encode() + b"\x1b[?25h\n")
+        out.flush()
+        if args.debug and shown:
+            el = time.monotonic() - start
+            print("played %d frames in %.1fs = %.1f fps (target %.1f); terminal took %.0f ms/frame to accept data" %
+                  (shown, el, shown / el, fps, blocked / shown * 1000), file=sys.stderr)
 
 
 def main():
@@ -800,7 +1104,8 @@ def main():
         description="BIDeT3D - 3D WordArt for SIXEL terminals. Text comes from the "
                     "arguments, or stdin. (After banner, FIGlet, TOIlet and BIDeT.)")
     ap.add_argument("-b", "--background", default="transparent",
-                    help="background colour; 'transparent' = ask the terminal (default), else black")
+                    help="background colour; the default asks the terminal for its own, and if it will not say "
+                         "uses a transparent background")
     ap.add_argument("-c", "--colour", "--color", dest="colour",
                     help="solid face colour (overrides the preset's material)")
     ap.add_argument("-d", "--debug", action="store_true", help="timings and backend info on stderr")
@@ -827,12 +1132,23 @@ def main():
     ap.add_argument("--spin", action="store_true", help="animate: rotate around the vertical axis (Ctrl-C stops)")
     ap.add_argument("--sway", type=float, metavar="DEG", help="animate: swing +-DEG around the view instead of spinning")
     ap.add_argument("--spin-speed", type=float, default=60.0, help="degrees per second (default 60)")
-    ap.add_argument("--fps", type=float, default=8.0, help="target frames per second (default 8)")
-    ap.add_argument("--frames", type=int, default=0, help="stop the animation after N frames (default: until Ctrl-C)")
+    ap.add_argument("--fps", type=float, default=10.0, help="frames per second; also sets the loop length (default 10)")
+    ap.add_argument("--frames", type=int, default=0, help="stop after showing N frames (default: until Ctrl-C)")
     ap.add_argument("--ss", type=int, help="supersampling factor (default 2, 1 when animating)")
-    ap.add_argument("--colors", type=int, default=256, help="SIXEL palette size (default 256)")
+    ap.add_argument("--colors", type=int, help="SIXEL palette size (default 256; fewer = smaller frames, more banding)")
     ap.add_argument("--png", metavar="FILE", help="write a PNG instead of printing SIXEL")
     ap.add_argument("--texture-dir", help="directory with css3wordart's Texture-*.png (see README)")
+    ap.add_argument("--max-width", type=int, metavar="PX",
+                    help="cap the image width; smaller = faster animation prep and less data to the terminal")
+    ap.add_argument("--dither", action="store_true",
+                    help="Floyd-Steinberg dithering of still pictures (default off: the palette is built for "
+                         "the picture, and dithering only adds speckle)")
+    ap.add_argument("--transparent", action="store_true",
+                    help="leave the background unpainted so the terminal shows its own (animations erase the "
+                         "picture area before each frame); also the automatic fallback when the terminal "
+                         "won't report its colour")
+    ap.add_argument("--force", action="store_true",
+                    help="print SIXEL even if the terminal does not report support (or set LSIX_FORCE_SIXEL_SUPPORT)")
     ap.add_argument("--cell", metavar="WxH", help="terminal cell size in pixels when it cannot be detected")
     ap.add_argument("text", nargs="*")
     args = ap.parse_args()
@@ -850,30 +1166,62 @@ def main():
     animate = args.spin or args.sway is not None
     if args.ss is None:
         args.ss = 1 if animate else 2
+    if args.colors is None:
+        args.colors = 256       # animations share one palette across frames; 128 showed contour banding
     args._fill = ("solid", "#%02x%02x%02x" % parse_color(args.colour)) if args.colour else None
 
+    global _verbose
+    _verbose = args.debug
     # terminal + background
     cols, rows, cw, ch = term_geometry(args)
     max_w = cols * cw * 0.98
     if "xterm" in os.environ.get("TERM", "") and max_w > 1000:
         max_w = 1000          # xterm cannot show SIXEL wider than 1000px
+    if args.max_width:
+        max_w = min(max_w, args.max_width)
     max_h = max(1, (rows - 2)) * ch
+    sixel_ok, term_bg = ((None, None) if args.png else
+                         query_terminal(want_bg=args.background == "transparent", debug=args.debug))
+    if sixel_ok is False and not (args.force or os.environ.get("LSIX_FORCE_SIXEL_SUPPORT")):
+        sys.exit("bidet3d: Sixel not supported: your terminal does not report having sixel graphics "
+                 "support.\nTry mintty, xterm -ti vt340, mlterm, Windows Terminal or WezTerm "
+                 "(see TERMINAL-SUPPORT-LIST.txt), or use --force / --png.")
+    # Background: an explicit -b wins; otherwise the colour the terminal reported.  If it
+    # would not say (Windows Terminal does not answer OSC 11) the picture gets a
+    # transparent background, so the terminal shows its own colour.  An animation then
+    # erases the picture area before every frame, or the old frame would show through.
+    transparent = False
     if args.background == "transparent":
-        bg = query_bg() if not args.png else None
-        bg = bg or (0, 0, 0)
+        if term_bg:
+            bg = term_bg
+        elif args.png:
+            bg = (0, 0, 0)
+        else:
+            transparent = True
     else:
         bg = parse_color(args.background)
+    if args.transparent:
+        transparent = True
+    if transparent:
+        # Rendered against mid-grey so anti-aliased edges look right on light and dark
+        # terminals alike; below the 0.5 luminance cut-off, so "ink" presets use white.
+        bg = (127, 127, 127)       # only steers the "ink" choice; the picture itself keeps real alpha
+        if args.debug:
+            print("background: transparent sixel", file=sys.stderr)
     args.bg = bg
     tex_dir = args.texture_dir
 
     t_start = time.time()
     if args.gallery:
+        if not args.text:
+            args.text = ["BIDeT3D"]      # a gallery should not sit waiting on stdin
         out = sys.stdout.buffer
         for name in PRESET_ORDER:
             print(name)
             p, L = make_scene(args, name, tex_dir, max_w, max_h / 3, px=args.size or 56, ss=args.ss)
-            img = finish(render(L, p, pick_view(p, args), args.perspective, bg, args), args.ss, max_w, max_h / 2)
-            emit(out, to_sixel(img, args.colors, args.debug))
+            img = finish(render(L, p, pick_view(p, args), args.perspective, None if transparent else bg, args),
+                         args.ss, max_w, max_h / 2)
+            emit(out, to_sixel(sixel_ready(img, bg, args.colors, dither=args.dither, transparent=transparent), args.colors, args.debug))
             print()
         return
 
@@ -884,17 +1232,17 @@ def main():
               (args.preset, L.px, L.w, L.h, L.depth, view, time.time() - t_start), file=sys.stderr)
 
     if animate and not args.png:
-        do_spin(args, p, L, view, bg, max_w, max_h, ch)
+        do_spin(args, p, L, view, bg, max_w, max_h, cw, ch, transparent)
         return
 
     t1 = time.time()
-    img = finish(render(L, p, view, args.perspective, bg, args), args.ss, max_w, max_h)
+    img = finish(render(L, p, view, args.perspective, None if transparent else bg, args), args.ss, max_w, max_h)
     if args.debug:
         print("render=%.2fs final=%dx%d" % (time.time() - t1, img.width, img.height), file=sys.stderr)
     if args.png:
         img.save(args.png)
         return
-    emit(sys.stdout.buffer, to_sixel(img, args.colors, args.debug))
+    emit(sys.stdout.buffer, to_sixel(sixel_ready(img, bg, args.colors, dither=args.dither, transparent=transparent), args.colors, args.debug))
     sys.stdout.write("\n")
 
 

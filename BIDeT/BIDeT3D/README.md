@@ -51,14 +51,52 @@ width, `-d` debug, `-v` version. Text comes from the arguments or stdin.
 | `--shape S` | `plain arc inverted-arc squeeze wave` baseline warp |
 | `--perspective F` | camera distance in text widths (smaller = more perspective) |
 | `--spin`, `--sway DEG` | animate by rotating, or swinging; Ctrl-C stops |
-| `--spin-speed`, `--fps`, `--frames` | animation control |
-| `--colors N` | SIXEL palette size (default 256) |
+| `--spin-speed`, `--fps`, `--frames` | animation control (degrees/s, frames/s, stop after N) |
+| `--colors N` | SIXEL palette size (default 256; fewer = smaller frames, more banding) |
 | `--png FILE` | write a PNG instead of SIXEL (handy for testing) |
+| `--max-width PX` | cap the image width (faster, less data) |
+| `--dither` | Floyd-Steinberg dithering for still pictures (default off: less speckle) |
+| `--transparent` | leave the background unpainted (still pictures); automatic when the terminal won't report its colour |
+| `--force` | print SIXEL even if the terminal does not report support |
 | `--cell WxH` | terminal cell size in pixels if it can't be detected |
 
 The black presets (`up`, `arc`, `squeeze`, ...) used to sit on a light page, so
-their "ink" turns white on dark terminals. The terminal background is asked
-for with OSC 11 where supported; otherwise use `-b`.
+their "ink" turns white on dark terminals.
+
+Like BIDeT's `test-sixel`, it first asks the terminal whether it reports SIXEL
+(DA1 attribute 4) and stops with "Sixel not supported" if it says no
+(`--force` or `LSIX_FORCE_SIXEL_SUPPORT=1` to print anyway; piped output and
+`--png` skip the check).
+
+**Background.** In the same exchange it asks for the background colour (OSC 11) so
+the picture blends in, and keeps that colour exact through quantization (libsixel's
+own quantizer turned white into 247), within the 1% steps SIXEL colour registers
+allow. `-b COLOR` overrides. If the terminal will not say (Windows Terminal does
+not answer OSC 11, so every tool that guesses its colour gets it wrong there), a
+still picture is sent with a **transparent background** (`P2=1`, the colour is
+left unpainted), so the terminal shows its own. `--transparent` forces that.
+Transparent pictures keep a real alpha channel, so edge colours are the
+material's own (no halo of the wrong background); the edge itself is a hard
+1-bit step, which is all SIXEL transparency can express. An animation on such a terminal erases its picture area before drawing each frame
+(otherwise the previous frame would show through the unpainted pixels), which may
+flicker a little on terminals without synchronized output; `-b COLOR` gives opaque
+frames instead. `-d` prints the raw replies the terminal gave.
+
+## Animation
+
+`--spin` and `--sway` first pre-render one seamless loop (a progress counter
+shows while it works), quantize every frame to one shared palette, encode it
+once, then replay the cached SIXEL on a steady clock. So the smoothness depends
+on how fast your terminal swallows SIXEL, not on how fast this script renders.
+If the terminal can't keep up it skips frames instead of slowing the rotation.
+Starting is quicker with a smaller picture (`--max-width 640`), fewer frames
+(`--spin-speed 90`, `--fps 8`) or `--sway`, which only needs half the frames.
+Rendering uses several processes when the loop is long enough to be worth it
+(`BIDET3D_SERIAL=1` turns that off), and without the libsixel Python binding all
+frames go through one `img2sixel` run instead of one per frame.
+Try `--fps` 6..15, `--colors 64` or a smaller `-s` if it stutters, and add `-d`
+to see the achieved frame rate and how long the terminal took per frame.
+Frames are wrapped in synchronized-output sequences (mode 2026) where supported.
 
 ## Textures
 

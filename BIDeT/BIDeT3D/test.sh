@@ -12,7 +12,7 @@ $py bidet3d.py -b white -P arc --png "$out/white.png" "On white" || fail=1
 echo "rendered $(ls "$out"/*.png | wc -l) PNGs in $out"
 if command -v img2sixel >/dev/null || $py -c "import libsixel" 2>/dev/null; then
   $py bidet3d.py -P chrome "Hello, SIXEL" > "$out/t.six" && head -c 2 "$out/t.six" | grep -q $'\x1bP' || { echo "FAIL sixel"; fail=1; }
-  $py bidet3d.py --spin --frames 3 --fps 100 -P superhero "Spin" >/dev/null || fail=1
+  $py bidet3d.py --spin --frames 3 --fps 5 --spin-speed 120 -P superhero "Spin" >/dev/null || fail=1
   echo "sixel + animation ok"
 else
   echo "(no libsixel found: skipping SIXEL checks)"
