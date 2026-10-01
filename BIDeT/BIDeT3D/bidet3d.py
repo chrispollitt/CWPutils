@@ -979,8 +979,21 @@ def palette_with_bg(imgs, bg, ncolors, masks=None):
     return pimg, len(pal) // 3
 
 
-def quantize_exact(img, pimg, bg_index, bg, dither, mask=None):
-    """Map img onto the palette; every background pixel becomes exactly index bg_index."""
+def _unused_colour(pal, bg):
+    """bg, nudged until it matches no entry of the flat RGB list pal."""
+    used = set(zip(pal[0::3], pal[1::3], pal[2::3]))
+    c = list(bg)
+    while tuple(c) in used:
+        c[0] = (c[0] + 1) % 256
+    return c
+
+
+def quantize_exact(img, pimg, bg_index, bg, dither, mask=None, keyed=False):
+    """Map img onto the palette; every background pixel becomes exactly index bg_index.
+    keyed: the background is marked transparent, and moved to palette index 0 with a colour
+    that differs from every real entry.  img2sixel only honours the PNG transparent index
+    reliably when it is 0 (a grey picture such as chrome, with the key last, came out with
+    the background painted black), and identical palette colours get folded together."""
     pal = list(pimg.getpalette()[:3 * bg_index])
     a = np.array(img.convert("RGB"))
     m = _bg_mask(a, bg) if mask is None else mask
@@ -990,6 +1003,12 @@ def quantize_exact(img, pimg, bg_index, bg, dither, mask=None):
     q = Image.fromarray(a).quantize(palette=pimg, dither=Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE)
     idx = np.array(q)
     idx[m] = bg_index
+    if keyed:
+        idx = np.where(m, 0, idx + 1).astype(np.uint8)
+        out = Image.frombytes("P", q.size, idx.tobytes())
+        out.putpalette(_unused_colour(pal, bg) + pal)
+        out.info["transparency"] = 0
+        return out
     out = Image.frombytes("P", q.size, idx.tobytes())
     out.putpalette(pal + list(bg))
     return out
@@ -1004,10 +1023,7 @@ def sixel_ready(img, bg, ncolors, dither=False, transparent=False):
     if img.mode == "RGBA":
         mask = np.asarray(img.getchannel("A")) < 128
     pimg, bi = palette_with_bg([img], bg, ncolors, None if mask is None else [mask])
-    q = quantize_exact(img, pimg, bi, bg, dither, mask)
-    if transparent:
-        q.info["transparency"] = bi
-    return q
+    return quantize_exact(img, pimg, bi, bg, dither, mask, keyed=transparent)
 
 
 def do_spin(args, p, L, view, bg, max_w, max_h, cell_w, cell_h, transparent=False):
@@ -1048,11 +1064,8 @@ def do_spin(args, p, L, view, bg, max_w, max_h, cell_w, cell_h, transparent=Fals
         pick = list(range(0, len(imgs), max(1, len(imgs) // 8)))[:8]
         pimg, bi = palette_with_bg([imgs[i] for i in pick], bg, args.colors,
                                    [masks[i] for i in pick] if masks else None)
-        qs = [quantize_exact(im, pimg, bi, bg, False, masks[k] if masks else None)
+        qs = [quantize_exact(im, pimg, bi, bg, False, masks[k] if masks else None, keyed=transparent)
               for k, im in enumerate(imgs)]
-        if transparent:
-            for q in qs:
-                q.info["transparency"] = bi
         busy(0, "encoding SIXEL")
         usixels = to_sixel_many(qs, args.colors, args.debug)
         sixels = [usixels[j] for j in order]
