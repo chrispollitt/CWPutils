@@ -1,0 +1,11 @@
+BIDeT3D borrows from other projects. Each has its own license; see their source.
+
+WHAT                               SOURCE
+the 30 WordArt preset designs      github.com/arizzitano/css3wordart (no license file;
+(colours, gradients, stops,         designs re-expressed as data in bidet3d.py, no code
+ transforms, 8x8 / 2x2 tiles)       copied). Its Word textures are NOT bundled; fetch them
+                                    yourself with get-textures.sh.
+SIXEL encoding                     github.com/saitoha/libsixel (MIT), used through its
+                                    Python binding or the img2sixel program
+CLI conventions, sixel terminal    ../ (BIDeT, chrispollitt/CWPutils)
+ support list

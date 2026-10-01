@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Smoke test: every preset, a few shapes/views, and animation, all to PNG/stdout.
+cd "$(dirname "$0")"
+py=${PYTHON:-python3}; command -v "$py" >/dev/null || py=python
+out=$(mktemp -d)
+fail=0
+for p in $($py bidet3d.py --list-presets | tr -d '\r'); do
+  $py bidet3d.py -P "$p" --png "$out/$p.png" "WordArt" && [ -s "$out/$p.png" ] || { echo "FAIL $p"; fail=1; }
+done
+$py bidet3d.py --shape wave --yaw -30 --pitch 12 --png "$out/wave.png" "Wave" || fail=1
+$py bidet3d.py -b white -P arc --png "$out/white.png" "On white" || fail=1
+echo "rendered $(ls "$out"/*.png | wc -l) PNGs in $out"
+if command -v img2sixel >/dev/null || $py -c "import libsixel" 2>/dev/null; then
+  $py bidet3d.py -P chrome "Hello, SIXEL" > "$out/t.six" && head -c 2 "$out/t.six" | grep -q $'\x1bP' || { echo "FAIL sixel"; fail=1; }
+  $py bidet3d.py --spin --frames 3 --fps 100 -P superhero "Spin" >/dev/null || fail=1
+  echo "sixel + animation ok"
+else
+  echo "(no libsixel found: skipping SIXEL checks)"
+fi
+[ $fail = 0 ] && echo PASS || { echo FAILED; exit 1; }
