@@ -31,6 +31,13 @@ _MEDIANCUT = getattr(getattr(Image, "Quantize", Image), "MEDIANCUT")
 _DITHER_NONE = getattr(Image, "Dither", Image).NONE
 _DITHER_FS = getattr(Image, "Dither", Image).FLOYDSTEINBERG
 
+
+def _rng(seed):
+    """Seeded generator with .random() and .choice(); default_rng needs numpy >= 1.17."""
+    if hasattr(np.random, "default_rng"):
+        return np.random.default_rng(seed)
+    return np.random.RandomState(seed)
+
 VERSION = "0.1"
 
 
@@ -325,7 +332,7 @@ def dilate(u8, r):
     if r <= 0:
         return u8
     H, W = u8.shape
-    padded = np.pad(u8, r)
+    padded = np.pad(u8, r, mode="constant")
     out = u8.copy()
     for dy in range(-r, r + 1):
         ext = int(math.sqrt(max(0, r * r - dy * dy)) + 0.5)
@@ -368,8 +375,9 @@ def texture_fill(name, w, h, sz, tex_dir):
             return np.tile(a, (ry, rx, 1))[:h, :w]
     # procedural stand-in: blurred noise mapped between two colours
     dark, light = (np.array(C(c), np.float32) for c in TEXTURE_FALLBACK[name])
-    rng = np.random.default_rng(zlib_seed(name))
-    n = rng.random((h // 4 + 2, w // 4 + 2)).astype(np.float32)
+    rng = _rng(zlib_seed(name))
+    rand = rng.random if hasattr(rng, "random") else rng.random_sample
+    n = rand((h // 4 + 2, w // 4 + 2)).astype(np.float32)
     im = Image.fromarray((n * 255).astype(np.uint8)).resize((w, h), Image.BICUBIC)
     im = im.filter(ImageFilter.GaussianBlur(max(1, sz / 40.0)))
     t = np.asarray(im, np.float32)
@@ -449,7 +457,7 @@ def build_layer(lines, p, px, ss, args, tex_dir):
     if shape and shape != "plain":
         m = SHAPES[shape](m)
     pad = int(0.16 * sz) + 2
-    m = np.pad(m, pad)
+    m = np.pad(m, pad, mode="constant")
     u8 = (m * 255).astype(np.uint8)
     H, W = u8.shape
 
@@ -976,13 +984,12 @@ def palette_with_bg(imgs, bg, ncolors, masks=None):
         m = _bg_mask(a, bg) if masks is None else masks[n]
         px = a[~m]
         if len(px) > 50000:
-            px = px[np.random.default_rng(0).choice(len(px), 50000, replace=False)]
+            px = px[_rng(0).choice(len(px), 50000, replace=False)]
         parts.append(px)
     px = np.concatenate(parts)
     pal = [0, 0, 0]
     if len(px):
-        q = Image.fromarray(px.reshape(1, -1, 3)).quantize(
-            max(1, ncolors - 1), method=_MEDIANCUT, dither=_DITHER_NONE)
+        q = _quantize_median(Image.fromarray(px.reshape(1, -1, 3)), max(1, ncolors - 1))
         used = max(i for _n, i in q.getcolors()) + 1
         pal = list(q.getpalette()[:3 * used])
     pimg = Image.new("P", (1, 1))
@@ -990,6 +997,32 @@ def palette_with_bg(imgs, bg, ncolors, masks=None):
     # makes img2sixel re-quantize it (and average the background again)
     pimg.putpalette(pal)
     return pimg, len(pal) // 3
+
+
+def _quantize_median(img, ncolors):
+    try:
+        return img.quantize(ncolors, method=_MEDIANCUT, dither=_DITHER_NONE)
+    except TypeError:       # Pillow < 7: no dither keyword (median cut never dithers)
+        return img.quantize(ncolors, method=_MEDIANCUT)
+
+
+def _quantize_palette(img, pimg, dither, n):
+    """img (RGB) onto the first n entries of palette image pimg, with or without
+    Floyd-Steinberg dither."""
+    try:
+        return img.quantize(palette=pimg, dither=_DITHER_FS if dither else _DITHER_NONE)
+    except TypeError:       # Pillow < 7: no dither keyword, palette mapping always dithers
+        if dither:
+            return img.quantize(palette=pimg)
+    pal = np.array(pimg.getpalette()[:3 * n], np.float32).reshape(-1, 3)
+    flat = np.asarray(img.convert("RGB"), np.float32).reshape(-1, 3)
+    idx = np.empty(len(flat), np.uint8)
+    for i in range(0, len(flat), 16384):
+        c = flat[i:i + 16384]
+        idx[i:i + 16384] = ((c[:, None, :] - pal[None, :, :]) ** 2).sum(-1).argmin(1)
+    out = Image.frombytes("P", img.size, idx.tobytes())
+    out.putpalette(pimg.getpalette()[:3 * n])
+    return out
 
 
 def _unused_colour(pal, bg):
@@ -1013,7 +1046,7 @@ def quantize_exact(img, pimg, bg_index, bg, dither, mask=None, keyed=False):
     # an exact palette colour has zero quantization error, so no dither error leaks from
     # the background into the pixels beside it
     a[m] = pal[:3]
-    q = Image.fromarray(a).quantize(palette=pimg, dither=_DITHER_FS if dither else _DITHER_NONE)
+    q = _quantize_palette(Image.fromarray(a), pimg, dither, bg_index)
     idx = np.array(q)
     idx[m] = bg_index
     if keyed:
