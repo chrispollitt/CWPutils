@@ -7,5 +7,5 @@ the 30 WordArt preset designs      github.com/arizzitano/css3wordart (no license
                                     yourself with get-textures.sh.
 SIXEL encoding                     github.com/saitoha/libsixel (MIT), used through its
                                     Python binding or the img2sixel program
-CLI conventions, sixel terminal    ../ (BIDeT, chrispollitt/CWPutils)
+CLI conventions, sixel terminal    ../v1/ (BIDeT, chrispollitt/CWPutils)
  support list

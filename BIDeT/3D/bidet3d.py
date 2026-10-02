@@ -358,6 +358,7 @@ def texture_dirs(extra=None):
     here = os.path.dirname(os.path.abspath(__file__))
     ds = [extra, os.environ.get("BIDET3D_TEXTURES"), os.path.join(here, "textures"),
           os.path.join(here, "..", "css3wordart", "less", "textures"),
+          os.path.join(here, "..", "share", "BIDeT3D", "textures"),      # <prefix>/bin/bidet3d
           "/usr/local/share/BIDeT3D/textures"]
     return [d for d in ds if d]
 

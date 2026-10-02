@@ -1,20 +1,14 @@
 #!/bin/bash
-# fixnetpbm
-url='https://sourceforge.net/projects/netpbm/files/super_stable/10.73.33/netpbm-sf-10.73.33_amd64.deb/download'
-if [[  $(id -un) != root ]]; then
-  echo "Must run as root"
-  exit 1
-fi
-if [[ -z $1 ]]; then
-  apt remove netpbm libnetpbm10
-  wget -O netpbm-sf-10.73.33_amd64.deb $url
-  apt install libpng16-16 libjpeg62
-  dpkg -i ./netpbm-sf-10.73.33_amd64.deb
-fi
-files=$(dpkg -L netpbm-sf)
-for file in $files; do
-  if [[ -f $file ]]; then
-    chown root.root $file
-    chmod ugo+rX $file
-  fi
-done
+# fixnetpbm -- DISABLED (BIDeT v1 is obsolete and unmaintained; see ../README.md)
+#
+# This script ran as root and would have:
+#   - removed the distro's netpbm and libnetpbm10 packages (and anything that
+#     depends on them),
+#   - downloaded a .deb from SourceForge over the network and installed it
+#     with dpkg, with no signature or checksum verification,
+#   - then chown'ed/chmod'ed every file of that package to root:root, a+rX.
+# The 2020 netpbm 10.73.33 it targeted is long out of date.  The original is kept,
+# non-executable, as BAK/fixnetpbm.20261001.txt for the record.  Do not run it.
+echo "fixnetpbm is disabled: it removes system packages and installs an unverified" >&2
+echo ".deb as root.  BIDeT v1 is obsolete; use ../3D/bidet3d.py (see ../README.md)." >&2
+exit 1

@@ -14,6 +14,21 @@ here, including the arc / inverted-arc / squeeze baselines that the CSS version
 marked "not achievable". Encoding goes through
 [libsixel](https://github.com/saitoha/libsixel).
 
+## Install
+
+No build step; it is one Python file. Try it in place with `./bidet3d.py`, or:
+
+    make installreq        # Debian/Ubuntu: python3-pil python3-numpy libsixel-bin (as root)
+    make check             # lint + render every preset
+    sudo make install      # bidet3d, man page, docs (PREFIX=/usr/local; DESTDIR supported)
+    make help              # all targets
+
+Elsewhere: `pip install -r requirements.txt` plus libsixel (Cygwin setup, brew, ...).
+It runs on old systems too (tested down to Python 3.7, Pillow 5.4, numpy 1.16).
+`make textures` fetches the optional Word textures (see below);
+`sudo make install` installs them if you have them.
+The man page is `bidet3d.1`; read it with `make man`.
+
 ## How it works
 
     text -> mask -> baseline warp -> material (gradient/texture) + bevel light
@@ -30,7 +45,7 @@ walls show a little banding; raise `SLICE_DENSITY` in the script if it bothers y
 - Python 3 with **Pillow** and **numpy**
 - **libsixel**: either its Python binding (`pip install libsixel-python`) or the
   `img2sixel` program. The binding is used when present, `img2sixel` otherwise.
-- A SIXEL terminal (see `../TERMINAL-SUPPORT-LIST.txt`: mintty, xterm
+- A SIXEL terminal (see `../v1/TERMINAL-SUPPORT-LIST.txt`: mintty, xterm
   `-ti vt340`, mlterm, WezTerm, foot, iTerm2, ...)
 - Fonts: Arial Bold, Times New Roman Bold and Impact are used when found
   (Windows, Cygwin `/cygdrive/c/Windows/Fonts`, WSL, macOS); otherwise
@@ -109,6 +124,14 @@ Without them a procedural stand-in is used and everything still works.
 ## Files
 
 - `bidet3d.py`: everything
+- `Makefile`: lint, test, install, dist (`make help`)
+- `requirements.txt`, `CHANGELOG.md`, `LICENSE`
+- `bidet3d.1`: man page (`man ./bidet3d.1`; install to `/usr/local/share/man/man1/`)
 - `test.sh`: smoke test (renders every preset to PNG; SIXEL if img2sixel is there)
 - `get-textures.sh`: optional texture download
 - `3RDPARTY`: what this borrows from, and from whom
+
+## License
+
+Boost Software License 1.0 (see `LICENSE`), the same as BIDeT. The css3wordart
+designs and textures are not covered by it; see `3RDPARTY`.
