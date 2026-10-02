@@ -13,7 +13,9 @@ echo "rendered $(ls "$out"/*.png | wc -l) PNGs in $out"
 if command -v img2sixel >/dev/null || $py -c "import libsixel" 2>/dev/null; then
   $py bidet3d.py -P chrome "Hello, SIXEL" > "$out/t.six" && head -c 2 "$out/t.six" | grep -q $'\x1bP' || { echo "FAIL sixel"; fail=1; }
   $py bidet3d.py --spin --frames 3 --fps 5 --spin-speed 120 -P superhero "Spin" >/dev/null || fail=1
-  echo "sixel + animation ok"
+    tm=$($py bidet3d.py --time-machine --stage-time 0.05 --frames 2 --fps 5 --force -b black "Hi" 2>/dev/null)
+  case $tm in *1983*1991*2004*2020*2026*) ;; *) echo "FAIL time-machine"; fail=1;; esac
+  echo "sixel + animation + time-machine ok"
 else
   echo "(no libsixel found: skipping SIXEL checks)"
 fi

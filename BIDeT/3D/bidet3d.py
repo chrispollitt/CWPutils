@@ -11,6 +11,8 @@ perspective camera -> PIL/numpy image -> libsixel -> terminal.
 """
 
 import argparse
+import colorsys
+import copy
 import io
 import math
 import os
@@ -157,6 +159,8 @@ assert sorted(PRESET_ORDER) == sorted(_P), "preset table out of sync"
 PRESETS = {n: _P[n] for n in PRESET_ORDER}
 
 DEFAULT_PRESET = "rainbow"
+# BIDeT (2020) was flat: one colour, no depth.  Used by --time-machine; not listed.
+PRESETS["_bidet"] = dict(_DEFAULTS, fill=("solid", "#6495ed"), depth=0.0, view=(0.0, 0.0, 0.0), bevel=0.0)
 DEFAULT_VIEW = (-20.0, 8.0, 0.0)
 MAX_LOOP_FRAMES = 120     # longest pre-rendered animation loop
 SIDE_LEVELS = 48          # distinct extrusion shades (cached per level)
@@ -1073,11 +1077,10 @@ def sixel_ready(img, bg, ncolors, dither=False, transparent=False):
     return quantize_exact(img, pimg, bi, bg, dither, mask, keyed=transparent)
 
 
-def do_spin(args, p, L, view, bg, max_w, max_h, cell_w, cell_h, transparent=False):
-    """Pre-render one seamless loop, encode it once, then replay the cached
-    SIXEL on a steady clock.  Rendering/encoding per frame while playing made
-    the frame rate (and the angle jumps) depend on how slow the machine was."""
-    out = sys.stdout.buffer
+def render_loop(args, p, L, view, bg, max_w, max_h, transparent=False):
+    """Pre-render one seamless loop and encode it once.  Returns what play_loop needs,
+    or None if interrupted.  Rendering/encoding per frame while playing made the frame
+    rate (and the angle jumps) depend on how slow the machine was."""
     fps = max(1.0, args.fps)
     speed = max(1.0, abs(args.spin_speed))
     n = max(4, int(round(360.0 / speed * fps)))                              # frames per loop
@@ -1118,17 +1121,23 @@ def do_spin(args, p, L, view, bg, max_w, max_h, cell_w, cell_h, transparent=Fals
         sixels = [usixels[j] for j in order]
     except KeyboardInterrupt:
         busy_done()
-        return
+        return None
     busy_done()
     if args.debug:
         print("loop: %d frames (%d distinct), %dx%d; render %.1fs + encode %.1fs; avg %.0f KB/frame" %
               (n, len(uviews), imgs[0].width, imgs[0].height, t_render, time.time() - t0 - t_render,
                sum(map(len, sixels)) / n / 1024.0), file=sys.stderr)
+    return dict(sixels=sixels, n=n, fps=fps, w=imgs[0].width, h=imgs[0].height)
 
-    rows = int(math.ceil(imgs[0].height / cell_h)) + 1
+
+def play_loop(args, loop, cell_w, cell_h, transparent=False):
+    """Replay the cached SIXEL frames on a steady clock until Ctrl-C (or --frames)."""
+    out = sys.stdout.buffer
+    sixels, n, fps = loop["sixels"], loop["n"], loop["fps"]
+    rows = int(math.ceil(loop["h"] / cell_h)) + 1
     clear = b""
     if transparent:
-        cols = int(math.ceil(imgs[0].width / cell_w)) + 1
+        cols = int(math.ceil(loop["w"] / cell_w)) + 1
         clear = b"\x1b8" + (b"\x1b[%dX\x1b[B" % cols) * (rows - 1)      # ECH each row of the picture
     out.write(b"\n" * rows + ("\x1b[%dA" % rows).encode() + b"\x1b7\x1b[?25l")
     start = time.monotonic()
@@ -1159,6 +1168,192 @@ def do_spin(args, p, L, view, bg, max_w, max_h, cell_w, cell_h, transparent=Fals
                   (shown, el, shown / el, fps, blocked / shown * 1000), file=sys.stderr)
 
 
+def do_spin(args, p, L, view, bg, max_w, max_h, cell_w, cell_h, transparent=False):
+    loop = render_loop(args, p, L, view, bg, max_w, max_h, transparent)
+    if loop:
+        play_loop(args, loop, cell_w, cell_h, transparent)
+
+
+# --------------------------------------------------------------------------
+# --time-machine: banner -> FIGlet -> TOIlet -> BIDeT -> BIDeT3D
+# --------------------------------------------------------------------------
+TM_STAGES = [
+    (1983, "banner(1)", "AT&T, UNIX System V: big text out of # characters"),
+    (1991, "FIGlet", "Chappell and Chai: numerous fonts"),
+    (2004, "TOIlet", "Sam Hocevar: more fonts, colour and filters"),
+    (2020, "BIDeT", "Chris Pollitt: SIXEL graphics and real fonts"),
+    (2026, "BIDeT3D", "the third dimension"),
+]
+_QUAD = " .,_')//`\\(L\"7[#"      # figlet-ish character for each 2x2 block of ink: tl*8+tr*4+bl*2+br
+
+
+def _text_mask(line):
+    return draw_mask([line], load_font(find_font("arial", False), 160), 0, 1.0)
+
+
+def _grid(mask, gw, gh):
+    return np.asarray(mask.resize((max(1, gw), max(1, gh)), Image.BOX), np.float32) / 255.0
+
+
+def _tool(argv, line=None, stdin=False):
+    """Output of a real banner/figlet/toilet, or None if it is missing or fails."""
+    if os.environ.get("BIDET3D_EMULATE") or not shutil.which(argv[0]):
+        return None
+    try:
+        r = subprocess.run(argv + ([] if stdin else [line]), input=(line + "\n").encode("utf-8") if stdin else None,
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = r.stdout.decode("utf-8", "replace").rstrip("\n")
+    return out if r.returncode == 0 and out.strip() else None
+
+
+def _emulate_banner(line, cols):
+    mask = _text_mask(line)
+    a = mask.width / float(mask.height)
+    rows = 7
+    gw = int(round(a * rows * 1.5))
+    if gw > cols - 4:
+        gw = cols - 4
+        rows = max(3, int(gw / (a * 1.5)))
+    g = _grid(mask, gw, rows) > 0.35
+    return "\n".join("".join("#" if v else " " for v in row) for row in g)
+
+
+def _emulate_figlet(line, cols):
+    mask = _text_mask(line)
+    a = mask.width / float(mask.height)
+    rows = 6
+    gw = min(cols - 4, int(round(a * rows * 1.6)))
+    g = _grid(mask, gw * 2, rows * 2) > 0.4
+    out = []
+    for y in range(rows):
+        row = ""
+        for x in range(gw):
+            t = y * 2
+            row += _QUAD[g[t, 2 * x] * 8 + g[t, 2 * x + 1] * 4 + g[t + 1, 2 * x] * 2 + g[t + 1, 2 * x + 1]]
+        out.append(row)
+    return "\n".join(out)
+
+
+def _emulate_toilet(line, cols):
+    mask = _text_mask(line)
+    a = mask.width / float(mask.height)
+    gh = 8
+    gw = int(round(a * gh))
+    if gw > cols - 4:
+        gw = cols - 4
+        gh = max(2, int(gw / a) // 2 * 2)
+    g = _grid(mask, gw, gh) > 0.4                    # half-blocks: every pixel is square
+    out = []
+    for y in range(0, gh, 2):
+        row = ""
+        for x in range(gw):
+            top, bot = g[y, x], g[y + 1, x]
+            if not (top or bot):
+                row += " "
+                continue
+            r, gr, b = (int(255 * c) for c in colorsys.hsv_to_rgb(0.85 * x / gw, 0.8, 1.0))
+            row += "\x1b[38;2;%d;%d;%dm%s" % (r, gr, b, "\u2588" if top and bot else "\u2580" if top else "\u2584")
+        out.append(row + "\x1b[0m")
+    return "\n".join(out)
+
+
+def tm_text(stage, lines, cols):
+    """The text-mode stages: the real program when installed, else an imitation."""
+    blocks = []
+    for ln in lines:
+        if not ln.strip():
+            continue
+        if stage == 0:
+            txt = None
+            if not ln.startswith("-"):
+                txt = _tool(["banner", "-w", str(cols - 4)], ln)
+                if txt and max(len(r) for r in txt.split("\n")) > cols - 2:
+                    txt = None
+            txt = txt or _emulate_banner(ln, cols)
+        elif stage == 1:
+            txt = _tool(["figlet", "-w", str(cols - 4)], ln, stdin=True) or _emulate_figlet(ln, cols)
+        else:
+            txt = (_tool(["toilet", "-f", "future", "-F", "gay", "-w", str(cols - 4)], ln, stdin=True)
+                   or _tool(["toilet", "-F", "gay", "-w", str(cols - 4)], ln, stdin=True)
+                   or _emulate_toilet(ln, cols))
+        blocks.append(txt)
+    return "\n\n".join(blocks)
+
+
+def tm_sleep(sec):
+    time.sleep(max(0.0, sec))
+
+
+def time_machine(args, bg, transparent, max_w, max_h, cw, ch, tex_dir):
+    """Cycle through the history of big terminal text with the user's text."""
+    out = sys.stdout.buffer
+    cols, rows = shutil.get_terminal_size((80, 24))
+    top = 3                                          # caption rows
+    max_h = max(4 * ch, max_h - top * ch)
+    lines = get_lines(args, _DEFAULTS)               # reads stdin once; every stage then reuses it
+    args.text = list(lines)
+    if args.sway is None:
+        args.spin = True
+
+    # the slow part first: the 3D loop is rendered before the show starts
+    p, L = make_scene(args, args.preset, tex_dir, max_w, max_h)
+    view = pick_view(p, args)
+    sys.stderr.write("Charging the flux capacitor (%s)...\n" % args.preset)
+    loop = render_loop(args, p, L, view, bg, max_w, max_h, transparent)
+    if loop is None:
+        return
+    # BIDeT was flat: plain, no depth, camera straight on
+    flat = copy.copy(args)
+    flat.shape, flat.depth, flat.ss = None, 0.0, 2
+    pf, Lf = make_scene(flat, "_bidet", tex_dir, max_w, max_h, ss=2)
+    img = finish(render(Lf, pf, (0.0, 0.0, 0.0), args.perspective, None if transparent else bg, flat), 2, max_w, max_h)
+    flat_sixel = to_sixel(sixel_ready(img, bg, args.colors, dither=args.dither, transparent=transparent),
+                          args.colors, args.debug)
+
+    def caption(i):
+        year, name, note = TM_STAGES[i]
+        out.write(b"\x1b[2J\x1b[H\x1b[1m  %d  %s\x1b[0m  \x1b[2m%s\x1b[0m\n\n" % (year, name.encode(), note.encode()))
+        out.flush()
+
+    out.write(b"\x1b[?1049h\x1b[?25l")                # alternate screen: leave the user's terminal as it was
+    try:
+        for i in range(4):
+            if i:
+                # the year ticker: wind forward to the next era
+                y0, y1 = TM_STAGES[i - 1][0], TM_STAGES[i][0]
+                steps = 24
+                for k in range(steps + 1):
+                    t = k / float(steps)
+                    yr = int(round(y0 + (y1 - y0) * (1 - (1 - t) ** 2)))
+                    out.write(b"\r\x1b[K  >>> %d <<<" % yr)
+                    out.flush()
+                    tm_sleep(min(0.9, args.stage_time) / steps)
+            caption(i)
+            if i < 3:
+                out.write(("\n".join("  " + r for r in tm_text(i, lines, cols).split("\n")) + "\n").encode("utf-8"))
+            else:
+                out.write(b"\x1b7")
+                emit(out, flat_sixel)
+                out.write(b"\n")
+            out.flush()
+            tm_sleep(args.stage_time)
+        y0, y1 = TM_STAGES[3][0], TM_STAGES[4][0]
+        for k in range(25):
+            t = k / 24.0
+            out.write(b"\r\x1b[K  >>> %d <<<" % int(round(y0 + (y1 - y0) * (1 - (1 - t) ** 2))))
+            out.flush()
+            tm_sleep(min(0.9, args.stage_time) / 24)
+        caption(4)
+        play_loop(args, loop, cw, ch, transparent)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        out.write(b"\x1b[?25h\x1b[?1049l")
+        out.flush()
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="BIDeT3D - 3D WordArt for SIXEL terminals. Text comes from the "
@@ -1179,6 +1374,10 @@ def main():
                     help="WordArt style, or 'random' (default %s); see --list-presets" % DEFAULT_PRESET)
     ap.add_argument("--list-presets", action="store_true")
     ap.add_argument("--gallery", action="store_true", help="show every preset with the given text")
+    ap.add_argument("--time-machine", action="store_true",
+                    help="animate the history of terminal text: banner, FIGlet, TOIlet, BIDeT, BIDeT3D")
+    ap.add_argument("--stage-time", type=float, default=3.0, metavar="SEC",
+                    help="seconds to show each earlier era with --time-machine (default 3)")
     ap.add_argument("--depth", type=float, help="extrusion depth in em (default: per preset)")
     ap.add_argument("--view", metavar="YAW,PITCH,ROLL",
                     help="camera angles in degrees, written --view=-30,10,0 (default: per preset)")
@@ -1223,7 +1422,9 @@ def main():
         args.preset = random.choice(PRESET_ORDER)
     if args.preset not in PRESETS and not args.gallery:
         sys.exit("bidet3d: unknown preset '%s' (try --list-presets)" % args.preset)
-    animate = args.spin or args.sway is not None
+    animate = args.spin or args.sway is not None or args.time_machine
+    if args.time_machine and (args.png or args.gallery):
+        sys.exit("bidet3d: --time-machine cannot be combined with --png or --gallery")
     if args.ss is None:
         args.ss = 1 if animate else 2
     if args.colors is None:
@@ -1283,6 +1484,10 @@ def main():
                          args.ss, max_w, max_h / 2)
             emit(out, to_sixel(sixel_ready(img, bg, args.colors, dither=args.dither, transparent=transparent), args.colors, args.debug))
             print()
+        return
+
+    if args.time_machine:
+        time_machine(args, bg, transparent, max_w, max_h, cw, ch, tex_dir)
         return
 
     p, L = make_scene(args, args.preset, tex_dir, max_w, max_h)

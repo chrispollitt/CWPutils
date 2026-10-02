@@ -8,6 +8,11 @@ your terminal as SIXEL graphics.**
     ./bidet3d.py -P superhero "Hello, World!"
     ./bidet3d.py -P chrome --spin "Spin me"
     ./bidet3d.py --gallery
+    ./bidet3d.py --time-machine "BIDeT"
+
+![--time-machine: banner, FIGlet, TOIlet, BIDeT, then BIDeT3D spinning](images/time-machine.gif)
+
+(The same as a small [MP4](images/time-machine.mp4), 220 KB.)
 
 All 30 presets of [css3wordart](https://github.com/arizzitano/css3wordart) are
 here, including the arc / inverted-arc / squeeze baselines that the CSS version
@@ -66,6 +71,7 @@ width, `-d` debug, `-v` version. Text comes from the arguments or stdin.
 | `--shape S` | `plain arc inverted-arc squeeze wave` baseline warp |
 | `--perspective F` | camera distance in text widths (smaller = more perspective) |
 | `--spin`, `--sway DEG` | animate by rotating, or swinging; Ctrl-C stops |
+| `--time-machine` | cycle through banner (1983), FIGlet, TOIlet, BIDeT, then BIDeT3D spinning; `--stage-time SEC` per era |
 | `--spin-speed`, `--fps`, `--frames` | animation control (degrees/s, frames/s, stop after N) |
 | `--colors N` | SIXEL palette size (default 256; fewer = smaller frames, more banding) |
 | `--png FILE` | write a PNG instead of SIXEL (handy for testing) |
@@ -96,6 +102,15 @@ material's own (no halo of the wrong background); the edge itself is a hard
 (otherwise the previous frame would show through the unpainted pixels), which may
 flicker a little on terminals without synchronized output; `-b COLOR` gives opaque
 frames instead. `-d` prints the raw replies the terminal gave.
+
+## Time machine
+
+`--time-machine` shows your text the way each generation of big terminal text would
+have drawn it, winding a year counter forward between them: `banner(1)` (1983),
+FIGlet (1991), TOIlet (2004), BIDeT (2020, flat SIXEL), and finally BIDeT3D,
+spinning. It uses the real `figlet` and `toilet` if you have them (and `banner`, which
+few people do), otherwise it draws imitations (`BIDET3D_EMULATE=1` forces those). The
+3D loop is rendered before the show starts, and the show runs on the alternate screen.
 
 ## Animation
 
