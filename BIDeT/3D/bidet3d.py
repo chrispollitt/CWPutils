@@ -26,6 +26,11 @@ import types
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont
 
+# Pillow < 9.1 (e.g. Ubuntu 20.04's 7.0) has no Image.Quantize / Image.Dither enums
+_MEDIANCUT = getattr(getattr(Image, "Quantize", Image), "MEDIANCUT")
+_DITHER_NONE = getattr(Image, "Dither", Image).NONE
+_DITHER_FS = getattr(Image, "Dither", Image).FLOYDSTEINBERG
+
 VERSION = "0.1"
 
 
@@ -221,10 +226,18 @@ def load_font(path, px):
 # --------------------------------------------------------------------------
 # Flat layer: text mask -> shape warp -> material -> bevel
 # --------------------------------------------------------------------------
+def _advance(font, s):
+    """Advance width of s; FreeTypeFont.getlength() only exists in Pillow >= 8."""
+    try:
+        return font.getlength(s)
+    except AttributeError:
+        return font.getsize(s)[0]
+
+
 def text_width(font, s, spacing):
     if spacing == 0:
-        return font.getlength(s)
-    return sum(font.getlength(ch) + spacing for ch in s) - spacing if s else 0
+        return _advance(font, s)
+    return sum(_advance(font, ch) + spacing for ch in s) - spacing if s else 0
 
 
 def draw_mask(lines, font, spacing, line_mul):
@@ -244,7 +257,7 @@ def draw_mask(lines, font, spacing, line_mul):
         else:
             for ch in ln:
                 d.text((x, y), ch, font=font, fill=255)
-                x += font.getlength(ch) + spacing
+                x += _advance(font, ch) + spacing
     return im.crop(im.getbbox() or (0, 0, 1, 1))
 
 
@@ -969,7 +982,7 @@ def palette_with_bg(imgs, bg, ncolors, masks=None):
     pal = [0, 0, 0]
     if len(px):
         q = Image.fromarray(px.reshape(1, -1, 3)).quantize(
-            max(1, ncolors - 1), method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+            max(1, ncolors - 1), method=_MEDIANCUT, dither=_DITHER_NONE)
         used = max(i for _n, i in q.getcolors()) + 1
         pal = list(q.getpalette()[:3 * used])
     pimg = Image.new("P", (1, 1))
@@ -1000,7 +1013,7 @@ def quantize_exact(img, pimg, bg_index, bg, dither, mask=None, keyed=False):
     # an exact palette colour has zero quantization error, so no dither error leaks from
     # the background into the pixels beside it
     a[m] = pal[:3]
-    q = Image.fromarray(a).quantize(palette=pimg, dither=Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE)
+    q = Image.fromarray(a).quantize(palette=pimg, dither=_DITHER_FS if dither else _DITHER_NONE)
     idx = np.array(q)
     idx[m] = bg_index
     if keyed:
