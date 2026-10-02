@@ -1,0 +1,440 @@
+.\" -*- mode: troff; coding: utf-8 -*-
+.\" bidet3d(1) -- manual page for BIDeT3D
+.TH BIDET3D 1 "2026-10-01" "BIDeT3D 0.1" "User Commands"
+.if n .ad l
+.nh
+.SH NAME
+bidet3d \- 3D WordArt for SIXEL terminals (BIDeT, in the third dimension)
+.SH SYNOPSIS
+.nf
+\fBbidet3d\fR [\fIoptions\fR] \fItext\fR ...
+\fIcommand\fR | \fBbidet3d\fR [\fIoptions\fR]
+\fBbidet3d\fR \fB\-\-list\-presets\fR
+\fBbidet3d\fR \fB\-\-gallery\fR [\fItext\fR]
+.fi
+.SH DESCRIPTION
+Use this after you're done with Toilet!
+Why did I write this? Because I DEcided To. :)
+.PP
+.B bidet3d
+renders text as 1990s\-style WordArt, extruded into real 3D, and prints it in
+the terminal as SIXEL graphics.
+It takes its text from the command line arguments, or from standard input if
+there are none (or the argument is \fB\-\fR) and input is not a terminal.
+With no text at all it draws "BIDeT3D".
+Each line is warped onto a baseline, given a face (gradient, texture or solid
+colour) and a lit bevel, extruded into a stack of depth slices, and drawn
+through a perspective camera.
+The picture is encoded as SIXEL and sent to the terminal, which must support
+it (see
+.BR "TERMINAL SUPPORT" ).
+.PP
+All 30 designs of
+.I css3wordart
+are provided as presets, including the arc, inverted\-arc and squeeze
+baselines.
+The picture can be rotated to any angle and can be animated.
+.PP
+It is the successor of BIDeT, which printed Type 1 PostScript fonts as flat
+SIXEL pictures.
+The common options keep their BIDeT meaning; see
+.BR "DIFFERENCES FROM BIDET" .
+.SH OPTIONS
+.SS Text and appearance (shared with BIDeT)
+.TP
+.BR \-b ", " \-\-background =\fICOLOUR\fR
+Background colour.
+The default is to ask the terminal for its own colour, so that the picture
+blends in; if the terminal will not say, a transparent background is used.
+See
+.BR "BACKGROUND COLOUR AND TRANSPARENCY" .
+.TP
+.BR \-c ", " \-\-colour ", " \-\-color =\fICOLOUR\fR
+Solid face colour.
+This replaces the preset's gradient or texture, but keeps its shape, depth and
+lighting.
+Names, \fB#rrggbb\fR and other forms understood by Pillow's ImageColor are accepted.
+.TP
+.BR \-d ", " \-\-debug
+Print timings, the backend in use, the raw replies the terminal gave to its
+queries, and for animations the achieved frame rate, on standard error.
+.TP
+.BR \-f ", " \-\-font =\fIFILE\fR
+Font file (\fB.ttf\fR, \fB.otf\fR, \fB.ttc\fR) or the name of a font file found
+in the system font directories.
+This overrides the preset's font.
+.TP
+.BR \-l ", " \-\-line =\fIN\fR
+Line spacing multiplier (default 1.0).
+.TP
+.BR \-p ", " \-\-preserve
+Keep the input's newlines instead of re\-wrapping the text to the wrap width.
+.TP
+.BR \-s ", " \-\-size =\fIPX\fR
+Font size in pixels.
+The default is to fit the picture to the terminal's size.
+.TP
+.BR \-w ", " \-\-width =\fIN\fR
+Wrap width in characters (default 20).
+.TP
+.BR \-v ", " \-\-version
+Print the version and exit.
+.SS Style and camera
+.TP
+.BR \-P ", " \-\-preset =\fINAME\fR
+The WordArt style (default \fBrainbow\fR), or \fBrandom\fR.
+See
+.BR PRESETS .
+.TP
+.B \-\-list\-presets
+List the preset names, one per line, and exit.
+.TP
+.B \-\-gallery
+Draw every preset with the given text (default "BIDeT3D").
+.TP
+.BI \-\-depth= EM
+Extrusion depth in em (default: per preset).
+.TP
+.BI \-\-view= YAW , PITCH , ROLL
+All three camera angles in degrees (default: per preset).
+Write it with an equals sign, as in \fB\-\-view=\-30,10,0\fR, so that a negative
+first angle is not taken for an option.
+.TP
+.BI \-\-yaw= DEG
+Just the yaw: turn left or right around the vertical axis.
+.TP
+.BI \-\-pitch= DEG
+Just the pitch: tip back or forward.
+.TP
+.BI \-\-roll= DEG
+Just the roll: clockwise rotation in the picture plane.
+.TP
+.BI \-\-shape= SHAPE
+Baseline warp: \fBplain\fR, \fBarc\fR, \fBinverted\-arc\fR, \fBsqueeze\fR or
+\fBwave\fR (default: per preset).
+.TP
+.BI \-\-perspective= F
+Camera distance, in text widths (default 2.5).
+Smaller values give stronger perspective.
+.SS Animation
+.TP
+.B \-\-spin
+Rotate the text around the vertical axis.
+Ctrl\-C stops.
+.TP
+.BI \-\-sway= DEG
+Swing \(+- \fIDEG\fR degrees around the chosen view instead of spinning.
+This needs only half the frames of \fB\-\-spin\fR, so it starts faster.
+.TP
+.BI \-\-spin\-speed= DEG
+Degrees per second (default 60).
+.TP
+.BI \-\-fps= N
+Frames per second (default 10); this also sets the length of the loop.
+.TP
+.BI \-\-frames= N
+Stop after showing \fIN\fR frames (default: until Ctrl\-C).
+.TP
+.B \-\-time\-machine
+Cycle through the history of big terminal text, using your text: \fBbanner\fR(1)
+(1983), \fBFIGlet\fR (1991), \fBTOIlet\fR (2004), \fBBIDeT\fR (2020) and finally
+BIDeT3D, which then spins (or sways, with \fB\-\-sway\fR) until Ctrl\-C.
+A year counter winds forward between the eras.
+The 3D loop is rendered first, so the show itself runs smoothly.
+It runs on the terminal's alternate screen, so your own screen is left as it was.
+If \fBfiglet\fR and \fBtoilet\fR are installed, they are the ones used
+(TOIlet with its \fBfuture\fR font and \fBgay\fR filter);
+\fBbanner\fR(1) is used if present.
+Otherwise imitations are drawn from the same text, which also look the part.
+Set \fBBIDET3D_EMULATE\fR to always use the imitations.
+\fB\-P\fR, \fB\-\-spin\-speed\fR, \fB\-\-fps\fR, \fB\-\-frames\fR and the camera options apply
+to the final stage.
+Cannot be combined with \fB\-\-png\fR or \fB\-\-gallery\fR.
+.TP
+.BI \-\-stage\-time= SEC
+Seconds to show each of the earlier eras with \fB\-\-time\-machine\fR (default 3).
+.PP
+The whole loop is rendered first (a progress counter is shown), every frame
+is quantized to one shared palette and encoded once, and the cached SIXEL is
+then replayed on a steady clock.
+How smooth it looks therefore depends on how quickly the terminal swallows
+SIXEL, not on how fast the script renders.
+If the terminal cannot keep up, frames are skipped instead of slowing the
+rotation.
+If it stutters, try \fB\-\-fps\fR 6..15, \fB\-\-colors\fR 64, a smaller
+\fB\-s\fR or \fB\-\-max\-width\fR, and use \fB\-d\fR to see the timings.
+Frames are wrapped in synchronized\-output sequences (mode 2026) where the
+terminal supports them.
+.SS Output
+.TP
+.BI \-\-colors= N
+SIXEL palette size (default 256).
+Fewer colours mean smaller output and more banding.
+.TP
+.BI \-\-max\-width= PX
+Cap the width of the picture.
+Smaller pictures render faster and send less data.
+.TP
+.BI \-\-ss= N
+Supersampling factor (default 2; 1 when animating).
+.TP
+.B \-\-dither
+Floyd\-Steinberg dithering for still pictures.
+The default is off: the palette is built for the picture, and dithering only
+adds speckle.
+.TP
+.B \-\-transparent
+Leave the background unpainted so that the terminal shows its own.
+See
+.BR "BACKGROUND COLOUR AND TRANSPARENCY" .
+.TP
+.BI \-\-png= FILE
+Write a PNG file instead of printing SIXEL.
+The terminal is not queried.
+.TP
+.B \-\-force
+Print SIXEL even if the terminal does not report SIXEL support.
+Setting \fBLSIX_FORCE_SIXEL_SUPPORT\fR has the same effect.
+.TP
+.BI \-\-cell= WxH
+Size of a terminal character cell in pixels, for terminals where it cannot be
+detected (see also \fBBIDET3D_CELL\fR).
+.TP
+.BI \-\-texture\-dir= DIR
+Directory containing the Word textures; see
+.BR TEXTURES .
+.SH PRESETS
+The presets are, in order:
+.PP
+.nf
+  outline         up              arc             squeeze
+  inverted\-arc    basic\-stack     italic\-outline  slate
+  mauve           graydient       red\-blue        brown\-stack
+  radial          purple          green\-marble    rainbow
+  aqua            texture\-stack   paper\-bag       sunset
+  tilt            blues           yellow\-dash     green\-stack
+  chrome          marble\-slab     gray\-block      superhero
+  horizon         stack\-3d
+.fi
+.PP
+Presets such as \fBup\fR, \fBarc\fR and \fBsqueeze\fR are drawn in black "ink"
+which, being designed for a light page, is shown in white on a dark terminal.
+.SH TERMINAL SUPPORT
+The terminal must be able to display SIXEL graphics.
+Known to work: mintty (Cygwin), xterm (started with \fB\-ti vt340\fR), mlterm
+and Windows Terminal 1.22 or later.
+Also reported to support SIXEL: foot, iTerm2 and WezTerm (but not WezTerm on
+Windows with ConPTY).
+A longer list is in
+.I TERMINAL\-SUPPORT\-LIST.txt
+in the BIDeT source tree.
+.PP
+Before drawing anything,
+.B bidet3d
+asks the terminal whether it reports SIXEL support (the DA1 attribute 4) and
+stops with "Sixel not supported" if it says it does not.
+.B \-\-force
+overrides this.
+Output that is piped, and \fB\-\-png\fR, skip the check.
+.SH BACKGROUND
+In 1983 AT&T released
+.BR banner (1)
+with UNIX System V.
+It allowed you to create a banner of text made out of ASCII characters.
+.PP
+In 1987 DEC released the VT300 series of computer terminals.
+These came with the ability to display graphics via the new SIXEL encoding
+format.
+.PP
+In 1991 Chappell and Chai released
+.BR FIGlet (6)
+as an extension of
+.BR banner (1)
+that had numerous "fonts."
+.PP
+In 2004 Sam Hocevar released
+.BR TOIlet (1)
+as an extension of
+.BR FIGlet (6).
+It has more fonts, colour and other neat features.
+.PP
+In 2014 Hayaki Saito wrote the
+.BR img2sixel (1)
+utility, part of libsixel.
+.PP
+In 2016 Hayaki Saito added SIXEL graphics support to
+.BR mintty (1).
+.PP
+In 2020 Chris Pollitt released BIDeT as an alternative to
+.BR TOIlet (1).
+It makes use of SIXEL graphics to display Type 1 PostScript fonts.
+Sam Hocevar, to whom the author wrote about it, replied that he liked it, and
+that projects like it gave him the incentive to finally improve
+.BR TOIlet (1)
+with 256\-colour terminal features and more Unicode and emoji support.
+.PP
+In 2025 BIDeT was ported from Perl to Python (\fBbidet2.py\fR).
+Neither version is maintained any longer.
+.PP
+In 2026, with SIXEL by then also available in Windows Terminal and many other
+terminals, Chris Pollitt added the third dimension: BIDeT3D.
+It takes the WordArt designs of
+.IR css3wordart ,
+which approximated them with CSS and called the arc, inverted\-arc and squeeze
+baselines "not achievable", and renders them for real, as a small software
+renderer in Python (Pillow and numpy), encoding the result with libsixel.
+.SH "BACKGROUND COLOUR AND TRANSPARENCY"
+In the same exchange in which it asks about SIXEL support,
+.B bidet3d
+asks the terminal for its background colour (OSC 11), so that the picture
+blends in.
+That colour is kept exact through quantization, within the 1% steps that SIXEL
+colour registers allow (libsixel's own quantizer, for example, turns white
+into 247).
+\fB\-b\fR \fICOLOUR\fR overrides it.
+.PP
+If the terminal will not say (Windows Terminal does not answer OSC 11), a still
+picture is sent with a transparent background, so that the terminal shows its
+own colour.
+\fB\-\-transparent\fR forces this.
+Transparent pictures keep a real alpha channel, so edge colours are the
+material's own and there is no halo of the wrong background; the edge itself
+is a hard 1\-bit step, which is all SIXEL transparency can express.
+.PP
+An animation on such a terminal erases its picture area before drawing each
+frame, since otherwise the previous frame would show through the unpainted
+pixels.
+This may flicker a little on terminals without synchronized output;
+\fB\-b\fR \fICOLOUR\fR gives opaque frames instead.
+.SH TEXTURES
+Four presets (\fBgreen\-marble\fR, \fBmarble\-slab\fR, \fBpaper\-bag\fR and
+\fBtexture\-stack\fR) use the Word textures from css3wordart.
+That repository has no license file, so they are not bundled.
+Run
+.B get\-textures.sh
+to fetch them into the \fBtextures\fR directory next to the program, or point
+\fB\-\-texture\-dir\fR or \fBBIDET3D_TEXTURES\fR at a css3wordart checkout.
+Without them a procedural stand\-in is used, and everything still works.
+.SH REQUIREMENTS
+.IP \(bu 4
+Python 3 with Pillow and numpy.
+It also runs with old versions (tested with Python 3.7, Pillow 5.4 and
+numpy 1.16), though the animations are slow on small machines.
+.IP \(bu 4
+libsixel: either its Python binding (\fBpip install libsixel\-python\fR), which
+is used when present, or the
+.BR img2sixel (1)
+program.
+.IP \(bu 4
+A terminal that handles SIXEL graphics.
+.IP \(bu 4
+Fonts: Arial Bold, Times New Roman Bold and Impact are used when found
+(Windows, Cygwin, WSL, macOS); otherwise Liberation or DejaVu.
+\fB\-f\fR selects any font file.
+.PP
+Unlike BIDeT, neither Perl, Ghostscript nor netpbm is needed.
+.SH ENVIRONMENT
+.TP
+.B BIDET3D_TEXTURES
+Directory searched for the Word textures.
+.TP
+.B BIDET3D_CELL
+Terminal cell size in pixels as \fIWxH\fR, like \fB\-\-cell\fR.
+.TP
+.B BIDET3D_EMULATE
+If set, \fB\-\-time\-machine\fR draws its own imitations of banner, FIGlet and TOIlet
+even if the real programs are installed.
+.TP
+.B BIDET3D_SERIAL
+If set, render animation frames in one process instead of several.
+.TP
+.B LSIX_FORCE_SIXEL_SUPPORT
+If set, print SIXEL even if the terminal does not report support (see
+\fB\-\-force\fR).
+.TP
+.B TERM
+Used to detect terminals with special limits: xterm cannot show SIXEL wider
+than 1000 pixels, and yaft cannot answer the SIXEL support query, so it is
+assumed to support SIXEL.
+.SH FILES
+.TP
+.I bidet3d.py
+The program.
+.TP
+.I textures/
+Optional Word textures (see
+.BR TEXTURES ).
+Also searched: \fI/usr/local/share/BIDeT3D/textures\fR.
+.TP
+.I get\-textures.sh
+Fetches the textures.
+.TP
+.I test.sh
+Smoke test: renders every preset to PNG, and to SIXEL if \fBimg2sixel\fR is
+present.
+.TP
+.I 3RDPARTY
+What this borrows from, and from whom.
+.SH EXAMPLES
+.nf
+bidet3d \-P superhero "Hello, World!"
+bidet3d \-P chrome \-\-spin "Spin me"
+bidet3d \-\-sway 25 \-\-fps 8 \-\-max\-width 640 "Swaying"
+bidet3d \-P arc \-c gold \-\-yaw=\-20 "Gold arc"
+bidet3d \-P random \-b black "Surprise"
+bidet3d \-\-gallery
+bidet3d \-\-time\-machine "BIDeT"
+bidet3d \-\-time\-machine \-\-stage\-time 5 \-P superhero \-\-sway 25 "Hello"
+echo "From a pipe" | bidet3d \-P rainbow
+bidet3d \-P chrome \-\-png chrome.png "Look, a PNG"
+.fi
+.SH "DIFFERENCES FROM BIDET"
+.IP \(bu 4
+Fonts are TrueType/OpenType files, not Type 1 PostScript; there is no
+\fB\-f list\fR or \fB\-c list\fR.
+Use \fB\-\-list\-presets\fR and \fB\-P random\fR.
+.IP \(bu 4
+\fB\-c\fR sets a solid face colour only if given; by default the preset's
+own material is used.
+.IP \(bu 4
+The BIDeT options \fB\-\-ansi\fR and \fB\-\-rotate\fR are not provided;
+rotation is done with \fB\-\-yaw\fR, \fB\-\-pitch\fR and \fB\-\-roll\fR.
+.IP \(bu 4
+\fB\-b\fR defaults to the terminal's own background (or transparent), and
+\fB\-s\fR to a size that fits the terminal.
+.IP \(bu 4
+\fB\-d\fR prints debugging information.
+.SH BUGS
+.IP \(bu 4
+Near edge\-on views (yaw about 90 degrees) the extruded side walls show a
+little banding.
+Raise \fBSLICE_DENSITY\fR in the script if it bothers you.
+.IP \(bu 4
+SIXEL colour registers have 1% steps, so a colour can be off by one level.
+.IP \(bu 4
+Starting an animation can take a while on a slow machine: the loop is
+rendered before the first frame is shown.
+.IP \(bu 4
+Frame erasing on terminals that do not report their background has not been
+verified on every terminal.
+.SH "TO DO"
+.IP \(bu 4
+Add additional presets and fonts.
+.IP \(bu 4
+Add additional effects (borders, patterns and so on).
+.SH "SEE ALSO"
+.BR banner (1),
+.BR figlet (6),
+.BR toilet (1),
+.BR img2sixel (1),
+.BR mintty (1),
+.BR xterm (1),
+.BR mlterm (1)
+.PP
+css3wordart: https://github.com/arizzitano/css3wordart
+.br
+libsixel: https://github.com/saitoha/libsixel
+.SH AUTHOR
+Chris Pollitt, https://github.com/chrispollitt/
+.PP
+WordArt preset designs after css3wordart by arizzitano.

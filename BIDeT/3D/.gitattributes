@@ -1,0 +1,9 @@
+# Scripts, the man page and the Makefile must have LF line endings, whatever the
+# platform they were checked out on (a CRLF shebang line breaks under Cygwin/WSL).
+* text=auto
+*.py text eol=lf
+*.sh text eol=lf
+*.1 text eol=lf
+Makefile text eol=lf
+requirements.txt text eol=lf
+*.png binary

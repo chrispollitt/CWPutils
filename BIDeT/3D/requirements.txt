@@ -1,0 +1,8 @@
+# BIDeT3D runtime requirements.  Tested down to Python 3.7 / Pillow 5.4 / numpy 1.16.
+Pillow>=5.4
+numpy>=1.16
+
+# Optional: the libsixel Python binding.  Without it the img2sixel program
+# (libsixel-bin) is used instead; one of the two is required for SIXEL output
+# (not for --png).
+# libsixel-python

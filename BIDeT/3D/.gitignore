@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+# the css3wordart Word textures have no license: fetch them with get-textures.sh, never commit them
+textures/
+BAK/
+dist/
+bidet3d-*.tar.gz
+# raw screen recordings (the README uses images/time-machine.*)
+Capture*.wmv
