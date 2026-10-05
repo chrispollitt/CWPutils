@@ -64,6 +64,7 @@ width, `-d` debug, `-v` version. Text comes from the arguments or stdin.
 
 | option | meaning |
 | --- | --- |
+| `-a`, `--art` | input is ASCII art: lines stay aligned, monospace font, no letter-spacing, line spacing 0.9 (implies `-p`). Piped multi-line art such as `cowsay` output is detected automatically; `--no-art` disables that |
 | `-P NAME` | preset (`--list-presets`), or `random`; default `rainbow` |
 | `--gallery` | show every preset with your text |
 | `--depth EM` | extrusion depth |

@@ -65,7 +65,17 @@ in the system font directories.
 This overrides the preset's font.
 .TP
 .BR \-l ", " \-\-line =\fIN\fR
-Line spacing multiplier (default 1.0).
+Line spacing multiplier (default 1.0, or 0.9 for ASCII art).
+.TP
+.BR \-a ", " \-\-art
+Treat the input as ASCII art (cowsay, FIGlet, boxes): keep the lines aligned with each other,
+use a monospace font, drop the preset's letter\-spacing and default the line spacing to 0.9.
+Implies B\-pR.
+Multi\-line text on standard input that looks like art (mostly punctuation, or ragged runs of
+spaces) is treated this way automatically.
+.TP
+.B \-\-no\-art
+Never auto\-detect ASCII art.
 .TP
 .BR \-p ", " \-\-preserve
 Keep the input's newlines instead of re\-wrapping the text to the wrap width.

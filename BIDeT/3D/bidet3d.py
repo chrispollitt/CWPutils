@@ -164,6 +164,7 @@ PRESETS["_bidet"] = dict(_DEFAULTS, fill=("solid", "#6495ed"), depth=0.0, view=(
 DEFAULT_VIEW = (-20.0, 8.0, 0.0)
 MAX_LOOP_FRAMES = 120     # longest pre-rendered animation loop
 SIDE_LEVELS = 48          # distinct extrusion shades (cached per level)
+ART_LINE = 0.9            # default line spacing for ASCII art, so | and \ strokes meet between rows
 SLICE_DENSITY = 2.0      # slices per output pixel of extrusion; higher = smoother near edge-on
 
 
@@ -177,6 +178,8 @@ FONT_FILES = {
     ("times", False): ["timesbd.ttf", "Times New Roman Bold.ttf", "LiberationSerif-Bold.ttf",
                        "DejaVuSerif-Bold.ttf"],
     ("times", True): ["timesbi.ttf", "LiberationSerif-BoldItalic.ttf", "DejaVuSerif-BoldItalic.ttf"],
+    ("mono", False): ["courbd.ttf", "Courier New Bold.ttf", "LiberationMono-Bold.ttf", "DejaVuSansMono-Bold.ttf",
+                      "cour.ttf", "LiberationMono-Regular.ttf", "DejaVuSansMono.ttf"],
     ("impact", False): ["impact.ttf", "Impact.ttf", "Anton-Regular.ttf", "LiberationSans-Bold.ttf",
                         "DejaVuSans-Bold.ttf"],
 }
@@ -251,7 +254,9 @@ def text_width(font, s, spacing):
     return sum(_advance(font, ch) + spacing for ch in s) - spacing if s else 0
 
 
-def draw_mask(lines, font, spacing, line_mul):
+def draw_mask(lines, font, spacing, line_mul, block=False):
+    """block=True keeps lines aligned to each other (ASCII art, -p); otherwise
+    each line is centred on its own (re-wrapped WordArt text)."""
     ascent, descent = font.getmetrics()
     lh = int((ascent + descent) * line_mul)
     widths = [text_width(font, ln, spacing) for ln in lines]
@@ -261,7 +266,7 @@ def draw_mask(lines, font, spacing, line_mul):
     im = Image.new("L", (W, H), 0)
     d = ImageDraw.Draw(im)
     for i, ln in enumerate(lines):
-        x = (W - widths[i]) / 2.0
+        x = (W - max(widths)) / 2.0 if block else (W - widths[i]) / 2.0
         y = pad + i * lh
         if spacing == 0:
             d.text((x, y), ln, font=font, fill=255)
@@ -452,11 +457,17 @@ class Layer:
 
 def build_layer(lines, p, px, ss, args, tex_dir):
     sz = px * ss
-    path = find_font(p["font"], p["italic"], args.font)
+    art = bool(args.art)
+    path = find_font("mono" if art else p["font"], False if art else p["italic"], args.font)
     font = load_font(path, sz)
     if args.debug:
         print("font: %s" % path, file=sys.stderr)
-    mask_im = draw_mask(lines, font, p["spacing"] * sz, 0.8 if p["stacked"] else args.line)
+    if args.line is not None:
+        line_mul = args.line
+    else:
+        line_mul = ART_LINE if art else (0.8 if p["stacked"] else 1.0)
+    mask_im = draw_mask(lines, font, 0.0 if art else p["spacing"] * sz, line_mul,
+                         block=args.preserve)
     m = np.asarray(mask_im, np.float32) / 255.0
     shape = args.shape or p["shape"]
     if shape and shape != "plain":
@@ -807,13 +818,33 @@ def parse_color(s):
         sys.exit("bidet3d: bad colour '%s'" % s)
 
 
+def looks_like_art(raw):
+    """Guess whether piped text is ASCII art (cowsay, figlet, banner, boxes) rather than prose:
+    several lines, and either mostly punctuation or ragged runs of interior spaces."""
+    rows = [ln.rstrip() for ln in raw if ln.strip()]
+    if len(rows) < 3:
+        return False
+    ink = [c for ln in rows for c in ln if not c.isspace()]
+    symbols = sum(1 for c in ink if not c.isalnum()) / float(len(ink))
+    gappy = sum(1 for ln in rows if "   " in ln.strip())
+    return symbols >= 0.3 or gappy >= 2 and gappy * 3 >= len(rows)
+
+
 def get_lines(args, preset):
-    if not args.text or args.text == ["-"]:
+    from_stdin = not args.text or args.text == ["-"]
+    if from_stdin:
         raw = sys.stdin.read().splitlines() if not sys.stdin.isatty() else []
     else:
         raw = args.text
     if not raw:
         raw = ["BIDeT3D"]
+    if args.art is None:
+        args.art = from_stdin and looks_like_art(raw)
+        if args.art and args.debug:
+            print("art: detected ASCII art (use --no-art to wrap as prose)", file=sys.stderr)
+    if args.art:
+        args.preserve = True
+        return [l.expandtabs(8) for ln in raw for l in ln.split("\n")]
     if preset["stacked"]:
         chars = "".join(raw).replace("\n", "")
         return [c if c != " " else "" for c in chars] or [" "]
@@ -1365,7 +1396,12 @@ def main():
                     help="solid face colour (overrides the preset's material)")
     ap.add_argument("-d", "--debug", action="store_true", help="timings and backend info on stderr")
     ap.add_argument("-f", "--font", help="font file or file name (overrides the preset's font)")
-    ap.add_argument("-l", "--line", type=float, default=1.0, help="line spacing (default 1.0)")
+    ap.add_argument("-a", "--art", dest="art", action="store_true", default=None,
+                    help="input is ASCII art: keep lines aligned, use a monospace font, no letter-spacing, "
+                         "tighter lines (implies -p).  Piped multi-line art is detected automatically")
+    ap.add_argument("--no-art", dest="art", action="store_false", help="never auto-detect ASCII art")
+    ap.add_argument("-l", "--line", type=float, default=None,
+                    help="line spacing (default 1.0; %s for ASCII art)" % ART_LINE)
     ap.add_argument("-p", "--preserve", action="store_true", help="preserve newlines instead of re-wrapping")
     ap.add_argument("-s", "--size", type=int, default=0, help="font size in pixels (default: fit the terminal)")
     ap.add_argument("-w", "--width", type=int, default=20, help="wrap width in characters (default 20)")
