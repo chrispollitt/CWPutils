@@ -69,6 +69,12 @@ tune `hatch`.
   go through ssh/WSL2.
 * kitty graphics inside tmux or screen needs the multiplexer's passthrough enabled.
 
+## Background
+
+[`GRAPHICS-HISTORY.md`](GRAPHICS-HISTORY.md) is a history of graphics in terminals: ANSI art, Tektronix,
+ReGIS and SIXEL, and the iTerm2 and kitty protocols; why they never converged; and where pictures
+get lost on the way to the screen.
+
 ## Files
 
 `sixeldec.py` (SIXEL decoder and PNG writer, shared), the three converters, and `test.sh`
