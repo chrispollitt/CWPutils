@@ -10,6 +10,12 @@ done
 $py bidet3d.py --shape wave --yaw -30 --pitch 12 --png "$out/wave.png" "Wave" || fail=1
 $py bidet3d.py -b white -P arc --png "$out/white.png" "On white" || fail=1
 echo "rendered $(ls "$out"/*.png | wc -l) PNGs in $out"
+# the other output formats (the gfx-conv converters); need no libsixel
+for f in kitty iterm ansi tek tek-dots tek-contour; do
+  $py bidet3d.py -F $f --cell 9x18 --max-width 400 "Hi" > "$out/f.$f" && [ -s "$out/f.$f" ] || { echo "FAIL --format $f"; fail=1; }
+done
+head -c 8 "$out/f.kitty" | grep -q $'^\x1b_Ga=T' || { echo "FAIL --format kitty header"; fail=1; }
+echo "output formats ok"
 if command -v img2sixel >/dev/null || $py -c "import libsixel" 2>/dev/null; then
   $py bidet3d.py -P chrome "Hello, SIXEL" > "$out/t.six" && head -c 2 "$out/t.six" | grep -q $'\x1bP' || { echo "FAIL sixel"; fail=1; }
   $py bidet3d.py --spin --frames 3 --fps 5 --spin-speed 120 -P superhero "Spin" >/dev/null || fail=1

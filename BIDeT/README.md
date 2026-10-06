@@ -8,6 +8,7 @@ big text for the terminal, drawn as SIXEL graphics.
 | folder | what | status |
 | --- | --- | --- |
 | [`3D/`](3D/) | **BIDeT3D**: 1990s WordArt, extruded into real 3D (Python, Pillow, numpy, libsixel) | **current, maintained** |
+| [`gfx-conv/`](gfx-conv/) | converters from SIXEL to the kitty and iTerm2 image protocols, to ANSI art and to Tektronix vector graphics | current |
 | [`v2/`](v2/) | `bidet2.py`, the Python port of BIDeT | obsolete, **unmaintained** |
 | [`v1/`](v1/) | `BIDeT.pl`, the original Perl/Ghostscript/netpbm version (2020) | obsolete, **unmaintained** |
 

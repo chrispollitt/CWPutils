@@ -251,6 +251,49 @@ def do_contour(w, h, g, args, tek):
 
 
 # --------------------------------------------------------------------------
+# Entry points for other programs (bidet3d imports these) and the command line
+# --------------------------------------------------------------------------
+def tek_args(mode="hatch", **kw):
+    """The option set the vectorisers read, with the command line's defaults."""
+    a = argparse.Namespace(mode=mode, invert=False, gamma=1.0, no_auto=False, scale=1.0, lines=4, pitch=2.0,
+                           levels=5, simplify=1.2)
+    for k, v in kw.items():
+        setattr(a, k, v)
+    return a
+
+
+def tek_stream(data, args=None):
+    """SIXEL or image bytes -> (Tek stream, width, height).  The stream is the vectors only,
+    ending with US: add the erase and, for xterm, the mode switch with emit()."""
+    args = args or tek_args()
+    w, h, g = load_brightness(data)
+    g = tone(g, args)
+    tek = Tek()
+    {"hatch": do_hatch, "dots": do_dots, "contour": do_contour}[args.mode](w, h, g, args, tek)
+    tek.end()
+    return bytes(tek.out), w, h
+
+
+def emit(body, xterm=False, erase=True, out=None):
+    """Write a Tek stream.  xterm=True switches an xterm into Tek mode (ESC [ ? 38 h), draws,
+    waits for Enter on the terminal and switches back (ESC ETX)."""
+    out = out or sys.stdout.buffer
+    pre = ESC + b"\x0c" if erase else b""
+    if xterm:
+        out.write(ESC + b"[?38h" + pre + body)
+        out.flush()
+        try:
+            tty = open("/dev/tty", "r")
+            tty.readline()
+        except OSError:
+            pass
+        out.write(ESC + b"\x03")                  # back to the VT window
+        out.flush()
+    else:
+        out.write(pre + body)
+        out.flush()
+
+
 def main():
     ap = argparse.ArgumentParser(description="SIXEL (or image) -> Tektronix 4010/4014 vector graphics")
     ap.add_argument("file", nargs="?", help="SIXEL or image file (default: stdin)")
@@ -274,29 +317,11 @@ def main():
         print("sixel2tek %s" % VERSION)
         return
 
-    w, h, g = load_brightness(sixeldec.read_input(args.file))
-    g = tone(g, args)
-    tek = Tek()
-    {"hatch": do_hatch, "dots": do_dots, "contour": do_contour}[args.mode](w, h, g, args, tek)
-    tek.end()
-    body = bytes(tek.out)
+    body, w, h = tek_stream(sixeldec.read_input(args.file), args)
     if args.stats:
         print("%dx%d source -> %d bytes, %d strokes" % (w, h, len(body), body.count(GS) + body.count(FS)),
               file=sys.stderr)
-    out = sys.stdout.buffer
-    pre = b"" if args.no_erase else ESC + b"\x0c"
-    if args.xterm:
-        out.write(ESC + b"[?38h" + pre + body)
-        out.flush()
-        try:
-            tty = open("/dev/tty", "r")
-            tty.readline()
-        except OSError:
-            pass
-        out.write(ESC + b"\x03")                  # back to the VT window
-        out.flush()
-    else:
-        out.write(pre + body)
+    emit(body, args.xterm, not args.no_erase)
 
 
 if __name__ == "__main__":

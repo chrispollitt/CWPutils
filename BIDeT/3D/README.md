@@ -25,11 +25,13 @@ No build step; it is one Python file. Try it in place with `./bidet3d.py`, or:
 
     make installreq        # Debian/Ubuntu: python3-pil python3-numpy libsixel-bin (as root)
     make check             # lint + render every preset
-    sudo make install      # bidet3d, man page, docs (PREFIX=/usr/local; DESTDIR supported)
+    sudo make install      # bidet3d, man page, docs, the gfx-conv converters (PREFIX=/usr/local; DESTDIR supported)
     make help              # all targets
 
 Elsewhere: `pip install -r requirements.txt` plus libsixel (Cygwin setup, brew, ...).
 It runs on old systems too (tested down to Python 3.7, Pillow 5.4, numpy 1.16).
+`make install` also puts the [`gfx-conv`](../gfx-conv/) converters in `share/BIDeT3D/gfx`, linked into `bin` as
+`sixel2ans`, `sixel2iterm`, `sixel2kitty` and `sixel2tek`; `--format` uses them.
 `make textures` fetches the optional Word textures (see below);
 `sudo make install` installs them if you have them.
 The man page is `bidet3d.1`; read it with `make man`.
@@ -75,6 +77,7 @@ width, `-d` debug, `-v` version. Text comes from the arguments or stdin.
 | `--time-machine` | cycle through banner (1983), FIGlet, TOIlet, BIDeT, then BIDeT3D spinning; `--stage-time SEC` per era |
 | `--spin-speed`, `--fps`, `--frames` | animation control (degrees/s, frames/s, stop after N) |
 | `--colors N` | SIXEL palette size (default 256; fewer = smaller frames, more banding) |
+| `-F`, `--format F` | output format: `sixel` (default), `kitty`, `iterm`, `ansi`, `tek`, `tek-dots`, `tek-contour`, or `auto` (needs [`../gfx-conv`](../gfx-conv/); no animation) |
 | `--png FILE` | write a PNG instead of SIXEL (handy for testing) |
 | `--max-width PX` | cap the image width (faster, less data) |
 | `--dither` | Floyd-Steinberg dithering for still pictures (default off: less speckle) |
@@ -84,6 +87,10 @@ width, `-d` debug, `-v` version. Text comes from the arguments or stdin.
 
 The black presets (`up`, `arc`, `squeeze`, ...) used to sit on a light page, so
 their "ink" turns white on dark terminals.
+
+`-F` prints something else for terminals that don't do SIXEL: the kitty or iTerm2 image protocols,
+ANSI art (`-F ansi` works in any UTF-8 terminal), or Tektronix vectors for `xterm -t`. `-F auto` picks one
+from what the terminal says about itself. Details in [`../gfx-conv`](../gfx-conv/).
 
 Like BIDeT's `test-sixel`, it first asks the terminal whether it reports SIXEL
 (DA1 attribute 4) and stops with "Sixel not supported" if it says no

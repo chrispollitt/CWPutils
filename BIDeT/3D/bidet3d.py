@@ -696,7 +696,7 @@ def term_geometry(args):
     return cols, rows, cw, ch          # cw, ch None when the terminal cannot say (ssh, Cygwin ptys)
 
 
-def query_terminal(want_bg=True, want_cell=False, timeout=0.25, da_timeout=1.0, debug=False):
+def query_terminal(want_bg=True, want_cell=False, want_sixel=True, timeout=0.25, da_timeout=1.0, debug=False):
     """Ask the terminal up to three things in one raw-mode session (POSIX tty only):
     does it report SIXEL (DA1 attribute 4, like BIDeT's test-sixel), what is its
     background colour (OSC 11), and how big is a character cell in pixels (CSI 16 t; the
@@ -727,12 +727,13 @@ def query_terminal(want_bg=True, want_cell=False, timeout=0.25, da_timeout=1.0, 
     sixel = bg = cell = None
     try:
         tty.setcbreak(fd)
-        da = ask("\x1b[c", lambda b: b.endswith("c"), da_timeout)
-        if debug:
-            print("terminal: DA1 reply %r" % da, file=sys.stderr)
-        m = re.search(r"\x1b\[\?([0-9;]*)c", da)
-        if m:
-            sixel = "4" in m.group(1).split(";")
+        if want_sixel:
+            da = ask("\x1b[c", lambda b: b.endswith("c"), da_timeout)
+            if debug:
+                print("terminal: DA1 reply %r" % da, file=sys.stderr)
+            m = re.search(r"\x1b\[\?([0-9;]*)c", da)
+            if m:
+                sixel = "4" in m.group(1).split(";")
         if want_bg:
             buf = ask("\x1b]11;?\x1b\\", lambda b: b.endswith("\\") or b.endswith("\x07"), timeout)
             if debug:
@@ -956,6 +957,72 @@ def pick_view(p, args):
 
 def emit(out, sixel):
     out.write(sixel)
+    out.flush()
+
+
+# --------------------------------------------------------------------------
+# Other output formats: the converters from gfx-conv (kitty, iTerm2, ANSI art, Tektronix)
+# --------------------------------------------------------------------------
+FORMATS = ["sixel", "kitty", "iterm", "ansi", "tek", "tek-dots", "tek-contour"]
+_gfx = {}
+
+
+def load_gfx(name):
+    """Import one of the gfx-conv converters (sixel2kitty, ...).  Looked for in $BIDET3D_GFX, next
+    to a source checkout (../gfx-conv), and where 'make install' puts them."""
+    if name in _gfx:
+        return _gfx[name]
+    here = os.path.dirname(os.path.realpath(__file__))
+    dirs = [os.environ.get("BIDET3D_GFX"), os.path.join(here, "..", "gfx-conv"),
+            os.path.join(here, "gfx"), os.path.join(here, "..", "share", "BIDeT3D", "gfx"),
+            "/usr/local/share/BIDeT3D/gfx", "/usr/share/BIDeT3D/gfx"]
+    for d in dirs:
+        if d and os.path.isfile(os.path.join(d, name + ".py")):
+            sys.path.insert(0, d)
+            try:
+                _gfx[name] = __import__(name)
+            finally:
+                sys.path.pop(0)
+            return _gfx[name]
+    sys.exit("bidet3d: this output format needs the gfx-conv converters (%s.py not found).\n"
+             "Run 'make install', or point BIDET3D_GFX at the gfx-conv directory." % name)
+
+
+def pick_format(sixel_ok):
+    """--format auto: what the terminal says about itself, else SIXEL if it reported it, else ANSI art."""
+    env = os.environ
+    if env.get("KITTY_WINDOW_ID") or "kitty" in env.get("TERM", "") or env.get("TERM_PROGRAM") == "ghostty":
+        return "kitty"
+    if env.get("TERM_PROGRAM") == "iTerm.app" or env.get("LC_TERMINAL") == "iTerm2":
+        return "iterm"
+    return "sixel" if sixel_ok else "ansi"
+
+
+def output_picture(img, fmt, args, bg, transparent, cw, ch):
+    """Write one finished picture (a PIL image: RGBA when the background is transparent) in
+    the chosen format."""
+    out = sys.stdout.buffer
+    if fmt == "sixel":
+        emit(out, to_sixel(sixel_ready(img, bg, args.colors, dither=args.dither, transparent=transparent),
+                           args.colors, args.debug))
+        sys.stdout.write("\n")
+        return
+    buf = io.BytesIO()
+    img.convert("RGBA").save(buf, "PNG")
+    png = buf.getvalue()
+    if fmt == "kitty":
+        out.write(load_gfx("sixel2kitty").kitty_sequence(png) + b"\n")
+    elif fmt == "iterm":
+        out.write(load_gfx("sixel2iterm").iterm_sequence(png) + b"\n")
+    elif fmt == "ansi":
+        m = load_gfx("sixel2ans")
+        out.write(m.convert(png, m.ans_args(cols=max(1, int(round(img.width / cw))),
+                                            rows=max(1, int(round(img.height / ch))), aspect=ch / cw,
+                                            background=None if transparent else tuple(bg))))
+    else:                                                      # tek, tek-dots, tek-contour
+        m = load_gfx("sixel2tek")
+        body, _w, _h = m.tek_stream(png, m.tek_args(fmt[4:] or "hatch"))
+        m.emit(body, xterm=sys.stdout.isatty())
     out.flush()
 
 
@@ -1506,6 +1573,9 @@ def main():
     ap.add_argument("--frames", type=int, default=0, help="stop after showing N frames (default: until Ctrl-C)")
     ap.add_argument("--ss", type=int, help="supersampling factor (default 2, 1 when animating)")
     ap.add_argument("--colors", type=int, help="SIXEL palette size (default 256; fewer = smaller frames, more banding)")
+    ap.add_argument("-F", "--format", default="sixel", choices=["auto"] + FORMATS, metavar="FORMAT",
+                    help="output format: " + ", ".join(FORMATS) + ", or auto (what the terminal reports); "
+                         "all but sixel need the gfx-conv converters and do not animate (default sixel)")
     ap.add_argument("--png", metavar="FILE", help="write a PNG instead of printing SIXEL")
     ap.add_argument("--texture-dir", help="directory with css3wordart's Texture-*.png (see README)")
     ap.add_argument("--max-width", type=int, metavar="PX",
@@ -1534,6 +1604,8 @@ def main():
     if args.preset not in PRESETS and not args.gallery:
         sys.exit("bidet3d: unknown preset '%s' (try --list-presets)" % args.preset)
     animate = args.spin or args.sway is not None or args.time_machine
+    if animate and args.format not in ("sixel", "auto") and not args.png:
+        sys.exit("bidet3d: --spin, --sway and --time-machine animate with SIXEL only (--format sixel)")
     if args.time_machine and (args.png or args.gallery):
         sys.exit("bidet3d: --time-machine cannot be combined with --png or --gallery")
     if args.ss is None:
@@ -1546,9 +1618,19 @@ def main():
     _verbose = args.debug
     # terminal + background
     cols, rows, cw, ch = term_geometry(args)
+    fmt = args.format
     sixel_ok, term_bg, cell = ((None, None, None) if args.png else
-                               query_terminal(want_bg=args.background == "transparent", want_cell=not cw,
+                               query_terminal(want_bg=args.background == "transparent" and fmt in ("sixel", "auto"),
+                                              want_cell=not cw, want_sixel=fmt in ("sixel", "auto"),
                                               debug=args.debug))
+    if fmt == "auto":
+        fmt = pick_format(sixel_ok)
+        if animate and fmt != "sixel":
+            sys.exit("bidet3d: animation needs SIXEL, and this terminal did not report it (--force to try)")
+        if args.debug:
+            print("format: %s" % fmt, file=sys.stderr)
+    if fmt != "sixel":
+        term_bg = None                  # the picture keeps real alpha; only an explicit -b paints a background
     if not cw:
         cw, ch = cell or (10.0, 20.0)
         if args.debug:
@@ -1560,7 +1642,7 @@ def main():
     if args.max_width:
         max_w = min(max_w, args.max_width)
     max_h = max(1, (rows - 2)) * ch
-    if sixel_ok is False and not (args.force or os.environ.get("LSIX_FORCE_SIXEL_SUPPORT")):
+    if fmt == "sixel" and sixel_ok is False and not (args.force or os.environ.get("LSIX_FORCE_SIXEL_SUPPORT")):
         sys.exit("bidet3d: Sixel not supported: your terminal does not report having sixel graphics "
                  "support.\nTry mintty, xterm -ti vt340, mlterm, Windows Terminal or WezTerm "
                  "(see TERMINAL-SUPPORT-LIST.txt), or use --force / --png.")
@@ -1585,7 +1667,7 @@ def main():
         # terminals alike; below the 0.5 luminance cut-off, so "ink" presets use white.
         bg = (127, 127, 127)       # only steers the "ink" choice; the picture itself keeps real alpha
         if args.debug:
-            print("background: transparent sixel", file=sys.stderr)
+            print("background: transparent", file=sys.stderr)
     args.bg = bg
     tex_dir = args.texture_dir
 
@@ -1599,7 +1681,7 @@ def main():
             p, L = make_scene(args, name, tex_dir, max_w, max_h / 3, px=args.size or 56, ss=args.ss)
             img = finish(render(L, p, pick_view(p, args), args.perspective, None if transparent else bg, args),
                          args.ss, max_w, max_h / 2)
-            emit(out, to_sixel(sixel_ready(img, bg, args.colors, dither=args.dither, transparent=transparent), args.colors, args.debug))
+            output_picture(img, fmt, args, bg, transparent, cw, ch)
             print()
         return
 
@@ -1626,8 +1708,7 @@ def main():
     if args.png:
         img.save(args.png)
         return
-    emit(sys.stdout.buffer, to_sixel(sixel_ready(img, bg, args.colors, dither=args.dither, transparent=transparent), args.colors, args.debug))
-    sys.stdout.write("\n")
+    output_picture(img, fmt, args, bg, transparent, cw, ch)
 
 
 if __name__ == "__main__":

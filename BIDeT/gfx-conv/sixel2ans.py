@@ -322,6 +322,39 @@ def parse_colour(s):
         sys.exit("sixel2ans: bad colour '%s' (use #rrggbb, r,g,b, black or white)" % s)
 
 
+def ans_args(**kw):
+    """The option set convert() reads, with the command line's defaults."""
+    a = argparse.Namespace(cols=None, rows=None, aspect=2.0, glyphs="blocks", colors=24, background=None)
+    for k, v in kw.items():
+        setattr(a, k, v)
+    return a
+
+
+def convert(data, args=None):
+    """SIXEL or image bytes -> the ANSI art, as bytes (lines end in newline)."""
+    args = args or ans_args()
+    w, h, rgba = sixeldec.load_picture(data)
+    tcols, trows = term_size()
+    cols, rows = args.cols, args.rows
+    if cols is not None and cols <= 0:
+        cols = max(1, tcols + cols)
+    if rows is not None and rows <= 0:
+        rows = max(1, trows + rows)
+    if cols is None and rows is None:
+        cols = max(1, min(tcols, int(round(w / 8.0))))
+    # keep the picture's shape: fit inside the box that was asked for
+    if cols is not None and rows is not None:
+        rows = max(1, min(rows, int(round(cols * h / float(w) / args.aspect))))
+        cols = max(1, min(cols, int(round(rows * w / float(h) * args.aspect))))
+    elif cols is not None:
+        rows = max(1, int(round(cols * h / float(w) / args.aspect)))
+    else:
+        cols = max(1, int(round(rows * w / float(h) * args.aspect)))
+    args = argparse.Namespace(**vars(args))
+    args.cols, args.rows = cols, rows
+    return b"".join(line + b"\n" for line in render(w, h, rgba, args))
+
+
 def main():
     ap = argparse.ArgumentParser(description="SIXEL / image -> ANSI art (Unicode block characters)")
     ap.add_argument("file", nargs="?", help="SIXEL or image file (default: standard input)")
@@ -342,28 +375,8 @@ def main():
     if args.background:
         args.background = parse_colour(args.background)
 
-    w, h, rgba = sixeldec.load_picture(sixeldec.read_input(args.file))
-    tcols, trows = term_size()
-    cols, rows = args.cols, args.rows
-    if cols is not None and cols <= 0:
-        cols = max(1, tcols + cols)
-    if rows is not None and rows <= 0:
-        rows = max(1, trows + rows)
-    if cols is None and rows is None:
-        cols = max(1, min(tcols, int(round(w / 8.0))))
-    # keep the picture's shape: fit inside the box that was asked for
-    if cols is not None and rows is not None:
-        rows = max(1, min(rows, int(round(cols * h / float(w) / args.aspect))))
-        cols = max(1, min(cols, int(round(rows * w / float(h) * args.aspect))))
-    elif cols is not None:
-        rows = max(1, int(round(cols * h / float(w) / args.aspect)))
-    else:
-        cols = max(1, int(round(rows * w / float(h) * args.aspect)))
-    args.cols, args.rows = cols, rows
-
     out = sys.stdout.buffer
-    for line in render(w, h, rgba, args):
-        out.write(line + b"\n")
+    out.write(convert(sixeldec.read_input(args.file), args))
     out.flush()
 
 

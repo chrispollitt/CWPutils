@@ -177,6 +177,17 @@ Frames are wrapped in synchronized\-output sequences (mode 2026) where the
 terminal supports them.
 .SS Output
 .TP
+.BR \-F ", " \-\-format =\fIFORMAT\fR
+What to print: \fBsixel\fR (the default), \fBkitty\fR (the kitty graphics protocol),
+\fBiterm\fR (iTerm2 inline images), \fBansi\fR (coloured Unicode block characters, which
+any UTF\-8 terminal can show), \fBtek\fR, \fBtek\-dots\fR or \fBtek\-contour\fR
+(Tektronix 4010 vector graphics for an xterm in Tek mode), or \fBauto\fR.
+\fBauto\fR picks kitty or iTerm2 when the environment says the terminal is one,
+otherwise SIXEL if the terminal reports it, otherwise ANSI art.
+Apart from \fBsixel\fR these are made by the converters from the \fIgfx\-conv\fR directory
+(installed with \fBmake install\fR; see \fBBIDET3D_GFX\fR), keep a transparent background
+unless \fB\-b\fR is given, and cannot be animated.
+.TP
 .BI \-\-colors= N
 SIXEL palette size (default 256).
 Fewer colours mean smaller output and more banding.
@@ -350,6 +361,12 @@ Directory searched for the Word textures.
 .TP
 .B BIDET3D_CELL
 Terminal cell size in pixels as \fIWxH\fR, like \fB\-\-cell\fR.
+.TP
+.B BIDET3D_GFX
+Directory with the \fIgfx\-conv\fR converters (\fIsixel2kitty.py\fR and the others), used by
+\fB\-\-format\fR.
+By default they are looked for next to a source checkout (\fI../gfx\-conv\fR) and in
+\fI../share/BIDeT3D/gfx\fR relative to the program, where \fBmake install\fR puts them.
 .TP
 .B BIDET3D_EMULATE
 If set, \fB\-\-time\-machine\fR draws its own imitations of banner, FIGlet and TOIlet

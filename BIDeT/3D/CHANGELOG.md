@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `-F/--format`: print kitty graphics, iTerm2 inline images, ANSI art or Tektronix vectors as well as SIXEL
+  (or `auto`), via the `../gfx-conv` converters, which `make install` now installs under
+  `share/BIDeT3D/gfx` and links into `bin`. `BIDET3D_GFX` points elsewhere. These formats keep a
+  transparent background (no OSC 11 query) and do not animate.
 - Transparent pictures no longer come out with a grey background on Raspberry Pi OS: img2sixel
   1.8.2 ignores the PNG transparent index, so keyed pictures are now encoded to SIXEL directly
   (`encode_keyed`), without img2sixel.
