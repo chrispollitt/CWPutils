@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Transparent pictures no longer come out with a grey background on Raspberry Pi OS: img2sixel
+  1.8.2 ignores the PNG transparent index, so keyed pictures are now encoded to SIXEL directly
+  (`encode_keyed`), without img2sixel.
+- Character-cell size is asked of the terminal (CSI 16 t) when the tty cannot report it, as over
+  ssh; the guess of 10x20 made pictures too wide and clipped on the right. `-d` shows which was used.
+- Speed on old/slow machines (Pi, Pillow < 7): nearest-colour mapping works on distinct colours
+  with a matrix product (was 65% of the run time), and the extrusion slices are warped on up to
+  4 threads. A two-line quote on cmpi (armv7, 4 cores): ~13-17 s -> ~6 s.
 - ASCII art: `-a/--art` keeps lines aligned (they were each centred separately), uses a monospace
   font, no letter-spacing and tighter lines (0.9). Piped multi-line art (cowsay, figlet, boxes) is
   detected automatically; `--no-art` turns that off. `-l` now defaults to per-mode, not 1.0.

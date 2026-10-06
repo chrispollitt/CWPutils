@@ -165,6 +165,7 @@ DEFAULT_VIEW = (-20.0, 8.0, 0.0)
 MAX_LOOP_FRAMES = 120     # longest pre-rendered animation loop
 SIDE_LEVELS = 48          # distinct extrusion shades (cached per level)
 ART_LINE = 0.9            # default line spacing for ASCII art, so | and \ strokes meet between rows
+RENDER_THREADS = 1       # threads warping slices in render(); main() raises it for single pictures
 SLICE_DENSITY = 2.0      # slices per output pixel of extrusion; higher = smoother near edge-on
 
 
@@ -612,6 +613,7 @@ def render(L, p, view, persp, bg, args, bounds=None):
     src = [(0, 0), (L.w, 0), (L.w, L.h), (0, L.h)]
     shade3 = L.side_shade[..., None]
 
+    jobs = []
     for k in order:
         if k == 0 and M[2, 2] > 0:
             img = L.face                      # front cap, facing us
@@ -636,9 +638,28 @@ def render(L, p, view, persp, bg, args, bounds=None):
             co = persp_coeffs(q - (x0, y0), src)
         except np.linalg.LinAlgError:
             continue                          # edge-on: slice has no area
+        jobs.append((img, x0, y0, x1, y1, tuple(co)))
+
+    def warp(j):
         # rasterize only the slice's own bounding box, not the whole canvas
-        canvas.alpha_composite(img.transform((x1 - x0, y1 - y0), Image.PERSPECTIVE, tuple(co),
-                                             Image.BILINEAR), (x0, y0))
+        img, x0, y0, x1, y1, co = j
+        return img.transform((x1 - x0, y1 - y0), Image.PERSPECTIVE, co, Image.BILINEAR)
+
+    if RENDER_THREADS > 1 and len(jobs) > 3:
+        # Pillow drops the GIL inside transform(), so the slices warp in parallel (a Pi has 4
+        # cores); they are still composited farthest-first, and only a few wait in memory.
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(RENDER_THREADS) as ex:
+            window = RENDER_THREADS * 2
+            pending = [ex.submit(warp, j) for j in jobs[:window]]
+            for i, j in enumerate(jobs):
+                canvas.alpha_composite(pending[i].result(), (j[1], j[2]))
+                pending[i] = None
+                if i + window < len(jobs):
+                    pending.append(ex.submit(warp, jobs[i + window]))
+    else:
+        for j in jobs:
+            canvas.alpha_composite(warp(j), (j[1], j[2]))
     return canvas if bg is None else canvas.convert("RGB")
 
 
@@ -672,26 +693,26 @@ def term_geometry(args):
                 cw, ch = xp / float(c), yp / float(r)
         except Exception:
             pass
-    if not cw:
-        cw, ch = 10.0, 20.0
-    return cols, rows, cw, ch
+    return cols, rows, cw, ch          # cw, ch None when the terminal cannot say (ssh, Cygwin ptys)
 
 
-def query_terminal(want_bg=True, timeout=0.25, da_timeout=1.0, debug=False):
-    """Ask the terminal two things in one raw-mode session (POSIX tty only):
-    does it report SIXEL (DA1 attribute 4, like BIDeT's test-sixel), and what is its
-    background colour (OSC 11).  Returns (sixel, bg): sixel is True/False, or None when
-    we cannot ask or it did not answer; bg is an (r, g, b) tuple or None."""
+def query_terminal(want_bg=True, want_cell=False, timeout=0.25, da_timeout=1.0, debug=False):
+    """Ask the terminal up to three things in one raw-mode session (POSIX tty only):
+    does it report SIXEL (DA1 attribute 4, like BIDeT's test-sixel), what is its
+    background colour (OSC 11), and how big is a character cell in pixels (CSI 16 t; the
+    tty's own pixel size is empty over ssh).  Returns (sixel, bg, cell): sixel is True/False,
+    or None when we cannot ask or it did not answer; bg is an (r, g, b) tuple or None;
+    cell is (width, height) or None."""
     if os.name != "posix" or not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return None, None
+        return None, None, None
     if os.environ.get("TERM", "").startswith("yaft"):
-        return True, (0, 0, 0)            # yaft cannot answer DA1 (as in test-sixel.sh)
+        return True, (0, 0, 0), None      # yaft cannot answer DA1 (as in test-sixel.sh)
     try:
         import select, termios, tty
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
     except Exception:
-        return None, None
+        return None, None, None
 
     def ask(seq, done, to):
         sys.stdout.write(seq)
@@ -703,7 +724,7 @@ def query_terminal(want_bg=True, timeout=0.25, da_timeout=1.0, debug=False):
                 break
         return buf
 
-    sixel = bg = None
+    sixel = bg = cell = None
     try:
         tty.setcbreak(fd)
         da = ask("\x1b[c", lambda b: b.endswith("c"), da_timeout)
@@ -719,6 +740,13 @@ def query_terminal(want_bg=True, timeout=0.25, da_timeout=1.0, debug=False):
             m = re.search(r"rgb:([0-9a-fA-F]+)/([0-9a-fA-F]+)/([0-9a-fA-F]+)", buf)
             if m:
                 bg = tuple(int(round(int(g, 16) / float(16 ** len(g) - 1) * 255)) for g in m.groups())
+        if want_cell:
+            buf = ask("\x1b[16t", lambda b: b.endswith("t"), timeout)
+            if debug:
+                print("terminal: cell size reply %r" % buf, file=sys.stderr)
+            m = re.search(r"\x1b\[6;(\d+);(\d+)t", buf)
+            if m and int(m.group(1)) > 0 and int(m.group(2)) > 0:
+                cell = (float(m.group(2)), float(m.group(1)))        # reply is height;width
     except Exception:
         pass
     finally:
@@ -727,7 +755,7 @@ def query_terminal(want_bg=True, timeout=0.25, da_timeout=1.0, debug=False):
         except Exception:
             pass
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
-    return sixel, bg
+    return sixel, bg, cell
 
 
 _backend = None
@@ -739,6 +767,46 @@ def _keyed_header(six, key):
     if key is not None and six.startswith(b"\x1bPq"):
         return b"\x1bP0;1;q" + six[3:]
     return six
+
+
+def encode_keyed(img, key):
+    """SIXEL for a P-mode image straight from numpy, leaving palette index `key` unpainted
+    (transparent).  img2sixel cannot be trusted with this: 1.5.0 ignored the PNG transparent
+    index for some pictures and 1.8.2 (Raspberry Pi OS) for all of them, and either may also
+    re-quantize or reorder our exact palette.  Colours are written at SIXEL's 1% resolution."""
+    idx = np.asarray(img, np.uint8)
+    h, w = idx.shape
+    if h % 6:
+        idx = np.vstack([idx, np.full((6 - h % 6, w), key, np.uint8)])
+    pal = img.getpalette()
+    out = [b"\x1bP0;1;q", b'"1;1;%d;%d' % (w, h)]
+    for c in np.unique(idx).tolist():            # python ints: 3 * np.uint8 would wrap
+        if c != key:
+            rgb = tuple(int(round(v * 100 / 255.0)) for v in pal[3 * c:3 * c + 3])
+            out.append(b"#%d;2;%d;%d;%d" % ((int(c),) + rgb))
+    weights = (1 << np.arange(6)).astype(np.uint8)[:, None]
+    for top in range(0, idx.shape[0], 6):
+        band = idx[top:top + 6]
+        strokes = []
+        for c in np.unique(band).tolist():
+            if c == key:
+                continue
+            v = ((band == c) * weights).sum(0).astype(np.uint8) + 63        # one sixel char per column
+            change = np.empty(w, bool)
+            change[0] = True
+            np.not_equal(v[1:], v[:-1], out=change[1:])
+            starts = np.flatnonzero(change)
+            lens = np.empty_like(starts)
+            lens[:-1] = starts[1:] - starts[:-1]
+            lens[-1] = w - starts[-1]
+            chars = v[starts]
+            if chars[-1] == 63:                                              # trailing blanks need no strokes
+                chars, lens = chars[:-1], lens[:-1]
+            runs = [b"!%d%c" % (n, ch) if n > 3 else bytes([ch]) * n for ch, n in zip(chars.tolist(), lens.tolist())]
+            strokes.append(b"#%d" % c + b"".join(runs))
+        out.append(b"$".join(strokes) + b"-")
+    out.append(b"\x1b\\")
+    return b"".join(out)
 
 
 def to_sixel(img, ncolors=256, debug=False):
@@ -793,6 +861,8 @@ def to_sixel(img, ncolors=256, debug=False):
             if debug and not isinstance(e, ImportError):
                 print("sixel: python binding unusable (%s); using img2sixel" % e, file=sys.stderr)
             _backend = "cli"
+    if key is not None:
+        return encode_keyed(img, key)
     exe = shutil.which("img2sixel")
     if not exe:
         sys.exit("bidet3d: need libsixel: 'pip install libsixel-python' or install img2sixel "
@@ -1051,11 +1121,16 @@ def _quantize_palette(img, pimg, dither, n):
         if dither:
             return img.quantize(palette=pimg)
     pal = np.array(pimg.getpalette()[:3 * n], np.float32).reshape(-1, 3)
-    flat = np.asarray(img.convert("RGB"), np.float32).reshape(-1, 3)
-    idx = np.empty(len(flat), np.uint8)
-    for i in range(0, len(flat), 16384):
-        c = flat[i:i + 16384]
-        idx[i:i + 16384] = ((c[:, None, :] - pal[None, :, :]) ** 2).sum(-1).argmin(1)
+    rgb = np.asarray(img.convert("RGB"), np.uint32).reshape(-1, 3)
+    # nearest palette entry per *distinct* colour (flat backgrounds and anti-aliasing repeat a
+    # lot), with |c-p|^2 = |c|^2 - 2c.p + |p|^2 as one matrix product: ~20x faster on a Pi
+    keys, inv = np.unique((rgb[:, 0] << 16) | (rgb[:, 1] << 8) | rgb[:, 2], return_inverse=True)
+    uc = np.stack([keys >> 16, (keys >> 8) & 255, keys & 255], 1).astype(np.float32)
+    half = (pal ** 2).sum(1) * 0.5
+    near = np.empty(len(uc), np.uint8)
+    for i in range(0, len(uc), 8192):
+        near[i:i + 8192] = (uc[i:i + 8192].dot(pal.T) - half).argmax(1)
+    idx = near[inv.reshape(-1)]
     out = Image.frombytes("P", img.size, idx.tobytes())
     out.putpalette(pimg.getpalette()[:3 * n])
     return out
@@ -1471,14 +1546,20 @@ def main():
     _verbose = args.debug
     # terminal + background
     cols, rows, cw, ch = term_geometry(args)
+    sixel_ok, term_bg, cell = ((None, None, None) if args.png else
+                               query_terminal(want_bg=args.background == "transparent", want_cell=not cw,
+                                              debug=args.debug))
+    if not cw:
+        cw, ch = cell or (10.0, 20.0)
+        if args.debug:
+            print("cell size: %gx%g (%s)" % (cw, ch, "from the terminal" if cell else "guessed; try --cell WxH"),
+                  file=sys.stderr)
     max_w = cols * cw * 0.98
     if "xterm" in os.environ.get("TERM", "") and max_w > 1000:
         max_w = 1000          # xterm cannot show SIXEL wider than 1000px
     if args.max_width:
         max_w = min(max_w, args.max_width)
     max_h = max(1, (rows - 2)) * ch
-    sixel_ok, term_bg = ((None, None) if args.png else
-                         query_terminal(want_bg=args.background == "transparent", debug=args.debug))
     if sixel_ok is False and not (args.force or os.environ.get("LSIX_FORCE_SIXEL_SUPPORT")):
         sys.exit("bidet3d: Sixel not supported: your terminal does not report having sixel graphics "
                  "support.\nTry mintty, xterm -ti vt340, mlterm, Windows Terminal or WezTerm "
@@ -1536,6 +1617,8 @@ def main():
         do_spin(args, p, L, view, bg, max_w, max_h, cw, ch, transparent)
         return
 
+    global RENDER_THREADS
+    RENDER_THREADS = min(4, os.cpu_count() or 1)
     t1 = time.time()
     img = finish(render(L, p, view, args.perspective, None if transparent else bg, args), args.ss, max_w, max_h)
     if args.debug:
