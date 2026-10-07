@@ -108,6 +108,14 @@ assert o.paper == (255, 255, 255) and o.ink == (0, 0, 0)
 o = u.Options(mode="ansi-block", cell_w=8, paper=(10, 20, 30))
 u.render_grid_color(u.parse("\x1b[44m  \n"), o)
 assert o.paper == (10, 20, 30)
+# DOS art with a NUL byte parses (it raised KeyError: 0), the NUL being nothing
+assert "".join(u.parse("a\0b", glyphs=True).ch[0]) == "ab"
+# a row that ends in a long blank run has the whole run dropped, not just its "?" ("!72$" is invalid)
+import re
+dots = np.zeros((6, 100), np.float32)
+dots[:, :3] = 1
+st = u.sixel(dots)
+assert not re.search(rb"!\d+[^?-~\d]", st), st
 print("library checks ok")
 EOF
 if [ -f ../3D/bidet3d.py ]; then

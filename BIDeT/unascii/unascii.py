@@ -404,7 +404,7 @@ class _Term(object):
                 self.pending = False
             elif c == "\b":
                 self.x, self.pending = max(0, self.x - 1), False
-            elif o < 32 and self.glyphs and o not in _REAL_CONTROLS:
+            elif o in CP437_GLYPHS and self.glyphs and o not in _REAL_CONTROLS:     # (NUL has no picture: it was a KeyError)
                 self.put(CP437_GLYPHS[o])
             elif c == "\x0e":
                 self.shift = 1
@@ -1777,10 +1777,9 @@ def _sixel_stream(idx, palette, transparent):
         bits = ((band[None] == np.array(present, np.uint8)[:, None, None]).astype(np.uint8) * weights).sum(1)
         rows = _rle_rows((bits + 63).astype(np.uint8))
         for n, (c, s) in enumerate(zip(present, rows)):
-            if s.endswith("?") and not s.endswith("!?"):
-                s = s.rstrip("?")                           # trailing "nothing here": not needed
-            else:
-                s = tail.sub("", s)
+            # a trailing "nothing here" is not needed.  A long run "!72?" goes whole (stripping only its "?"
+            # left "!72" before the "$", which a strict decoder reads as 72 x "$"); a short one is written out
+            s = tail.sub("", s).rstrip("?")
             out.append("#%d%s%s" % (c, s, "$" if n < len(present) - 1 else ""))
         out.append("-")
     out.append("\x1b\\")
