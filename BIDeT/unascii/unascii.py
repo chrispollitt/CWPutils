@@ -55,21 +55,38 @@ def xterm_color(n):
     return (g, g, g)
 
 
-def decode(data, encoding=None):
-    """bytes -> str.  UTF-8 if it is, else CP437 (the old DOS .ANS art).  A SAUCE record
-    and the Ctrl-Z in front of it are dropped."""
+CP437_GLYPHS = dict(zip(range(1, 32), "☺☻♥♦♣♠•◘○◙♂♀"
+                                      "♪♫☼►◄↕‼¶§▬↨↑"
+                                      "↓→←∟↔▲▼"))
+_REAL_CONTROLS = (7, 8, 9, 10, 13, 26, 27)       # the other codes below 32 are pictures in a DOS .ANS file
+
+# DEC special graphics (ESC ( 0): the line-drawing set that ncurses and VT100 art use
+DEC_GRAPHICS = {"`": "◆", "a": "▒", "f": "°", "g": "±", "h": "▒", "i": "☃",
+                "j": "┘", "k": "┐", "l": "┌", "m": "└", "n": "┼", "o": "⎺",
+                "p": "⎻", "q": "─", "r": "⎼", "s": "⎽", "t": "├", "u": "┤",
+                "v": "┴", "w": "┬", "x": "│", "y": "≤", "z": "≥", "{": "π",
+                "|": "≠", "}": "£", "~": "·", "0": "█"}
+
+
+def decode2(data, encoding=None):
+    """bytes -> (str, encoding used).  UTF-8 if it is, else CP437 (the old DOS .ANS art).  A
+    SAUCE record and the Ctrl-Z in front of it are dropped."""
     if isinstance(data, str):
-        return data
+        return data, "utf-8"
     i = data.rfind(b"SAUCE00")
     if i > 0 and data[i - 1:i] == b"\x1a":
         data = data[:i - 1]
     data = data.rstrip(b"\x1a")
     if encoding:
-        return data.decode(encoding, "replace")
+        return data.decode(encoding, "replace"), encoding.lower().replace("-", "")
     try:
-        return data.decode("utf-8")
+        return data.decode("utf-8"), "utf-8"
     except UnicodeDecodeError:
-        return data.decode("cp437", "replace")
+        return data.decode("cp437", "replace"), "cp437"
+
+
+def decode(data, encoding=None):
+    return decode2(data, encoding)[0]
 
 
 class Grid(object):
@@ -81,135 +98,329 @@ class Grid(object):
         self.cols = len(ch[0]) if ch else 0
 
     def has_color(self):
-        return any(c is not None for row in self.fg + self.bg for c in row)
+        """Does the art use colour at all (an explicit colour that is not just black)?"""
+        return any(c is not None and c != (0, 0, 0) for row in self.fg + self.bg for c in row)
 
 
-_CSI = re.compile(r"\x1b\[([0-9;:?<=>]*)([ -/]*[@-~])")
+_CSI = re.compile(r"\x1b\[([0-9;:?<=>]*)([ -/]*)([@-~])")
+_OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
+_STR = re.compile(r"\x1b[P^_X][^\x1b]*(?:\x1b\\)?")
+MAX_CELLS = 4000000
 
 
-def parse(text, cols=0, tabs=8):
-    """Interpret text the way a terminal would (enough of it for art): SGR colours, cursor
-    movement, erase, wrap at `cols` (0 = never).  Returns a Grid."""
-    cells = {}
-    x = y = 0
-    saved = (0, 0)
-    fg = bg = None
-    fg_idx = None
-    bold = rev = False
-    pos, n = 0, len(text)
-    while pos < n:
-        c = text[pos]
-        if c == "\x1b":
-            m = _CSI.match(text, pos)
-            if not m:
-                pos += 2
-                continue
-            pos = m.end()
-            args, fin = m.group(1), m.group(2)
-            if args[:1] in "?<=>":
-                continue
-            nums = [int(a) if a.isdigit() else 0 for a in args.replace(":", ";").split(";")] if args else []
-            one = nums[0] if nums and nums[0] else 1
-            if fin == "m":
-                if not nums:
-                    nums = [0]
-                i = 0
-                while i < len(nums):
-                    v = nums[i]
-                    if v == 0:
-                        fg = bg = fg_idx = None
-                        bold = rev = False
-                    elif v == 1:
-                        bold = True
-                    elif v == 22:
-                        bold = False
-                    elif v == 7:
-                        rev = True
-                    elif v == 27:
-                        rev = False
-                    elif 30 <= v <= 37:
-                        fg_idx, fg = v - 30, None
-                    elif 90 <= v <= 97:
-                        fg_idx, fg = v - 90 + 8, None
-                    elif v == 39:
-                        fg = fg_idx = None
-                    elif 40 <= v <= 47:
-                        bg = xterm_color(v - 40)
-                    elif 100 <= v <= 107:
-                        bg = xterm_color(v - 100 + 8)
-                    elif v == 49:
-                        bg = None
-                    elif v in (38, 48):
-                        col = None
-                        if i + 2 < len(nums) and nums[i + 1] == 5:
-                            col = xterm_color(min(255, nums[i + 2]))
-                            i += 2
-                        elif i + 4 < len(nums) and nums[i + 1] == 2:
-                            col = tuple(min(255, k) for k in nums[i + 2:i + 5])
-                            i += 4
-                        if v == 38:
-                            fg, fg_idx = col, None
-                        else:
-                            bg = col
-                    i += 1
-            elif fin == "A":
-                y = max(0, y - one)
-            elif fin == "B":
-                y += one
-            elif fin == "C":
-                x += one
-            elif fin == "D":
-                x = max(0, x - one)
-            elif fin in ("H", "f"):
-                y = max(0, (nums[0] or 1) - 1) if nums else 0
-                x = max(0, (nums[1] or 1) - 1) if len(nums) > 1 else 0
-            elif fin == "G":
-                x = max(0, one - 1)
-            elif fin == "J" and (nums[:1] == [2] or nums[:1] == [3]):
-                cells.clear()
-            elif fin == "K":
-                for k in [k for k in cells if k[0] == y and k[1] >= x]:
-                    del cells[k]
-            elif fin == "s":
-                saved = (x, y)
-            elif fin == "u":
-                x, y = saved
-            continue
-        pos += 1
-        if c == "\n":
-            y += 1
-            x = 0
-        elif c == "\r":
-            x = 0
-        elif c == "\t":
-            x = (x // tabs + 1) * tabs
-        elif c == "\b":
-            x = max(0, x - 1)
-        elif ord(c) < 32 or c == "\x7f":
-            pass
+class _Term(object):
+    """Enough of a VT100/xterm to replay art and screen dumps: a screen of `rows` lines that
+    scrolls into a history (so a long picture keeps every line), cursor addressing, scroll
+    regions, erase / insert / delete, SGR colours, save / restore cursor, the DEC line-drawing
+    set.  Cells are kept as {(line, column): (char, fg, bg)}."""
+    def __init__(self, rows, cols, tabs, glyphs):
+        self.rows, self.wrap, self.tabs, self.glyphs = max(1, rows), cols, tabs, glyphs
+        self.maxx = cols if cols else 1000
+        self.cells = {}
+        self.top = self.x = self.y = 0
+        self.r0, self.r1 = 0, self.rows - 1
+        self.pending = False
+        self.fg = self.bg = self.fg_idx = None
+        self.bold = self.rev = False
+        self.g, self.shift = ["B", "B"], 0
+        self.saved = None
+        self.save()
+
+    # -- state -----------------------------------------------------------
+    def save(self):
+        self.saved = (self.x, self.y, self.fg, self.bg, self.fg_idx, self.bold, self.rev, list(self.g), self.shift)
+
+    def restore(self):
+        if self.saved:
+            (self.x, self.y, self.fg, self.bg, self.fg_idx, self.bold, self.rev, g, self.shift) = self.saved
+            self.g = list(g)
+            self.pending = False
+
+    def colours(self):
+        f, b = self.fg, self.bg
+        if f is None and self.fg_idx is not None:
+            f = xterm_color(self.fg_idx + 8 if self.bold and self.fg_idx < 8 else self.fg_idx)
+        if self.rev:
+            f, b = (b if b is not None else "bgdef"), (f if f is not None else "fgdef")
+        return f, b
+
+    # -- cells -----------------------------------------------------------
+    def store(self, y, x, c, f, b):
+        if c == " " and b is None:
+            self.cells.pop((y, x), None)
         else:
-            if cols and x >= cols:
-                x = 0
-                y += 1
-            if c in "\u00a0\u2800":
-                c = " "
-            f, b = fg, bg
-            if f is None and fg_idx is not None:
-                f = xterm_color(fg_idx + 8 if bold and fg_idx < 8 else fg_idx)
-            if rev:
-                f, b = (b if b is not None else "bgdef"), (f if f is not None else "fgdef")
-            if c != " " or b is not None:
-                cells[(y, x)] = (c, f, b)
-            x += 1
+            self.cells[(y, x)] = (c, f, b)
+
+    def blank(self, y, x0, x1):
+        """Erase columns x0..x1-1 of screen line y.  Erased cells take the current background."""
+        b = self.colours()[1]
+        b = None if b == (0, 0, 0) else b
+        for x in range(x0, x1):
+            self.store(self.top + y, x, " ", None, b)
+
+    def shift_rows(self, a0, a1, delta):
+        """Move the lines a0..a1 (absolute) by delta (positive = down); what is pushed out is lost."""
+        keys = [k for k in self.cells if a0 <= k[0] <= a1]
+        moved = [((k[0] + delta, k[1]), self.cells.pop(k)) for k in keys]
+        for (y, x), v in moved:
+            if a0 <= y <= a1:
+                self.cells[(y, x)] = v
+
+    def scroll(self, n, up=True):
+        full = self.r0 == 0 and self.r1 == self.rows - 1
+        n = min(n, self.r1 - self.r0 + 1)
+        if up:
+            if full:
+                self.top += n
+            else:
+                self.shift_rows(self.top + self.r0, self.top + self.r1, -n)
+        else:
+            self.shift_rows(self.top + self.r0, self.top + self.r1, n)
+
+    def lf(self):
+        if self.y == self.r1:
+            self.scroll(1)
+        else:
+            self.y = min(self.y + 1, self.rows - 1)
+        self.pending = False
+
+    def ri(self):
+        if self.y == self.r0:
+            self.scroll(1, up=False)
+        else:
+            self.y = max(0, self.y - 1)
+
+    # -- printing --------------------------------------------------------
+    def put(self, c):
+        if self.pending and self.wrap:
+            self.x = 0
+            self.lf()
+        self.pending = False
+        if unicodedata.combining(c):
+            return
+        f, b = self.colours()
+        self.store(self.top + self.y, self.x, c, f, b)
+        w = 2 if unicodedata.east_asian_width(c) in "WF" else 1
+        if self.wrap and self.x + w >= self.wrap:
+            self.x = self.wrap - 1
+            self.pending = True
+        else:
+            self.x = min(self.x + w, self.maxx)
+
+    # -- sequences -------------------------------------------------------
+    def sgr(self, nums):
+        if not nums:
+            nums = [0]
+        i = 0
+        while i < len(nums):
+            v = nums[i]
+            if v == 0:
+                self.fg = self.bg = self.fg_idx = None
+                self.bold = self.rev = False
+            elif v == 1:
+                self.bold = True
+            elif v == 22:
+                self.bold = False
+            elif v == 7:
+                self.rev = True
+            elif v == 27:
+                self.rev = False
+            elif 30 <= v <= 37:
+                self.fg_idx, self.fg = v - 30, None
+            elif 90 <= v <= 97:
+                self.fg_idx, self.fg = v - 90 + 8, None
+            elif v == 39:
+                self.fg = self.fg_idx = None
+            elif 40 <= v <= 47:
+                self.bg = xterm_color(v - 40)
+            elif 100 <= v <= 107:
+                self.bg = xterm_color(v - 100 + 8)
+            elif v == 49:
+                self.bg = None
+            elif v in (38, 48):
+                col = None
+                if i + 2 < len(nums) and nums[i + 1] == 5:
+                    col = xterm_color(min(255, nums[i + 2]))
+                    i += 2
+                elif i + 4 < len(nums) and nums[i + 1] == 2:
+                    col = tuple(min(255, k) for k in nums[i + 2:i + 5])
+                    i += 4
+                if v == 38:
+                    self.fg, self.fg_idx = col, None
+                else:
+                    self.bg = col
+            i += 1
+
+    def csi(self, args, fin):
+        nums = [int(a) if a.isdigit() else 0 for a in args.replace(":", ";").split(";")] if args else []
+        one = nums[0] if nums and nums[0] else 1
+        if fin == "m":
+            self.sgr(nums)
+            return
+        self.pending = False
+        if fin == "A":
+            self.y = max(0, self.y - one)
+        elif fin in "Be":
+            self.y = min(self.rows - 1, self.y + one)
+        elif fin in "Ca":
+            self.x = min(self.maxx - 1, self.x + one)
+        elif fin == "D":
+            self.x = max(0, self.x - one)
+        elif fin == "E":
+            self.y, self.x = min(self.rows - 1, self.y + one), 0
+        elif fin == "F":
+            self.y, self.x = max(0, self.y - one), 0
+        elif fin in "G`":
+            self.x = min(self.maxx - 1, one - 1)
+        elif fin == "d":
+            self.y = min(self.rows - 1, one - 1)
+        elif fin in "Hf":
+            self.y = min(self.rows - 1, max(0, (nums[0] or 1) - 1)) if nums else 0
+            self.x = min(self.maxx - 1, max(0, (nums[1] or 1) - 1)) if len(nums) > 1 else 0
+        elif fin == "J":
+            n = nums[0] if nums else 0
+            width = self.wrap or 80
+            if n == 0:
+                self.blank(self.y, self.x, max(width, self.x))
+                for y in range(self.y + 1, self.rows):
+                    self.blank(y, 0, width)
+            elif n == 1:
+                for y in range(0, self.y):
+                    self.blank(y, 0, width)
+                self.blank(self.y, 0, self.x + 1)
+            else:
+                for k in [k for k in self.cells if self.top <= k[0] < self.top + self.rows]:
+                    del self.cells[k]
+                if self.colours()[1] not in (None, (0, 0, 0)):
+                    for y in range(self.rows):
+                        self.blank(y, 0, width)
+        elif fin == "K":
+            n = nums[0] if nums else 0
+            width = max(self.wrap or 80, self.x + 1)
+            if n == 0:
+                self.blank(self.y, self.x, width)
+            elif n == 1:
+                self.blank(self.y, 0, self.x + 1)
+            else:
+                self.blank(self.y, 0, width)
+        elif fin == "X":
+            self.blank(self.y, self.x, self.x + one)
+        elif fin == "L" and self.r0 <= self.y <= self.r1:
+            self.shift_rows(self.top + self.y, self.top + self.r1, min(one, self.r1 - self.y + 1))
+        elif fin == "M" and self.r0 <= self.y <= self.r1:
+            self.shift_rows(self.top + self.y, self.top + self.r1, -min(one, self.r1 - self.y + 1))
+        elif fin == "@":
+            row = self.top + self.y
+            for k in sorted((k for k in self.cells if k[0] == row and k[1] >= self.x), reverse=True):
+                self.cells[(row, k[1] + one)] = self.cells.pop(k)
+        elif fin == "P":
+            row = self.top + self.y
+            for k in sorted(k for k in self.cells if k[0] == row and k[1] >= self.x):
+                v = self.cells.pop(k)
+                if k[1] >= self.x + one:
+                    self.cells[(row, k[1] - one)] = v
+        elif fin == "S" and len(nums) <= 1:
+            self.scroll(one)
+        elif fin == "T" and len(nums) <= 1:
+            self.scroll(one, up=False)
+        elif fin == "r":
+            r0 = (nums[0] or 1) - 1 if nums else 0
+            r1 = (nums[1] or self.rows) - 1 if len(nums) > 1 else self.rows - 1
+            if 0 <= r0 < r1 < self.rows:
+                self.r0, self.r1 = r0, r1
+            self.x = self.y = 0
+        elif fin == "s" and not nums:
+            self.save()
+        elif fin == "u":
+            self.restore()
+
+    def esc(self, c):
+        """ESC followed by one character (the ones that stand alone)."""
+        if c == "7":
+            self.save()
+        elif c == "8":
+            self.restore()
+        elif c == "M":
+            self.ri()
+        elif c == "D":
+            self.lf()
+        elif c == "E":
+            self.x = 0
+            self.lf()
+        elif c == "c":
+            self.__init__(self.rows, self.wrap, self.tabs, self.glyphs)
+
+    def run(self, text):
+        pos, n = 0, len(text)
+        while pos < n:
+            c = text[pos]
+            if c == "\x1b":
+                m = _CSI.match(text, pos)
+                if m:
+                    pos = m.end()
+                    if m.group(1)[:1] not in ("?", "<", "=", ">") and not m.group(2):
+                        self.csi(m.group(1), m.group(3))
+                    continue
+                m = _OSC.match(text, pos) or _STR.match(text, pos)
+                if m:
+                    pos = m.end()
+                    continue
+                nxt = text[pos + 1:pos + 2]
+                if nxt in ("(", ")") and pos + 2 < n:           # designate a character set
+                    self.g[0 if nxt == "(" else 1] = text[pos + 2]
+                    pos += 3
+                elif nxt in ("*", "+", "#", "%", " ") and pos + 2 < n:
+                    pos += 3
+                else:
+                    self.esc(nxt)
+                    pos += 2
+                continue
+            pos += 1
+            o = ord(c)
+            if c == "\n" or c == "\x0b" or c == "\x0c":
+                self.x = 0
+                self.lf()
+            elif c == "\r":
+                self.x, self.pending = 0, False
+            elif c == "\t":
+                self.x = min(self.maxx - 1, (self.x // self.tabs + 1) * self.tabs)
+                self.pending = False
+            elif c == "\b":
+                self.x, self.pending = max(0, self.x - 1), False
+            elif o < 32 and self.glyphs and o not in _REAL_CONTROLS:
+                self.put(CP437_GLYPHS[o])
+            elif c == "\x0e":
+                self.shift = 1
+            elif c == "\x0f":
+                self.shift = 0
+            elif o < 32 or o == 127:
+                pass
+            else:
+                if self.g[self.shift] == "0":
+                    c = DEC_GRAPHICS.get(c, c)
+                elif c in " ⠀":
+                    c = " "
+                self.put(c)
+
+
+def parse(text, cols=0, tabs=8, rows=24, glyphs=False):
+    """Replay text on a terminal (see _Term) and return what is on it, history included, as a
+    Grid.  cols: the wrap column (0 = lines never wrap); rows: the height of the screen that
+    cursor addressing and scroll regions refer to; glyphs: codes below 32 are pictures (DOS .ANS)."""
+    t = _Term(rows, cols, tabs, glyphs)
+    t.run(text)
+    cells = t.cells
     if not cells:
         return Grid([[" "]], [[None]], [[None]])
-    rows = max(k[0] for k in cells) + 1
-    width = max(k[1] for k in cells) + 1
-    ch = [[" "] * width for _ in range(rows)]
-    fgs = [[None] * width for _ in range(rows)]
-    bgs = [[None] * width for _ in range(rows)]
+    y0 = min(k[0] for k in cells)
+    nrows, width = max(k[0] for k in cells) - y0 + 1, max(k[1] for k in cells) + 1
+    if nrows * width > MAX_CELLS:
+        raise ValueError("the art is %d x %d characters: too big (limit %d cells)" % (width, nrows, MAX_CELLS))
+    ch = [[" "] * width for _ in range(nrows)]
+    fgs = [[None] * width for _ in range(nrows)]
+    bgs = [[None] * width for _ in range(nrows)]
     for (yy, xx), (c, f, b) in cells.items():
-        ch[yy][xx], fgs[yy][xx], bgs[yy][xx] = c, f, b
+        ch[yy - y0][xx], fgs[yy - y0][xx], bgs[yy - y0][xx] = c, f, b
     return Grid(ch, fgs, bgs)
 
 
@@ -560,68 +771,62 @@ def pitch_of(grid, cw, ch):
             "braille": (cw / 2.0, ch / 4.0)}[best]
 
 
-def darkness(grid, glyphs, only=None, dark=False):
-    """Per-pixel 'ink' picture of the grid, float32 0..1 (1 = dark).  Characters not in
-    `only` (a predicate) are left blank.  Default colours are black ink on white paper;
-    explicit ANSI colours are used as they are."""
+def _cell_colours(grid, dark):
+    """Foreground and background of every cell, float arrays (rows, cols, 3) in 0..1.  The
+    terminal defaults are black on white (white on black if dark); reverse-video markers
+    resolve to those."""
+    paper = (0.0, 0.0, 0.0) if dark else (1.0, 1.0, 1.0)
+    ink = tuple(1.0 - v for v in paper)
+
+    def rgb(v, default):
+        if v is None:
+            return default
+        if isinstance(v, str):
+            return ink if v == "fgdef" else paper
+        return (v[0] / 255.0, v[1] / 255.0, v[2] / 255.0)
+    fg = [[rgb(f, ink) for f in row] for row in grid.fg]
+    bg = [[rgb(b, paper) for b in row] for row in grid.bg]
+    return np.array(fg, np.float32), np.array(bg, np.float32)
+
+
+def dot_field(grid, glyphs, only, dark, kx, ky):
+    """The picture the art stands for, at the resolution of its dots: float (rows*ky, cols*kx, 3)
+    in 0..1.  Each character's coverage is averaged over its kx x ky dots (1x1 for text, 1x2 for
+    half blocks, 2x4 for braille) and mixes the cell's foreground into its background.
+    Characters not accepted by `only` are left blank."""
     rows, cols = grid.rows, grid.cols
-    cw, ch = glyphs.cw, glyphs.ch
-    uniq = {}
+    uniq, pooled = {}, {}
     idx = np.zeros((rows, cols), np.int32)
     for y in range(rows):
+        row = grid.ch[y]
         for x in range(cols):
-            c = grid.ch[y][x]
+            c = row[x]
             if only is not None and not only(c):
                 c = " "
             idx[y, x] = uniq.setdefault(c, len(uniq))
-    masks = np.zeros((len(uniq), ch, cw), np.float32)
+    masks = np.zeros((len(uniq), ky, kx), np.float32)
     for c, i in uniq.items():
-        masks[i] = glyphs.mask(c)
-    paper, ink = (0.0, 1.0) if dark else (1.0, 0.0)
-    fl = np.empty((rows, cols), np.float32)
-    bl = np.empty((rows, cols), np.float32)
-    for y in range(rows):
-        for x in range(cols):
-            f, b = grid.fg[y][x], grid.bg[y][x]
-            f = {"fgdef": ink, "bgdef": paper}.get(f, f) if isinstance(f, str) else f
-            b = {"fgdef": ink, "bgdef": paper}.get(b, b) if isinstance(b, str) else b
-            fl[y, x] = ink if f is None else (f if isinstance(f, float) else lum(f))
-            bl[y, x] = paper if b is None else (b if isinstance(b, float) else lum(b))
-    big = masks[idx]                                  # rows, cols, ch, cw
-    big = big.transpose(0, 2, 1, 3).reshape(rows * ch, cols * cw)
-    fl = np.repeat(np.repeat(fl, ch, 0), cw, 1)
-    bl = np.repeat(np.repeat(bl, ch, 0), cw, 1)
-    return 1.0 - (bl + (fl - bl) * big)
+        m = glyphs.mask(c)
+        masks[i] = m.reshape(ky, glyphs.ch // ky, kx, glyphs.cw // kx).mean(axis=(1, 3))
+    M = masks[idx].transpose(0, 2, 1, 3).reshape(rows * ky, cols * kx)
+    fg, bg = _cell_colours(grid, dark)
+    fg = np.repeat(np.repeat(fg, ky, 0), kx, 1)
+    bg = np.repeat(np.repeat(bg, ky, 0), kx, 1)
+    return bg + (fg - bg) * M[..., None]
 
 
-def autolevel(d, lo_pct=2, hi_pct=98):
-    lo, hi = np.percentile(d, lo_pct), np.percentile(d, hi_pct)
-    if hi - lo < 0.04:
-        return np.clip(d - lo, 0, 1)
-    return np.clip((d - lo) / (hi - lo), 0, 1)
+def _upsample(pooled, ix, iy):
+    """Spread dot values back out smoothly (bicubic), ix x iy pixels per dot."""
+    ny, nx = pooled.shape
+    p = np.pad(pooled.astype(np.float32), 1, mode="edge")
+    up = Image.fromarray(p, "F").resize(((nx + 2) * ix, (ny + 2) * iy), Image.BICUBIC)
+    return np.asarray(up, np.float32)[iy:iy + ny * iy, ix:ix + nx * ix]
 
 
-def halftone_free(d, px, py):
-    """Undo the halftone: average d over each dot (a cell, half a cell, a braille dot...),
-    then spread the averages back out smoothly (bicubic).  The glyph shapes inside a cell
-    are gone, the picture they were chosen to render remains."""
-    H, W = d.shape
-    ix, iy = max(1, int(round(px))), max(1, int(round(py)))
-    nx, ny = W // ix, H // iy
-    pooled = d[:ny * iy, :nx * ix].reshape(ny, iy, nx, ix).mean(axis=(1, 3)).astype(np.float32)
-    pooled = np.pad(pooled, 1, mode="edge")
-    up = Image.fromarray(pooled, "F").resize(((nx + 2) * ix, (ny + 2) * iy), Image.BICUBIC)
-    up = np.asarray(up, np.float32)[iy:iy + ny * iy, ix:ix + nx * ix]
-    return np.pad(up, ((0, H - ny * iy), (0, W - nx * ix)), mode="edge")
-
-
-def edge_lines(d, px, py, width, smooth=0.5, scale=0.4, edge=0.12, levels=0):
-    """Line drawing of the picture d (float 0..1, 1 = dark).  Strokes `width` pixels wide,
-    placed at sub-pixel accuracy as zero crossings: of a difference of Gaussians (outlines
-    wherever tone steps by at least `edge` per dot pitch) and of the tone itself at `levels`
-    evenly spaced values (contour lines that suggest the shading)."""
+def _dog_lines(f, px, py, width, scale, edge):
+    """Outlines of a picture f (float, 0..1): zero crossings of a difference of Gaussians, drawn
+    `width` pixels wide at sub-pixel position, where the tone steps by at least `edge` per dot."""
     pitch = 0.5 * (px + py)
-    f = autolevel(blur(halftone_free(d, px, py), smooth * px, smooth * py))
     sx, sy = scale * px, scale * py
     g1 = blur(f, sx, sy)
     g2 = blur(f, 1.6 * sx, 1.6 * sy)
@@ -630,18 +835,119 @@ def edge_lines(d, px, py, width, smooth=0.5, scale=0.4, edge=0.12, levels=0):
     strength = np.hypot(gx, gy) * pitch                          # tone change per dot pitch
     ly, lx = np.gradient(dog)
     dist = np.abs(dog) / (np.hypot(lx, ly) + 1e-6)               # px to the zero crossing
-    ink = np.clip(0.5 * width - dist + 0.5, 0.0, 1.0) * \
+    return np.clip(0.5 * width - dist + 0.5, 0.0, 1.0) * \
         np.clip((strength - 0.9 * edge) / (0.2 * edge), 0.0, 1.0)
-    if levels > 0:
-        gy, gx = np.gradient(blur(f, 0.5 * px, 0.5 * py))
-        gm = np.hypot(gx, gy)
-        grad = gm * pitch                                        # only where the shading is gentle:
-        weak = np.clip((grad - 0.015) / 0.02, 0.0, 1.0) * np.clip((0.7 * edge - grad) / (0.3 * edge), 0.0, 1.0)
-        for k in range(1, levels + 1):
-            lv = k / (levels + 1.0)
-            dist = np.abs(f - lv) / (gm + 1e-6)
-            ink = np.maximum(ink, np.clip(0.4 * width - dist + 0.5, 0.0, 1.0) * weak)
-    return ink.astype(np.float32)
+
+
+def _contours(f, px, py, width, edge, levels):
+    """Contour lines through gentle shading only (at step edges they would double the outline)."""
+    pitch = 0.5 * (px + py)
+    gy, gx = np.gradient(blur(f, 0.5 * px, 0.5 * py))
+    gm = np.hypot(gx, gy)
+    grad = gm * pitch
+    weak = np.clip((grad - 0.015) / 0.02, 0.0, 1.0) * np.clip((0.7 * edge - grad) / (0.3 * edge), 0.0, 1.0)
+    out = np.zeros_like(f)
+    for k in range(1, levels + 1):
+        dist = np.abs(f - k / (levels + 1.0)) / (gm + 1e-6)
+        out = np.maximum(out, np.clip(0.4 * width - dist + 0.5, 0.0, 1.0) * weak)
+    return out
+
+
+def tone_lines(P, ix, iy, width, o, color):
+    """Line drawing of the picture P (float (ny, nx, 3), 0..1) whose dots are ix x iy pixels.
+    Returns (ink, sparse): ink is float (ny*iy, nx*ix), 1 = line; sparse is None, or when color
+    is set (ys, xs, rgb 0..255) giving the colour of every line pixel.
+
+    The picture is spread back out smoothly (undoing the halftone) and outlined.  A coloured
+    picture is outlined per colour channel, so an edge between two hues of the same brightness
+    still gets a line.  The colour of a line is the picture's own, weighted towards the
+    colourful side of an edge so a coloured object keeps its colour against a dark ground."""
+    px, py = float(ix), float(iy)
+    D = 1.0 - P
+    if o.invert:
+        D = 1.0 - D
+    Dl = 0.299 * D[..., 0] + 0.587 * D[..., 1] + 0.114 * D[..., 2]
+    lo, hi = float(np.percentile(Dl, 2)), float(np.percentile(Dl, 98))
+    span = (hi - lo) if hi - lo >= 0.04 else 1.0                 # a flat picture is not stretched
+    colourful = (P.max(2) - P.min(2)).max() > 0.12
+
+    def field(chan):
+        f = blur(_upsample(chan, ix, iy), o.smooth * px, o.smooth * py)
+        return np.clip((f - lo) / span, 0.0, 1.0)
+    fl = field(Dl)
+    chans = [D[..., k] for k in range(3)] if colourful else [Dl]
+    ink = np.zeros(fl.shape, np.float32)
+    for chan in chans:
+        ink = np.maximum(ink, _dog_lines(fl if chan is Dl else field(chan), px, py, width, o.scale, o.detail))
+    if o.levels > 0:
+        ink = np.maximum(ink, _contours(fl, px, py, width, o.detail, o.levels))
+    if not color:
+        return ink.astype(np.float32), None
+    chroma = P.max(2) - P.min(2)
+    w = (chroma + 0.03) ** 2
+    den = blur(w, 1.0, 1.0)
+    C = np.dstack([blur(P[..., k] * w, 1.0, 1.0) / den for k in range(3)])
+    ys, xs = np.nonzero(ink > 0.02)
+    fy = np.clip((ys + 0.5) / iy - 0.5, 0, C.shape[0] - 1.0001)
+    fx = np.clip((xs + 0.5) / ix - 0.5, 0, C.shape[1] - 1.0001)
+    y0, x0 = fy.astype(np.int64), fx.astype(np.int64)
+    wy, wx = (fy - y0)[:, None], (fx - x0)[:, None]
+    rgb = ((C[y0, x0] * (1 - wx) + C[y0, x0 + 1] * wx) * (1 - wy) +
+           (C[y0 + 1, x0] * (1 - wx) + C[y0 + 1, x0 + 1] * wx) * wy) * 255.0
+    return ink.astype(np.float32), (ys, xs, rgb)
+
+
+# --------------------------------------------------------------------------
+# Colour: making ANSI colours fit the page
+# --------------------------------------------------------------------------
+def legible(rgb, ink, paper):
+    """Adjust colours (float array (..., 3), 0..255) to be seen on `paper`: greys and whites,
+    which in a terminal are just 'the text colour', become `ink`; colours too bright for a
+    light page are darkened (yellow stays yellow, as olive), too dark for a dark page lightened."""
+    rgb = np.asarray(rgb, np.float32)
+    mx, mn = rgb.max(-1), rgb.min(-1)
+    sat = (mx - mn) / np.maximum(mx, 1.0)
+    Y = 0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]
+    if lum(paper) > 0.5:
+        out = rgb * np.where(Y > 148.0, 148.0 / np.maximum(Y, 1.0), 1.0)[..., None]
+    else:
+        t = np.clip((115.0 - Y) / np.maximum(255.0 - Y, 1.0), 0.0, 1.0)[..., None]
+        out = rgb + (255.0 - rgb) * t
+    return np.where((sat < 0.15)[..., None], np.array(ink, np.float32), out)
+
+
+def _shifted(a, dy, dx):
+    out = np.zeros_like(a)
+    h, w = a.shape[:2]
+    out[max(0, dy):h + min(0, dy), max(0, dx):w + min(0, dx)] = a[max(0, -dy):h - max(0, dy), max(0, -dx):w - max(0, dx)]
+    return out
+
+
+def cell_color_map(grid, ink, paper):
+    """The colour for strokes drawn in each cell, uint8 (rows, cols, 3): the cell's foreground
+    colour made legible.  Blank cells take their neighbours' colour, so a curve that wanders
+    into one does not change colour."""
+    rows, cols = grid.rows, grid.cols
+    col = np.zeros((rows, cols, 3), np.float32)
+    known = np.zeros((rows, cols), bool)
+    for y in range(rows):
+        for x in range(cols):
+            if grid.ch[y][x] == " ":
+                continue
+            f = grid.fg[y][x]
+            col[y, x] = ink if f is None or isinstance(f, str) else f
+            known[y, x] = True
+    for _ in range(3):
+        if known.all():
+            break
+        new, new_known = col.copy(), known.copy()
+        for dy, dx in ((0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)):
+            sk, sc = _shifted(known, dy, dx), _shifted(col, dy, dx)
+            take = sk & ~new_known
+            new[take], new_known[take] = sc[take], True
+        col, known = new, new_known
+    col[~known] = ink
+    return np.clip(legible(col, ink, paper) + 0.5, 0, 255).astype(np.uint8)
 
 
 # --------------------------------------------------------------------------
@@ -752,6 +1058,11 @@ def box_paths(arms, arc, x0, y0, cw, ch):
         return [Path(pts, False, 1.8 if "HEAVY" in arms.values() else 1.0)]
     dd = 0.15 * cw
     out = []
+    arms = dict(arms)
+    for a, b in (("u", "d"), ("l", "r")):                     # straight through: one stroke, no joint
+        if a in arms and b in arms and arms[a] == arms[b] != "DOUBLE":
+            out.append(Path([edge[a], edge[b]], False, 1.8 if arms[a] == "HEAVY" else 1.0))
+            del arms[a], arms[b]
     for d, st in arms.items():
         wm = 1.8 if st == "HEAVY" else 1.0
         vert = d in "ud"
@@ -1073,11 +1384,13 @@ def draw_strokes(strokes, W, H, w, ss):
             x, y = pts[0][0] * ss, pts[0][1] * ss
             d.ellipse([x - r, y - r, x + r, y + r], fill=255)
             continue
-        wp = max(1.0, w * wmul * ss)
-        r = wp / 2.0
+        wi = max(1, int(round(w * wmul * ss)))
+        r = wi / 2.0                                             # caps as wide as the line, or they show as beads
         P = [(x * ss, y * ss) for x, y in pts]
         for a, b in zip(P, P[1:]):
-            d.line([a, b], fill=255, width=int(round(wp)))
+            if b < a:                                            # PIL rounds a wide line differently
+                a, b = b, a                                      # drawn backwards: always go the same way
+            d.line([a, b], fill=255, width=wi)
         for x, y in P:
             d.ellipse([x - r, y - r, x + r, y + r], fill=255)
     return np.asarray(big.resize((W, H), Image.BOX), np.float32) / 255.0
@@ -1097,14 +1410,18 @@ class Options(object):
     shade = "X"             # line: runs of these characters are shading (hatched); "" = none
     hatch = 1.0             # line: spacing of that hatching, relative
     text_bold = 0.25        # line: how much letters thicken as the pen gets thicker (0 = not at all)
-    smooth = 0.7           # tone: blur, in dot pitches (smooths the contours)
+    smooth = 0.7            # tone: blur, in dot pitches (smooths the contours)
     detail = 0.12           # tone: smallest edge (tone change per dot pitch) that is drawn
     scale = 0.4             # tone: finest outline feature, in dot pitches
     levels = 3              # tone: contour lines through the shading (0 = outlines only)
-    dark = False            # tone: the art is meant for a dark terminal (default colours)
+    dark = None             # tone: default colours are light on dark (None: yes if the art uses colour)
     invert = False          # tone: draw outlines of the negative (affects nothing for edges)
+    color = "auto"          # auto: keep the ANSI colours if the art has any | on | off
+    ink = (0, 0, 0)         # the line colour (and what grey / white text becomes)
+    paper = (255, 255, 255)  # the page, which colours are made legible against
     font = None
     cols = 0                # wrap column for cursor-addressed .ANS art (0: never)
+    rows = 24               # height of the screen that cursor addressing and scroll regions refer to
     crop = True
     verbose = False
 
@@ -1120,26 +1437,40 @@ def _log(o, *a):
         sys.stderr.write("unascii: " + " ".join(str(x) for x in a) + "\n")
 
 
-def render_grid(grid, o):
-    """Grid -> ink picture: float32 array, 1 = ink, rows*cell_h x cols*cell_w (+ margin)."""
+def render_grid_color(grid, o):
+    """Grid -> (ink, rgb).  ink: float32 array, 1 = line, rows*cell_h x cols*cell_w (+ margin).
+    rgb: uint8 (h, w, 3), the colour of the line wherever there is some, or None when the art is
+    drawn in one colour (no colour in it, or color == "off")."""
     cw = max(4, int(o.cell_w))
     cw += cw % 2                                  # half-cell and braille dots need whole pixels
-    ch = max(4, int(round(cw * o.aspect / 4.0)) * 4)
     mode = o.mode
     shade = shade_cells(grid, o.shade)
     if mode == "auto":
         mode, st = classify(grid, shade)
         _log(o, "auto ->", mode, " ".join("%s=%.2f" % kv for kv in sorted(st.items())))
+    use_color = o.color == "on" or (o.color == "auto" and grid.has_color())
+    budget = 24e6 if mode in ("tone", "mix") else 48e6      # pixels; a huge picture is drawn smaller
+    ch = max(4, int(round(cw * o.aspect / 4.0)) * 4)
+    while cw > 4 and (grid.rows * ch + 2 * cw) * (grid.cols * cw + 2 * cw) > budget:
+        cw -= 2
+        ch = max(4, int(round(cw * o.aspect / 4.0)) * 4)
+        _log(o, "big picture: cell width cut to", cw)
     glyphs = Glyphs(cw, ch, o.font)
     _log(o, "font:", glyphs.path)
     pad = cw
     W, H = grid.cols * cw + 2 * pad, grid.rows * ch + 2 * pad
     ink = np.zeros((H, W), np.float32)
     wpx = 0.12 * cw * o.weight
+    ink_rgb = np.array(o.ink, np.float32)
+    rgb = None
+    if use_color:
+        rgb = np.empty((H, W, 3), np.uint8)
+        rgb[:] = np.clip(legible(ink_rgb, ink_rgb, o.paper) + 0.5, 0, 255).astype(np.uint8)
 
-    def put(layer, dy=pad, dx=pad):
+    def put(layer, target=None, dy=pad, dx=pad):
+        t = ink if target is None else target
         h, w = layer.shape
-        ink[dy:dy + h, dx:dx + w] = np.maximum(ink[dy:dy + h, dx:dx + w], layer)
+        t[dy:dy + h, dx:dx + w] = np.maximum(t[dy:dy + h, dx:dx + w], layer)
 
     if mode == "tone" or mode == "mix":
         if mode == "tone":
@@ -1148,10 +1479,14 @@ def render_grid(grid, o):
             def only(c):
                 return c in DENSE or is_block(c) or is_braille(c)
         px, py = pitch_of(grid, cw, ch)
-        d = darkness(grid, glyphs, only, o.dark)
-        if o.invert:
-            d = 1.0 - d
-        put(edge_lines(d, px, py, wpx, o.smooth, o.scale, o.detail, o.levels))
+        ix, iy = max(1, int(round(px))), max(1, int(round(py)))
+        dark = o.dark if o.dark is not None else grid.has_color()
+        P = dot_field(grid, glyphs, only, dark, max(1, cw // ix), max(1, ch // iy))
+        tone, sparse = tone_lines(P, ix, iy, wpx, o, use_color)
+        put(tone)
+        if sparse is not None:
+            ys, xs, col = sparse
+            rgb[ys + pad, xs + pad] = np.clip(legible(col, ink_rgb, o.paper) + 0.5, 0, 255).astype(np.uint8)
     if mode == "line" or mode == "mix":
         paths, cache = [], {}
         layer = np.zeros((grid.rows * ch, grid.cols * cw), np.float32)
@@ -1197,44 +1532,70 @@ def render_grid(grid, o):
                 done.append(([(p[0], p[1]) for p in clean], wm))
         strokes = done
         ss = max(1, min(4, int(math.sqrt(16e6 / float(W * H)))))
-        ink = np.maximum(ink, draw_strokes(strokes, W, H, wpx, ss))
-        put(layer)
+        lines = draw_strokes(strokes, W, H, wpx, ss)
+        put(layer, lines)
         if shade:
             space = 0.55 * cw * o.hatch
-            put(hatch_layer(shade, cw, ch, min(0.55 * wpx, 0.3 * space), space))
+            put(hatch_layer(shade, cw, ch, min(0.55 * wpx, 0.3 * space), space), lines)
+        if use_color:                                            # each stroke in its cell's colour
+            cmap = cell_color_map(grid, ink_rgb, o.paper)
+            ys, xs = np.nonzero(lines > 0.02)
+            rgb[ys, xs] = cmap[np.clip((ys - pad) // ch, 0, grid.rows - 1), np.clip((xs - pad) // cw, 0, grid.cols - 1)]
+        np.maximum(ink, lines, out=ink)
         _log(o, "strokes: %d paths, %d joins, %d chains%s" % (len(paths), len(links) // 2, len(strokes),
                                                             ", shaded" if shade else ""))
     if o.crop:
         ys, xs = np.nonzero(ink > 0.02)
         if len(ys):
             m = int(0.5 * cw)
-            ink = ink[max(0, ys.min() - m):ys.max() + m + 1, max(0, xs.min() - m):xs.max() + m + 1]
-    return ink
+            y0, y1, x0, x1 = max(0, ys.min() - m), ys.max() + m + 1, max(0, xs.min() - m), xs.max() + m + 1
+            ink = ink[y0:y1, x0:x1]
+            rgb = rgb[y0:y1, x0:x1] if rgb is not None else None
+    return ink, rgb
+
+
+def render_grid(grid, o):
+    """Grid -> ink picture (float32, 1 = line); see render_grid_color for the colours."""
+    return render_grid_color(grid, o)[0]
+
+
+def _grid_of(data, o):
+    text, enc = decode2(data)
+    return parse(text, o.cols, rows=o.rows, glyphs=enc == "cp437")
 
 
 def render(data, **kw):
     """text/bytes -> ink array (1 = ink).  Keyword arguments are Options fields."""
     o = Options(**kw)
-    grid = parse(decode(data), o.cols)
-    return render_grid(grid, o)
+    return render_grid(_grid_of(data, o), o)
 
 
-def to_image(ink, fg=(0, 0, 0), bg=(255, 255, 255), transparent=False):
+def render_color(data, **kw):
+    """text/bytes -> (ink, rgb), see render_grid_color."""
+    o = Options(**kw)
+    return render_grid_color(_grid_of(data, o), o)
+
+
+def to_image(ink, fg=(0, 0, 0), bg=(255, 255, 255), transparent=False, rgb=None):
+    """PIL image from an ink picture: fg lines on bg, or, with rgb (from render_color), lines in
+    their own colours."""
     a = np.clip(ink, 0, 1)
     if transparent:
-        rgba = np.zeros(a.shape + (4,), np.uint8)
-        rgba[..., :3] = fg
-        rgba[..., 3] = (a * 255 + 0.5).astype(np.uint8)
-        return Image.fromarray(rgba, "RGBA")
-    f, b = np.array(fg, np.float32), np.array(bg, np.float32)
-    rgb = b + (f - b) * a[..., None]
-    return Image.fromarray((rgb + 0.5).astype(np.uint8), "RGB")
+        out = np.zeros(a.shape + (4,), np.uint8)
+        out[..., :3] = fg if rgb is None else rgb
+        out[..., 3] = (a * 255 + 0.5).astype(np.uint8)
+        return Image.fromarray(out, "RGBA")
+    f = np.array(fg, np.float32) if rgb is None else rgb.astype(np.float32)
+    b = np.array(bg, np.float32)
+    out = b + (f - b) * a[..., None]
+    return Image.fromarray((out + 0.5).astype(np.uint8), "RGB")
 
 
 def mask(data, cell_w, cell_h=None, **kw):
     """For other programs (bidet3d): the drawing as a PIL 'L' mask, 255 = ink, cropped to the
     drawing.  cell_w / cell_h are the size of one character cell in pixels."""
     kw.setdefault("cell_w", cell_w)
+    kw.setdefault("color", "off")
     if cell_h:
         kw["aspect"] = cell_h / float(cell_w)
     ink = render(data, **kw)
@@ -1255,16 +1616,14 @@ def _rle(vals):
     return "".join(parts)
 
 
-def sixel(ink, fg=(0, 0, 0), bg=(255, 255, 255), levels=16, transparent=False):
-    """SIXEL stream (bytes) for an ink picture.  Pixels are painted in `levels` blends of
-    bg -> fg; with transparent=True the bg pixels are left unpainted."""
-    H, W = ink.shape
-    idx = np.clip(np.rint(np.clip(ink, 0, 1) * (levels - 1)), 0, levels - 1).astype(np.uint8)
+def _sixel_stream(idx, palette, transparent):
+    """SIXEL bytes for an array of palette indices (uint8; index 0 is the paper, left unpainted
+    when transparent) and the palette, a list of (r, g, b) 0..255."""
+    H, W = idx.shape
     out = ["\x1bP0;%d;0q\"1;1;%d;%d" % (1 if transparent else 0, W, H)]
-    for i in range(levels):
-        t = i / float(levels - 1)
-        rgb = [bg[k] + (fg[k] - bg[k]) * t for k in range(3)]
-        out.append("#%d;2;%d;%d;%d" % (i, *[int(round(v * 100 / 255.0)) for v in rgb]))
+    for i, c in enumerate(palette):
+        out.append("#%d;2;%d;%d;%d" % (i, int(round(c[0] * 100 / 255.0)), int(round(c[1] * 100 / 255.0)),
+                                       int(round(c[2] * 100 / 255.0))))
     weights = (1 << np.arange(6)).astype(np.uint8)[:, None]
     for top in range(0, H, 6):
         band = idx[top:top + 6]
@@ -1282,6 +1641,37 @@ def sixel(ink, fg=(0, 0, 0), bg=(255, 255, 255), levels=16, transparent=False):
         out.append("-")
     out.append("\x1b\\")
     return "".join(out).encode("ascii")
+
+
+def sixel(ink, fg=(0, 0, 0), bg=(255, 255, 255), levels=16, transparent=False, rgb=None, ncolors=24, shades=6):
+    """SIXEL stream (bytes) for an ink picture.  Pixels are painted in `levels` blends of
+    bg -> fg; with transparent=True the bg pixels are left unpainted.  With rgb (from
+    render_color) the lines keep their colours: those are reduced to `ncolors`, each painted
+    in `shades` blends with the paper, which keeps the paper exact and the lines antialiased."""
+    ink = np.clip(ink, 0, 1)
+    bg = np.array(bg, np.float64)
+
+    def blend(c, t):
+        return bg + (np.array(c, np.float64) - bg) * t
+    sel = ink > 0.25
+    if rgb is None or not sel.any():
+        idx = np.clip(np.rint(ink * (levels - 1)), 0, levels - 1).astype(np.uint8)
+        return _sixel_stream(idx, [blend(fg, i / float(levels - 1)) for i in range(levels)], transparent)
+    r = rgb.astype(np.int32)
+    key = ((r[..., 0] >> 5) << 6) | ((r[..., 1] >> 5) << 3) | (r[..., 2] >> 5)        # 8x8x8 colour cells
+    w, k = ink[sel].astype(np.float64), key[sel]
+    count = np.bincount(k, weights=w, minlength=512)
+    chosen = np.argsort(-count)[:ncolors]
+    chosen = chosen[count[chosen] > 0]
+    sums = [np.bincount(k, weights=w * r[sel][:, c], minlength=512) for c in range(3)]
+    centres = np.stack([sums[c][chosen] / count[chosen] for c in range(3)], 1)         # (K, 3)
+    cells = np.arange(512)
+    cell_rgb = np.stack([(cells >> 6) * 32 + 16, ((cells >> 3) & 7) * 32 + 16, (cells & 7) * 32 + 16], 1)
+    lut = ((cell_rgb[:, None, :] - centres[None]) ** 2).sum(2).argmin(1)               # cell -> nearest colour
+    level = np.rint(ink * (shades - 1)).astype(np.int32)
+    idx = np.where(level == 0, 0, 1 + lut[key] * (shades - 1) + level - 1).astype(np.uint8)
+    palette = [bg] + [blend(c, s / float(shades - 1)) for c in centres for s in range(1, shades)]
+    return _sixel_stream(idx, palette, transparent)
 
 
 # --------------------------------------------------------------------------
@@ -1330,7 +1720,12 @@ def main(argv=None):
                     help="tone: finest outline feature in dot pitches (default 0.4)")
     ap.add_argument("--levels", type=int, default=3,
                     help="tone: contour lines through the shading (default 3, 0 = outlines only)")
-    ap.add_argument("--dark", action="store_true", help="the art is light-on-dark (default colours)")
+    ap.add_argument("--dark", action="store_true", default=None,
+                    help="tone: the art is light on dark (default colours); on by itself when the art uses colour")
+    ap.add_argument("--color", "--colour", dest="color", choices=["auto", "on", "off"], default="auto",
+                    help="keep the ANSI colours: auto = if the art has any (default), on, off")
+    ap.add_argument("--mono", dest="color", action="store_const", const="off",
+                    help="draw in one colour (--ink) even if the art has colours")
     ap.add_argument("--invert", action="store_true", help="tone: outline the negative")
     ap.add_argument("--ink", default="black", help="line colour (default black)")
     ap.add_argument("--paper", default="white", help="background colour (default white)")
@@ -1338,7 +1733,9 @@ def main(argv=None):
     ap.add_argument("--width", type=int, metavar="PX", help="scale the picture to this width")
     ap.add_argument("--font", help="monospace font file (default: look for DejaVu Sans Mono, Consolas, ...)")
     ap.add_argument("--encoding", help="input encoding (default: UTF-8, else CP437)")
-    ap.add_argument("--cols", type=int, default=0, help="wrap column for .ANS art (default: none)")
+    ap.add_argument("--cols", type=int, default=0, help="wrap column for .ANS art (default: none; 80 for .ans)")
+    ap.add_argument("--rows", type=int, default=24,
+                    help="screen height for cursor addressing and scroll regions (default 24)")
     ap.add_argument("--no-crop", action="store_true", help="keep the margin around the drawing")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("-V", "--version", action="version", version="unascii " + VERSION)
@@ -1351,23 +1748,32 @@ def main(argv=None):
     else:
         with open(a.file, "rb") as f:
             data = f.read()
+    fg, bg = _color(a.ink), _color(a.paper)
     o = Options(mode=a.mode, cell_w=a.cell, aspect=a.aspect, weight=a.weight, join=a.join * 1.0,
-                round_lines=not a.no_round, spline=a.spline, shade=a.shade, hatch=a.hatch, text_bold=a.text_bold, smooth=a.smooth, detail=a.detail, scale=a.scale, levels=a.levels,
-                dark=a.dark, invert=a.invert, font=a.font, cols=a.cols or (80 if a.file.lower().endswith(".ans") else 0),
+                round_lines=not a.no_round, spline=a.spline, shade=a.shade, hatch=a.hatch,
+                text_bold=a.text_bold, smooth=a.smooth, detail=a.detail, scale=a.scale, levels=a.levels,
+                dark=a.dark, invert=a.invert, font=a.font, rows=a.rows, color=a.color, ink=fg, paper=bg,
+                cols=a.cols or (80 if a.file.lower().endswith(".ans") else 0),
                 crop=not a.no_crop, verbose=a.verbose)
     if a.join <= 0:
         o.join = 0.0
-    ink = render_grid(parse(decode(data, a.encoding), o.cols), o)
-    fg, bg = _color(a.ink), _color(a.paper)
+    text, enc = decode2(data, a.encoding)
+    try:
+        grid = parse(text, o.cols, rows=o.rows, glyphs=enc in ("cp437", "437") or a.file.lower().endswith(".ans"))
+    except ValueError as e:
+        sys.exit("unascii: %s" % e)
+    ink, rgb = render_grid_color(grid, o)
     if a.width and a.width != ink.shape[1]:
         h = max(1, int(round(ink.shape[0] * a.width / float(ink.shape[1]))))
         im = Image.fromarray((np.clip(ink, 0, 1) * 255 + 0.5).astype(np.uint8), "L")
         ink = np.asarray(im.resize((a.width, h), Image.LANCZOS), np.float32) / 255.0
+        if rgb is not None:
+            rgb = np.asarray(Image.fromarray(rgb, "RGB").resize((a.width, h), Image.NEAREST))
 
     out = sys.stdout.buffer
     want_sixel = a.sixel or (not a.output and sys.stdout.isatty())
     if a.output:
-        img = to_image(ink, fg, bg, a.transparent)
+        img = to_image(ink, fg, bg, a.transparent, rgb)
         if a.output == "-":
             buf = io.BytesIO()
             img.save(buf, "PNG")
@@ -1377,10 +1783,10 @@ def main(argv=None):
             img.save(a.output, "PNG")
     if want_sixel or not a.output and not sys.stdout.isatty():
         if want_sixel:
-            out.write(sixel(ink, fg, bg, transparent=a.transparent) + b"\n")
+            out.write(sixel(ink, fg, bg, transparent=a.transparent, rgb=rgb) + b"\n")
         else:
             buf = io.BytesIO()
-            to_image(ink, fg, bg, a.transparent).save(buf, "PNG")
+            to_image(ink, fg, bg, a.transparent, rgb).save(buf, "PNG")
             out.write(buf.getvalue())
         out.flush()
 

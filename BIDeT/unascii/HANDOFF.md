@@ -1,7 +1,7 @@
 # unascii: handoff
 
 State as of 2026-10-07. Read this first, then `README.md` (user-facing) and
-`unascii.py` (one file, ~1400 lines, section banners in it).
+`unascii.py` (one file, ~1800 lines, section banners in it).
 
 ## What it is
 
@@ -35,14 +35,15 @@ uncommitted work of theirs; never `git add -A`).
 
 | section | what | key names |
 | --- | --- | --- |
-| Reading | decode (UTF-8, else CP437, SAUCE dropped), mini terminal emulator (SGR 16/256/truecolor, cursor moves, erase, wrap) | `decode`, `parse`, `Grid` |
+| Reading | decode (UTF-8, else CP437, SAUCE dropped), a real terminal emulator: screen + scrollback, cursor addressing, scroll regions, erase/insert/delete, SGR 16/256/truecolor, DEC line drawing, OSC skipped | `decode2`, `parse`, `_Term`, `Grid` |
 | Classification | which characters are strokes/fills/text; auto mode choice | `STRONG` `WEAK` `DENSE`, `classify`, `word_cells` (text vs eyes), `shade_cells` (X runs), `bubble_bottoms` (cowsay) |
 | Fonts/glyphs | exact masks for blocks/braille, font masks for the rest | `Glyphs`, `find_font` |
 | Image helpers | numpy-only blur (exact taps < 2.5 px, 3 box passes above), smoothstep | `blur`, `_box_sizes`, `_box_pass` |
-| Tone | density -> picture -> outlines | `pitch_of`, `darkness`, `halftone_free`, `edge_lines` |
+| Tone | density -> picture -> outlines, per colour channel for coloured art | `pitch_of`, `dot_field` (picture at dot resolution), `_upsample`, `tone_lines`, `_dog_lines`, `_contours` |
+| Colour | line colours made legible on the page, per-cell colour map | `legible`, `cell_color_map` |
 | Line | strokes, linking, chains, smoothing, hatching, drawing | `GEOM`, `box_arms`/`box_paths`, `glyph_paths`, `link_paths`, `chains`, `spline_smooth`/`_smooth_span`, `fillet` (older corner rounding, `--spline 0`), `hatch_layer`, `draw_strokes` |
-| Assembly | `Options`, `render_grid` (the pipeline), `render`, `mask` (API for bidet3d), `to_image` | |
-| SIXEL | own encoder, paper->ink ramp so colours are exact | `sixel`, `_rle` |
+| Assembly | `Options`, `render_grid_color` (the pipeline: ink + per-pixel colour), `render_grid` (ink only), `render`, `render_color`, `mask` (API for bidet3d, colour off), `to_image` | |
+| SIXEL | own encoder: paper->ink ramp (mono) or up to 24 clustered colours x 6 shades (coloured), paper exact | `sixel`, `_sixel_stream`, `_rle` |
 | CLI | argparse `main` | |
 
 bidet3d side (`../3D/bidet3d.py`): `load_unascii`, `read_stdin` (cached bytes;
@@ -77,6 +78,24 @@ plus a few contour lines only where shading is gentle (`--levels`).
 
 ## Decisions and why
 
+- **A terminal, not a text reader** (`_Term`). `ESC[9999S` + `ESC[9999;1H` ("clear the screen", in
+  `AnsiColors256.ans`) built a 43-million-cell grid and took 300 s; a terminal clamps to its screen
+  (`--rows`, 24). Newlines scroll the screen into history so long art keeps every line. LF also
+  returns the carriage (plain art files expect that). Erased cells take the current background
+  (BCE) but explicit black counts as the default (a dark terminal's black).
+- **Colour** is opt-out (`--color auto` = on if `Grid.has_color()`, which ignores plain black). Line
+  mode colours by *cell* (`cell_color_map`, blanks inherit from neighbours): no per-vertex colour
+  to carry through smoothing. Tone mode colours from the picture, chroma-weighted so a coloured
+  object keeps its hue against black. `legible()` maps near-greys to `--ink` and darkens (light
+  page) or lightens (dark page) colours. bidet3d wants a mask only, so it sets `color="off"`;
+  `mask()` defaults to off.
+- **Tone mode on coloured art** treats default colours as light-on-dark (`dark=None` auto) and
+  outlines each RGB channel (max of the three), else hue-only edges are missed. Glyph coverage is
+  pooled per dot directly (no full-resolution picture any more: faster, less memory).
+- **Pixel budget**: huge art is drawn with a smaller cell (24 MP for tone/mix, 48 MP for line).
+- **Drawing**: PIL rounds a wide line differently by direction, and a cap wider than the line shows
+  as beads; `draw_strokes` always draws left to right and caps with the integer width. Straight
+  box-drawing cells are one stroke, edge to edge.
 - **Pooling before blurring (tone).** Edge-replicate blur of a periodic glyph
   texture made a false frame round the whole picture.
 - **Contours only on gentle gradients.** Iso-lines at step edges doubled every
@@ -109,6 +128,16 @@ quantization). For ad-hoc looks: `python unascii.py FILE -c 16 -w 1.3 -o
 out/x.png` then view the PNG; `out/` is gitignored. bidet3d needs
 `COLUMNS=160 LINES=60` set to render large PNGs when stdout is not a tty.
 
+## Stress tests (the user's ScreenTests folder, 2026-10-07)
+
+`C:\Users\chris\OneDrive\Documents\!Personal\Tech\ScreenTests`: terminal torture files (`*.vt`:
+tetris, bambi, vttest's `torturet`), colour charts (`AnsiColors*.ans`), DOS art (`DOPEFISH.ANS`,
+`ansilove.ans`), `UTF-8-demo.txt`. All render now (the slowest is `AnsiColors16t.ans`, ~9 s).
+Notes: `.vt` animations give the final frame; `ansilove.ans` is 80x50 art, so use `-a 1` (square
+cells); the UTF-8 demo shows font tofu for scripts the font lacks (Georgian, Thai, ...) and blobs
+for braille *text* in mix mode. The user pointed out that mintty and Windows Terminal also struggle
+with several of these, so that is not chased. `samples/*_lolcat.ans` are coloured cowsay samples.
+
 ## Known gaps and ideas
 
 - Never viewed in a real SIXEL terminal (only decoded); cmpi/Py3.7 untested.
@@ -119,8 +148,12 @@ out/x.png` then view the PNG; `out/` is gitignored. bidet3d needs
   variable"). Not from this work; run the other lint steps by hand.
 - bidet3d runs unascii twice (probe + final); skipping the lineart in the
   probe would save ~0.1-0.2 s (offered, not done).
-- Wide (CJK) characters count as one cell; colour is ignored in line mode
-  (only tone mode uses it); no `unascii(1)` man page (bidet3d.1 refers to one).
+- Wide (CJK) characters count as one cell; no `unascii(1)` man page (bidet3d.1 refers to one).
+- Font fallback for glyphs the font lacks (a second font, or blank instead of tofu): not done.
+  Auto-detecting 80x50 art (SAUCE has the flags) so `-a 1` is not needed: not done.
+- bidet3d does not use the art's colours (it takes the mask and applies its own material). A
+  `--ansi-colour` option filling the extrusion with them would be natural: `render_grid_color`
+  already returns them.
 - Ideas not done: other shading characters by default (`#`, `M`; `--shade`
   already takes any set), colour-tinted lines, hatch density by character
   (`x` < `X` < `#`), a Windows Terminal check of `unascii -s`.

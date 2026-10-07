@@ -16,6 +16,7 @@ cowsay hi | unascii -o - | bidet3d             # ...and into BIDeT3D (see below)
 Left: bidet3d's art mode as it was (the glyphs extruded). Right: the same art redrawn by unascii first.
 `examples/` also has the flat line drawing (`turkey-lineart.png`) and a coloured ANSI half-block
 picture traced in `tone` mode (`ansi-blocks-lineart.png`).
+The colour examples (`ghostbusters-colour.png`, `dragon-colour.png`) are `cowsay | lolcat -f | unascii`.
 
 ## How it works
 
@@ -25,12 +26,25 @@ used (`-v` shows the numbers; `-m` forces one):
 | mode | for | how |
 |------|-----|-----|
 | `line` | hand-drawn art: cowsay, figlet, boxes, `/ \ \| _ - ( ) ^ ' . ,` | Each character is a pen stroke. Stroke ends that meet are **joined into continuous lines** and gentle corners are rounded, so `_.-'''-._` becomes one smooth curve instead of a row of marks. `o` `O` `0` are rings, `^` `<` `>` are chevrons, box-drawing characters (light, heavy, double, rounded) are drawn exactly. Letters in words stay letters (`Moo` is text, `(oo)` is eyes). Joined strokes are **spline-smoothed**: staircases of `_` and `/` become diagonals and waves, while real corners (`^`, `<`, `|_`) stay sharp. cowsay **speech bubbles are closed** at the bottom. Runs of `X` (the filled regions of cowsay's ghostbusters) become **diagonal hatching**. |
-| `tone` | picture-converted art: jp2a, chafa, caca, `.:-=+*#%@` ramps, half blocks `▀▄`, braille, coloured ANSI | The characters are ink density. The halftone is undone (averaged per dot: a cell, half a cell, a braille dot), the picture they were squinted from is rebuilt, and **outlines are traced at sub-pixel accuracy** (zero crossings of a difference of Gaussians). Gentle shading gets a few contour lines. |
+| `tone` | picture-converted art: jp2a, chafa, caca, `.:-=+*#%@` ramps, half blocks `▀▄`, braille, coloured ANSI | The characters are ink density. The halftone is undone (averaged per dot: a cell, half a cell, a braille dot), the picture they were squinted from is rebuilt, and **outlines are traced at sub-pixel accuracy** (zero crossings of a difference of Gaussians). Gentle shading gets a few contour lines. Coloured art is outlined per colour channel, so an edge between two hues of the same brightness still gets a line. |
 | `mix` | line art with dense fills (`#`, `@`, `█`) | strokes for the line characters, outlines for the fills |
 
-Input can be plain text, UTF-8 or CP437 `.ANS` files (SAUCE records are dropped),
-with SGR colours, cursor movement, erase and wrap (`--cols`, 80 for `.ans`).
-Colours only matter to `tone`, where they set the brightness of each dot.
+Input can be plain text, UTF-8 or CP437 `.ANS` files (SAUCE records are dropped; the codes
+below 32 are pictures there, `♥`, `►`). It is replayed on a small terminal emulator, not just read:
+SGR colours (16, 256, truecolor), cursor addressing clamped to the screen (`--rows`, default 24),
+scroll regions, erase / insert / delete, save and restore cursor, reverse index, the DEC
+line-drawing set (`ESC ( 0`), OSC and other strings skipped, wrap at `--cols` (80 for `.ans`).
+A long picture scrolls into history and all of it is kept. For a screen dump or animation
+(`.vt` files) you get the final screen.
+
+**Colour is kept.** If the art has ANSI colours, the lines come out in them: in `line` mode
+every stroke, letter and hatched region takes its character's colour (a curve that wanders into
+a blank cell keeps the colour it had); in `tone` mode a line takes the colour of the picture
+it outlines, weighted to the colourful side of an edge so a coloured shape keeps its colour
+against a dark ground. Colours are made legible on the page: greys and whites (which in a terminal just
+mean "the text colour") become the ink colour, and colours too bright for a light page are darkened
+(yellow becomes olive), or too dark for a dark page (`--paper black`) lightened. `--mono` turns it off.
+`rainbow | unascii` works: `cowsay hi | lolcat -f | unascii -o rainbow.png`.
 
 ## Options
 
@@ -55,9 +69,12 @@ unascii [FILE|-] [-o FILE.png | -o - | -s] [options]
     --detail F       tone: smallest tonal step that gets an outline (default 0.12)
     --scale F        tone: finest outline feature (default 0.4)
     --levels N       tone: contour lines through shading (default 3, 0 = outlines only)
-    --invert, --dark tone: art whose dense characters are *light* (jp2a's default is
-                     for dark terminals: try --invert if the lines trace the wrong thing)
-    --ink, --paper   colours (default black on white); --transparent for alpha
+    --invert         tone: outline the negative (try it if the lines trace the wrong thing)
+    --dark           tone: default colours are light on dark (automatic when the art uses colour)
+    --color MODE     auto (default: keep the ANSI colours if the art has any), on, off; --mono = off
+    --ink, --paper   the line colour and the page (default black on white; greys and whites in the
+                     art become --ink, other colours are made legible on --paper); --transparent
+    --rows N         screen height for cursor addressing and scroll regions (default 24)
     --width PX       scale the result to this width
     --font FILE      monospace font for letters (default: DejaVu Sans Mono, Consolas, ...)
     --encoding ENC   input encoding (default UTF-8, else CP437)
@@ -91,6 +108,10 @@ ink = unascii.render(text, mode="auto", cell_w=16, weight=1.5)   # float array, 
 img = unascii.mask(text, 16, 32)                                  # PIL 'L', 255 = ink
 png = unascii.to_image(ink, fg=(0, 0, 0), bg=(255, 255, 255))     # PIL RGB
 sx  = unascii.sixel(ink)                                          # bytes
+
+ink, rgb = unascii.render_color(text)      # rgb: uint8 colour of each line pixel, or None if the art has none
+png = unascii.to_image(ink, rgb=rgb)       # coloured lines on white
+sx  = unascii.sixel(ink, rgb=rgb)          # up to 24 colours x 6 shades; the paper stays exact
 ```
 
 ## Requirements and limits

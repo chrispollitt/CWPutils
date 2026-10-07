@@ -293,6 +293,8 @@ def shape_mask(lines, font, line_mul, path, args):
         mode = args.lineart if isinstance(args.lineart, str) else "auto"
         o = ua.Options(mode=mode, cell_w=int(round(adv)), aspect=(asc + desc) * line_mul / adv,
                        weight=args.pen, font=path, crop=True, verbose=args.debug)
+        if hasattr(o, "color"):
+            o.color = "off"                      # only the shape is used here; the face colours are bidet3d's
         ink = ua.render_grid(args._grid, o)
         im = Image.fromarray((np.clip(ink, 0, 1) * 255 + 0.5).astype(np.uint8))
     return im.crop(im.getbbox() or (0, 0, 1, 1))

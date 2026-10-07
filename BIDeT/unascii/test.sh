@@ -15,6 +15,7 @@ $py unascii.py samples/cow.txt -s | head -c 2 | grep -q $'\x1bP' || { echo "FAIL
 $py unascii.py samples/cow.txt -s | tail -c 3 | grep -q $'\x1b\\\\' || { echo "FAIL sixel terminator"; fail=1; }
 $py - <<'EOF' || fail=1
 import sys
+import numpy as np
 import unascii as u
 # mode choice on the shipped samples
 want = {"cow": "line", "turkey": "line", "figlet_std": "line", "tone80": "tone", "tone100_inv": "tone",
@@ -55,6 +56,29 @@ assert m.mode == "L" and 0 < m.getextrema()[1] <= 255 and m.size[0] > 20
 # sixel is well framed and every band ends with a line feed
 s = u.sixel(u.render("-+-", cell_w=8))
 assert s.startswith(b"\x1bP") and s.endswith(b"\x1b\\") and b"-" in s
+# a terminal, not a text file: cursor addressing is clamped to the screen (ESC[9999;1H), OSC strings
+# are swallowed, scrolling keeps the history, a scroll region scrolls alone, DEC line drawing, CP437 pictures
+g = u.parse("\x1b[9999S\x1b[9999;1H\x1b]4;16;rgb:00/00/00\x1b\\ok")
+assert g.rows < 30 and "".join(g.ch[-1]).strip() == "ok", g.rows
+g = u.parse("\n".join("line%d" % i for i in range(40)))
+assert g.rows == 40 and "".join(g.ch[0]).strip() == "line0"
+assert "".join(u.parse("\x1b(0lqqk\x1b(B").ch[0]) == "┌──┐"
+g = u.parse("T\x1b[2;4r\x1b[2;1Ha\nb\nc\nd", rows=6)
+assert ["".join(r).strip() for r in g.ch] == ["T", "b", "c", "d"], g.ch
+assert u.parse("A\x1b[2;1HB\x1bM\x1b[1;1HC", rows=3).ch[0][0] == "C"
+assert u.parse("\x03", glyphs=True).ch[0][0] == "♥" and u.parse("\x03").ch[0][0] == " "
+# colour: strokes keep their cell's colour, uncoloured art has none, grey becomes the ink and
+# yellow is darkened to be readable on white, a coloured SIXEL is framed and the right size
+ink, rgb = u.render_color("\x1b[31m/\\\\\x1b[0m\n", mode="line", cell_w=12)
+assert rgb is not None and rgb.shape[:2] == ink.shape
+red = rgb[ink > 0.5].astype(float).mean(0)
+assert red[0] > 150 and red[1] < 60 and red[2] < 60, red
+assert u.render_color("/\\\\", mode="line")[1] is None and u.render_color("\x1b[31m/\\\\", color="off")[1] is None
+lg = u.legible(np.array([[255., 255., 0.], [200., 200., 200.], [0., 0., 238.]]), (0, 0, 0), (255, 255, 255))
+assert u.lum(lg[0]) <= 0.6 and tuple(lg[1]) == (0, 0, 0) and lg[2][2] == 238
+assert u.render_color("\x1b[41m    \x1b[44m    \n" * 3, mode="tone", cell_w=8)[1] is not None
+sx = u.sixel(ink, rgb=rgb)
+assert sx.startswith(b"\x1bP") and sx.endswith(b"\x1b\\") and (b'"1;1;%d;%d' % (ink.shape[1], ink.shape[0])) in sx
 print("library checks ok")
 EOF
 if [ -f ../3D/bidet3d.py ]; then

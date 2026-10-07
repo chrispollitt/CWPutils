@@ -13,6 +13,10 @@
 - Drawn art (unascii): joined strokes are spline-smoothed (diagonals and waves instead of staircases;
   corners stay sharp), cowsay speech bubbles close at the bottom, and runs of `X` become hatched
   shading. `unascii --spline F`, `--shade CHARS`, `--hatch F`; defaults apply in bidet3d.
+- unascii now replays its input on a terminal emulator (screen, scrollback, cursor addressing,
+  scroll regions, DEC line drawing, OSC skipped), so screen dumps and `ESC[9999;1H` art work
+  (a 256-colour chart that took 300 s takes under a second), and keeps ANSI colours when used on its
+  own (`unascii art.ans -o art.png`); bidet3d still takes only the shape.
 - `--image FILE`, or a PNG/JPEG/GIF on stdin, extrudes a picture instead of text, so
   `unascii art.txt -o - | bidet3d` works as a pipeline.
 
