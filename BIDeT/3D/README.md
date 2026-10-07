@@ -30,7 +30,7 @@ No build step; it is one Python file. Try it in place with `./bidet3d.py`, or:
 
 Elsewhere: `pip install -r requirements.txt` plus libsixel (Cygwin setup, brew, ...).
 It runs on old systems too (tested down to Python 3.7, Pillow 5.4, numpy 1.16).
-`make install` also puts the [`gfx-conv`](../gfx-conv/) converters in `share/BIDeT3D/gfx`, linked into `bin` as
+`make install` also puts the [`gfx-conv`](gfx-conv/) converters in `share/BIDeT3D/gfx`, linked into `bin` as
 `sixel2ans`, `sixel2iterm`, `sixel2kitty` and `sixel2tek`; `--format` uses them.
 `make textures` fetches the optional Word textures (see below);
 `sudo make install` installs them if you have them.
@@ -67,7 +67,7 @@ width, `-d` debug, `-v` version. Text comes from the arguments or stdin.
 | option | meaning |
 | --- | --- |
 | `-a`, `--art` | input is ASCII art: lines stay aligned, monospace font, no letter-spacing, line spacing 0.9 (implies `-p`). Piped multi-line art such as `cowsay` output is detected automatically; `--no-art` disables that |
-| `--lineart[=MODE]`, `--no-lineart`, `--pen N` | art mode redraws the art as a line drawing with [`../unascii`](../unascii/) before extruding it: strokes joined into continuous curves instead of rows of glyphs. On by default in art mode; `MODE` is `line`, `tone`, `mix` or `auto`; `--pen` is the thickness (default 2.2) |
+| `--lineart[=MODE]`, `--no-lineart`, `--pen N` | art mode redraws the art as a line drawing with [`unascii`](unascii/) before extruding it: strokes joined into continuous curves instead of rows of glyphs. On by default in art mode; `MODE` is `line`, `tone`, `mix` or `auto`; `--pen` is the thickness (default 2.2) |
 | `--image FILE` | extrude a picture instead of text (alpha, or what differs from the background; `-` = stdin). A PNG/JPEG/GIF piped in is recognised: `unascii art.txt -o - \| bidet3d` |
 | `-P NAME` | preset (`--list-presets`), or `random`; default `rainbow` |
 | `--gallery` | show every preset with your text |
@@ -79,7 +79,7 @@ width, `-d` debug, `-v` version. Text comes from the arguments or stdin.
 | `--time-machine` | cycle through banner (1983), FIGlet, TOIlet, BIDeT, then BIDeT3D spinning; `--stage-time SEC` per era |
 | `--spin-speed`, `--fps`, `--frames` | animation control (degrees/s, frames/s, stop after N) |
 | `--colors N` | SIXEL palette size (default 256; fewer = smaller frames, more banding) |
-| `-F`, `--format F` | output format: `sixel` (default), `kitty`, `iterm`, `ansi`, `tek`, `tek-dots`, `tek-contour`, or `auto` (needs [`../gfx-conv`](../gfx-conv/); no animation) |
+| `-F`, `--format F` | output format: `sixel` (default), `kitty`, `iterm`, `ansi`, `tek`, `tek-dots`, `tek-contour`, or `auto` (needs [`gfx-conv`](gfx-conv/); no animation) |
 | `--png FILE` | write a PNG instead of SIXEL (handy for testing) |
 | `--max-width PX` | cap the image width (faster, less data) |
 | `--dither` | Floyd-Steinberg dithering for still pictures (default off: less speckle) |
@@ -92,7 +92,7 @@ their "ink" turns white on dark terminals.
 
 `-F` prints something else for terminals that don't do SIXEL: the kitty or iTerm2 image protocols,
 ANSI art (`-F ansi` works in any UTF-8 terminal), or Tektronix vectors for `xterm -t`. `-F auto` picks one
-from what the terminal says about itself. Details in [`../gfx-conv`](../gfx-conv/).
+from what the terminal says about itself. Details in [`gfx-conv`](gfx-conv/).
 
 Like BIDeT's `test-sixel`, it first asks the terminal whether it reports SIXEL
 (DA1 attribute 4) and stops with "Sixel not supported" if it says no

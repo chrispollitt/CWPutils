@@ -11,15 +11,15 @@ MANDIR  = $(DESTDIR)$(PREFIX)/share/man/man1
 DATADIR = $(DESTDIR)$(PREFIX)/share/BIDeT3D
 DOCDIR  = $(DESTDIR)$(PREFIX)/share/doc/bidet3d
 
-# The converters for --format (sixel2kitty and friends) live in ../gfx-conv; they are
+# The converters for --format (sixel2kitty and friends) live in gfx-conv; they are
 # installed under DATADIR/gfx, with the tools linked into BINDIR.
-GFX      = ../gfx-conv
+GFX      = gfx-conv
 GFXLIB   = sixeldec.py
 GFXTOOLS = sixel2ans sixel2iterm sixel2kitty sixel2tek
 
-# ASCII art -> line drawing (--lineart, and a tool of its own) lives in ../unascii; installed
+# ASCII art -> line drawing (--lineart, and a tool of its own) lives in unascii; installed
 # under DATADIR/unascii and linked into BINDIR as unascii.
-UNASCII  = ../unascii
+UNASCII  = unascii
 
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bidet3d.py)
 DOCS    = README.md LICENSE 3RDPARTY CHANGELOG.md

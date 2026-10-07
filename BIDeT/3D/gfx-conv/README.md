@@ -81,4 +81,4 @@ get lost on the way to the screen.
 (`./test.sh`: decodes a generated picture and checks every converter's framing; it can't see
 whether a terminal draws the result).
 
-Same license as BIDeT3D: Boost Software License 1.0 (see [`../3D/LICENSE`](../3D/LICENSE)).
+Same license as BIDeT3D: Boost Software License 1.0 (see [`../LICENSE`](../LICENSE)).

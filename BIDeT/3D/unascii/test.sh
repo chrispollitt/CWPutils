@@ -118,8 +118,8 @@ st = u.sixel(dots)
 assert not re.search(rb"!\d+[^?-~\d]", st), st
 print("library checks ok")
 EOF
-if [ -f ../3D/bidet3d.py ]; then
-  $py unascii.py samples/cow.txt -w 2 -o - | $py ../3D/bidet3d.py -b black --png "$out/pipe.png" && [ -s "$out/pipe.png" ] \
+if [ -f ../bidet3d.py ]; then
+  $py unascii.py samples/cow.txt -w 2 -o - | $py ../bidet3d.py -b black --png "$out/pipe.png" && [ -s "$out/pipe.png" ] \
     || { echo "FAIL pipe into bidet3d"; fail=1; }
   echo "pipe into bidet3d ok"
 fi

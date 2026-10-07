@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `gfx-conv/` and `unascii/` moved from `BIDeT/` into `3D/` (`3D/gfx-conv`, `3D/unascii`): BIDeT3D and its
+  helpers are legacy now, superseded by `../4D`. `bidet3d.py` looks for `gfx-conv` next to itself, the
+  `Makefile` and `test.sh` follow. `unascii` got two bug fixes first (NUL in CP437 input, a dangling SIXEL
+  repeat count); nothing else will be backported.
 - ASCII art is redrawn before it is extruded: art mode (`-a`, or art detected on a pipe) now
   runs the art through the new `../unascii`, which reads the characters as pen strokes, joins
   the ends that meet into continuous curves and rounds the corners (cowsay, figlet, boxes), or

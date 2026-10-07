@@ -109,7 +109,7 @@ fortune -s | cowthink -f turkey | unascii -w 2.5 -o - | bidet3d -P rainbow
 unascii photo-art.txt -m tone -w 3 -o - | bidet3d -P chrome
 ```
 
-bidet3d looks for `unascii.py` in `$BIDET3D_UNASCII`, `../unascii` next to a
+bidet3d looks for `unascii.py` in `$BIDET3D_UNASCII`, `unascii/` next to a
 source checkout, and where `make install` puts it (`share/BIDeT3D/unascii`).
 
 ## As a library
@@ -140,4 +140,4 @@ decoding it with libsixel's `sixel2png`.
   shading, `#` mazes) come out as the font glyphs, not as strokes.
 - Wide (CJK) characters are treated as one cell.
 
-Boost Software License 1.0, like BIDeT (see `../3D/LICENSE`).
+Boost Software License 1.0, like BIDeT (see `../LICENSE`).

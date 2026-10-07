@@ -25,8 +25,8 @@ uncommitted work of theirs; never `git add -A`).
   2.2 (Windows) and 3.8/Pillow 7.0/numpy 1.17 (WSL Ubuntu-20.04).
   **Not tested on Python 3.7 / Pillow 5.4 (cmpi).**
 - Single file, importable (`import unascii`) and runnable. bidet3d finds it via
-  `$BIDET3D_UNASCII`, `../unascii`, `share/BIDeT3D/unascii` (see
-  `load_unascii` in `../3D/bidet3d.py`).
+  `$BIDET3D_UNASCII`, `3D/unascii` (next to bidet3d.py), `share/BIDeT3D/unascii` (see
+  `load_unascii` in `../bidet3d.py`).
 - Windows Write tool makes CRLF files: `sed -i 's/\r$//'` after writing
   scripts. Heredocs mangle backslashes: patch with the Edit tool or a Python
   file, not `sed`/heredoc.
@@ -47,7 +47,7 @@ uncommitted work of theirs; never `git add -A`).
 | SIXEL | own encoder: paper->ink ramp (mono), up to 24 clustered colours x 6 shades (coloured lines, paper exact), or the picture's own colours when the image covers > 25% of the area (exact if <= 254, else median cut) | `sixel`, `_sixel_stream`, `_rle` |
 | CLI | argparse `main` | |
 
-bidet3d side (`../3D/bidet3d.py`): `load_unascii`, `read_stdin` (cached bytes;
+bidet3d side (`../bidet3d.py`): `load_unascii`, `read_stdin` (cached bytes;
 PNG/JPEG/GIF magic = picture, else UTF-8-first text), `load_image`,
 `image_mask`, `get_lines` (builds `args._grid` / `args._image`), `shape_mask`,
 and the `drawn` branch in `build_layer`. Flags: `--lineart[=MODE]`,
@@ -131,8 +131,8 @@ plus a few contour lines only where shading is gentle (`--levels`).
 ```
 ./test.sh            # every sample x every mode, SIXEL framing, library
                      # asserts (classify, parse, bubbles, shading, spline),
-                     # and a pipe into ../3D/bidet3d.py   (~1 min)
-cd ../3D && ./test.sh  # includes art / --no-lineart / --lineart=tone / pipe
+                     # and a pipe into ../bidet3d.py   (~1 min)
+cd .. && ./test.sh  # includes art / --no-lineart / --lineart=tone / pipe
 ```
 
 `samples/` holds real output of cowsay, figlet, toilet, jp2a, chafa
@@ -189,7 +189,7 @@ with several of these, so that is not chased. `samples/*_lolcat.ans` are coloure
 - Tone mode cannot know polarity: dense characters are taken as dark ink; jp2a's
   default output needs `--invert`. Could guess from a border-vs-centre density
   test.
-- `make lint` in `../3D` stops at the user's `profiling.sh` (dash: "Bad for loop
+- `make lint` in `..` (3D/) stops at the user's `profiling.sh` (dash: "Bad for loop
   variable"). Not from this work; run the other lint steps by hand.
 - bidet3d runs unascii twice (probe + final); skipping the lineart in the
   probe would save ~0.1-0.2 s (offered, not done).

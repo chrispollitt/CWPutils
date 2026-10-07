@@ -1076,11 +1076,11 @@ _gfx = {}
 
 def load_gfx(name):
     """Import one of the gfx-conv converters (sixel2kitty, ...).  Looked for in $BIDET3D_GFX, next
-    to a source checkout (../gfx-conv), and where 'make install' puts them."""
+    to a source checkout (gfx-conv/), and where 'make install' puts them."""
     if name in _gfx:
         return _gfx[name]
     here = os.path.dirname(os.path.realpath(__file__))
-    dirs = [os.environ.get("BIDET3D_GFX"), os.path.join(here, "..", "gfx-conv"),
+    dirs = [os.environ.get("BIDET3D_GFX"), os.path.join(here, "gfx-conv"),
             os.path.join(here, "gfx"), os.path.join(here, "..", "share", "BIDeT3D", "gfx"),
             "/usr/local/share/BIDeT3D/gfx", "/usr/share/BIDeT3D/gfx"]
     for d in dirs:
@@ -1100,13 +1100,13 @@ _unascii = None
 
 def load_unascii(required=False):
     """Import unascii (ASCII art -> line drawing), looked for in $BIDET3D_UNASCII, next to a
-    source checkout (../unascii), and where 'make install' puts it.  None if it is not
+    source checkout (unascii/), and where 'make install' puts it.  None if it is not
     there, unless required (then bidet3d exits)."""
     global _unascii
     if _unascii is None:
         here = os.path.dirname(os.path.realpath(__file__))
-        dirs = [os.environ.get("BIDET3D_UNASCII"), os.path.join(here, "..", "unascii"),
-                os.path.join(here, "unascii"), os.path.join(here, "..", "share", "BIDeT3D", "unascii"),
+        dirs = [os.environ.get("BIDET3D_UNASCII"), os.path.join(here, "unascii"),
+                os.path.join(here, "..", "share", "BIDeT3D", "unascii"),
                 "/usr/local/share/BIDeT3D/unascii", "/usr/share/BIDeT3D/unascii"]
         _unascii = False
         for d in dirs:
