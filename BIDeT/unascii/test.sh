@@ -19,9 +19,9 @@ import numpy as np
 import unascii as u
 # mode choice on the shipped samples
 want = {"cow": "line", "turkey": "line", "figlet_std": "line", "tone80": "tone", "tone100_inv": "tone",
-        "braille": "tone"}
+        "braille": "block", "blocks_color": "block"}
 for name, mode in want.items():
-    g = u.parse(u.decode(open("samples/%s.txt" % name, "rb").read()))
+    g = u.parse(u.decode(open("samples/%s.%s" % (name, "ans" if name == "blocks_color" else "txt"), "rb").read()))
     got = u.classify(g)[0]
     if got != mode:
         sys.exit("FAIL classify %s: %s, want %s" % (name, got, mode))
@@ -79,6 +79,35 @@ assert u.lum(lg[0]) <= 0.6 and tuple(lg[1]) == (0, 0, 0) and lg[2][2] == 238
 assert u.render_color("\x1b[41m    \x1b[44m    \n" * 3, mode="tone", cell_w=8)[1] is not None
 sx = u.sixel(ink, rgb=rgb)
 assert sx.startswith(b"\x1bP") and sx.endswith(b"\x1b\\") and (b'"1;1;%d;%d' % (ink.shape[1], ink.shape[0])) in sx
+# ansi-block: the picture as it is.  Exact colours, default-background cells transparent, a shade
+# character blends its colours, lineart / mask() of block art are lines (never a solid picture)
+art = "\x1b[41m  \x1b[0m  \x1b[31;44m▒\x1b[0m\n"
+bi, bc = u.render_color(art, mode="ansi-block", cell_w=12, smooth=0, crop=False)
+assert tuple(bc[24, 24]) == (205, 0, 0) and abs(bi[24, 24] - 1.0) < 1e-6        # red background, first cell
+assert bi[24, 12 + 3 * 12] < 0.01                                                 # default background: nothing
+mid = bc[24, 12 + 4 * 12 + 6].astype(int)                                          # the shade cell: half red, half blue
+assert abs(mid[0] - 102) <= 3 and abs(mid[2] - 119) <= 3, mid
+assert u.classify(u.parse(art))[0] == "block"
+li = u.render_color(art, mode="lineart", cell_w=12)[0]
+assert (li > 0.5).mean() < 0.4 and (np.asarray(u.mask(art, 12, 24)) > 128).mean() < 0.4
+pic_ink, pic_rgb = u.render_color("\x1b[41m    \x1b[44m    \n" * 4, mode="ansi-block", cell_w=8, smooth=0)
+sp = u.sixel(pic_ink, rgb=pic_rgb)
+assert sp.startswith(b"\x1bP") and sp.endswith(b"\x1b\\") and sp.count(b";2;") <= 4, sp.count(b";2;")
+# DOS art uses the VGA palette (light red is coral), other art xterm's; colour block art is drawn on
+# black with light grey default text, as a terminal shows it; line art stays black on white
+assert u.parse("\x1b[1;31m#", glyphs=True).fg[0][0] == (255, 85, 85) and u.parse("\x1b[1;31m#").fg[0][0] == (255, 0, 0)
+o = u.Options(mode="ansi-block", cell_w=8)
+u.render_grid_color(u.parse("\x1b[44m  \n"), o)
+assert o.paper == (0, 0, 0) and o.ink == (229, 229, 229), (o.paper, o.ink)
+o = u.Options(mode="ansi-block", cell_w=8)
+u.render_grid_color(u.parse("\x1b[44m  \n", glyphs=True), o)
+assert o.ink == (170, 170, 170)
+o = u.Options(cell_w=8)
+u.render_grid_color(u.parse("/\\\\\x1b[31m/\n"), o)
+assert o.paper == (255, 255, 255) and o.ink == (0, 0, 0)
+o = u.Options(mode="ansi-block", cell_w=8, paper=(10, 20, 30))
+u.render_grid_color(u.parse("\x1b[44m  \n"), o)
+assert o.paper == (10, 20, 30)
 print("library checks ok")
 EOF
 if [ -f ../3D/bidet3d.py ]; then

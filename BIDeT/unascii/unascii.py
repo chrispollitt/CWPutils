@@ -7,16 +7,21 @@ ASCII art takes a picture and turns it into printable characters; this goes the 
 way.  The result is a clean black-on-white (or any colour) PNG, or SIXEL graphics for
 the terminal, and it feeds bidet3d:   unascii cow.txt -o - | bidet3d
 
-Two reconstruction methods, picked automatically per input (-m to force one):
+Two modes, picked automatically per input (-m lineart / -m ansi-block to force one):
 
-  line   hand-drawn line art (cowsay, figlet, boxes: / \\ | _ - ( ) ^ ' . ,):
-         the characters are read as pen strokes.  Stroke ends that meet are joined
-         into continuous lines and gentle corners are rounded, so  _.-'''-._  becomes
-         one smooth curve instead of a row of separate marks.
-  tone   picture-converted art (jp2a, chafa, caca; ramps like  .:-=+*#%@, half blocks,
-         braille, coloured ANSI): the characters are read as ink density.  The picture
-         they were squinted from is recovered, and outlines are traced on it.
-  mix    both: strokes for the line characters, outlines for dense fill characters.
+  lineart     a line drawing.  Three methods, picked by what the art is made of (-m line, tone,
+              mix to force one):
+      line    hand-drawn line art (cowsay, figlet, boxes: / \\ | _ - ( ) ^ ' . ,): the characters
+              are read as pen strokes.  Stroke ends that meet are joined into continuous,
+              spline-smoothed lines, so  _.-'--'-._  becomes one curve, not a row of marks.
+      tone    picture-converted art (jp2a, chafa; ramps like  .:-=+*#%@): the characters are read
+              as ink density; the picture they were squinted from is recovered and outlined.
+      mix     both: strokes for the line characters, outlines for dense fill characters.
+  ansi-block  art made of blocks and graphic characters (DOS .ANS, chafa half blocks, braille):
+              the coloured picture it is, drawn crisp with exact blocks, blended shade
+              characters and the original ANSI colours.
+
+ANSI colours are kept throughout (-m lineart draws the lines in them; --mono turns it off).
 
 Written for old libraries as well as new: Python 3.7+, Pillow 5.4+, numpy 1.16+.
 """
@@ -30,9 +35,9 @@ import sys
 import unicodedata
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-VERSION = "0.1"
+VERSION = "0.2"
 
 
 # --------------------------------------------------------------------------
@@ -41,6 +46,13 @@ VERSION = "0.1"
 _ANSI16 = [(0, 0, 0), (205, 0, 0), (0, 205, 0), (205, 205, 0), (0, 0, 238), (205, 0, 205),
            (0, 205, 205), (229, 229, 229), (127, 127, 127), (255, 0, 0), (0, 255, 0),
            (255, 255, 0), (92, 92, 255), (255, 0, 255), (0, 255, 255), (255, 255, 255)]
+
+
+# The 16 colours of a VGA text screen, in ANSI order (1 = red, 3 = yellow, which is brown, 4 = blue ...),
+# as DOS .ANS art and DOSBox show them: light red is coral, "white" is light grey.
+VGA16 = [(0, 0, 0), (170, 0, 0), (0, 170, 0), (170, 85, 0), (0, 0, 170), (170, 0, 170), (0, 170, 170),
+         (170, 170, 170), (85, 85, 85), (255, 85, 85), (85, 255, 85), (255, 255, 85), (85, 85, 255),
+         (255, 85, 255), (85, 255, 255), (255, 255, 255)]
 
 
 def xterm_color(n):
@@ -92,8 +104,9 @@ def decode(data, encoding=None):
 class Grid(object):
     """The art as a rectangle of cells: ch[y][x] is one character, fg/bg[y][x] its colours
     ((r, g, b), 'fgdef' / 'bgdef' for reverse video, or None for the terminal default)."""
-    def __init__(self, ch, fg, bg):
+    def __init__(self, ch, fg, bg, vga=False):
         self.ch, self.fg, self.bg = ch, fg, bg
+        self.vga = vga                    # DOS art: VGA colours, light grey default text
         self.rows = len(ch)
         self.cols = len(ch[0]) if ch else 0
 
@@ -126,6 +139,10 @@ class _Term(object):
         self.saved = None
         self.save()
 
+    def col(self, n):
+        """Palette entry n; the first 16 are the VGA colours for DOS art, xterm's otherwise."""
+        return VGA16[n] if self.glyphs and n < 16 else xterm_color(n)
+
     # -- state -----------------------------------------------------------
     def save(self):
         self.saved = (self.x, self.y, self.fg, self.bg, self.fg_idx, self.bold, self.rev, list(self.g), self.shift)
@@ -139,7 +156,7 @@ class _Term(object):
     def colours(self):
         f, b = self.fg, self.bg
         if f is None and self.fg_idx is not None:
-            f = xterm_color(self.fg_idx + 8 if self.bold and self.fg_idx < 8 else self.fg_idx)
+            f = self.col(self.fg_idx + 8 if self.bold and self.fg_idx < 8 else self.fg_idx)
         if self.rev:
             f, b = (b if b is not None else "bgdef"), (f if f is not None else "fgdef")
         return f, b
@@ -232,15 +249,15 @@ class _Term(object):
             elif v == 39:
                 self.fg = self.fg_idx = None
             elif 40 <= v <= 47:
-                self.bg = xterm_color(v - 40)
+                self.bg = self.col(v - 40)
             elif 100 <= v <= 107:
-                self.bg = xterm_color(v - 100 + 8)
+                self.bg = self.col(v - 100 + 8)
             elif v == 49:
                 self.bg = None
             elif v in (38, 48):
                 col = None
                 if i + 2 < len(nums) and nums[i + 1] == 5:
-                    col = xterm_color(min(255, nums[i + 2]))
+                    col = self.col(min(255, nums[i + 2]))
                     i += 2
                 elif i + 4 < len(nums) and nums[i + 1] == 2:
                     col = tuple(min(255, k) for k in nums[i + 2:i + 5])
@@ -421,7 +438,7 @@ def parse(text, cols=0, tabs=8, rows=24, glyphs=False):
     bgs = [[None] * width for _ in range(nrows)]
     for (yy, xx), (c, f, b) in cells.items():
         ch[yy - y0][xx], fgs[yy - y0][xx], bgs[yy - y0][xx] = c, f, b
-    return Grid(ch, fgs, bgs)
+    return Grid(ch, fgs, bgs, glyphs)
 
 
 # --------------------------------------------------------------------------
@@ -535,8 +552,9 @@ def bubble_bottoms(grid):
 
 
 def classify(grid, skip=None):
-    """Pick line / tone / mix for this art, with the numbers behind the choice.  Cells in
-    `skip` (shading) are left out of it."""
+    """Pick block / line / tone / mix for this art, with the numbers behind the choice.  Cells in
+    `skip` (shading) are left out of it.  Art made mostly of blocks, braille and coloured
+    backgrounds is "block" (rendered as the picture it is); the rest is line drawing."""
     n = line = pix = dense = 0
     ys, xs = [], []
     for y, row in enumerate(grid.ch):
@@ -558,7 +576,7 @@ def classify(grid, skip=None):
     st = {"cells": n, "fill": n / float(area), "strong": line / float(n),
           "pixel": pix / float(n), "dense": dense / float(n)}
     if st["pixel"] > 0.3:
-        mode = "tone"
+        mode = "block"
     elif st["strong"] >= 0.45 and st["dense"] < 0.15:
         mode = "line"
     elif st["fill"] > 0.5 and st["strong"] < 0.25:
@@ -716,14 +734,14 @@ def _box_pass(a, width, axis):
 
 def blur(a, sx, sy=None):
     """Gaussian blur, separable, edge-replicating.  sigma in pixels per axis.  Small sigmas
-    are convolved exactly; from 2.5 px up three box filters stand in for the Gaussian (within a
+    are convolved exactly; from 6 px up three box filters stand in for the Gaussian (within a
     percent or two of it, and no slower for a wide blur than a narrow one)."""
     sy = sx if sy is None else sy
     a = a.astype(np.float32)
     for axis, s in ((1, sx), (0, sy)):
         if s < 0.3:
             continue
-        if s >= 2.5:
+        if s >= 6.0:
             for width in _box_sizes(s):
                 a = _box_pass(a, width, axis)
             continue
@@ -819,33 +837,50 @@ def _upsample(pooled, ix, iy):
     """Spread dot values back out smoothly (bicubic), ix x iy pixels per dot."""
     ny, nx = pooled.shape
     p = np.pad(pooled.astype(np.float32), 1, mode="edge")
-    up = Image.fromarray(p, "F").resize(((nx + 2) * ix, (ny + 2) * iy), Image.BICUBIC)
+    up = Image.fromarray(p).resize(((nx + 2) * ix, (ny + 2) * iy), Image.BICUBIC)
     return np.asarray(up, np.float32)[iy:iy + ny * iy, ix:ix + nx * ix]
 
 
-def _dog_lines(f, px, py, width, scale, edge):
-    """Outlines of a picture f (float, 0..1): zero crossings of a difference of Gaussians, drawn
-    `width` pixels wide at sub-pixel position, where the tone steps by at least `edge` per dot."""
-    pitch = 0.5 * (px + py)
-    sx, sy = scale * px, scale * py
+def _resize(a, w, h):
+    """A float array scaled (bicubic) to w x h."""
+    return np.asarray(Image.fromarray(np.ascontiguousarray(a, np.float32)).resize((w, h), Image.BICUBIC), np.float32)
+
+
+# The fields that outlines are made from are smooth: they come from one value per dot, blurred over
+# many pixels.  So they are computed at about 4 pixels per dot (lx x ly) and scaled up to full size
+# only afterwards; the sub-pixel line position is then found on the full-size signed field.  This is
+# ten times less work than blurring a full-size picture.
+def _dog_fields(f, lx, ly, ix, iy, scale):
+    """At working resolution: the difference of Gaussians of f and the edge strength (tone change
+    per dot, from the gradient)."""
+    sx, sy = scale * lx, scale * ly
     g1 = blur(f, sx, sy)
     g2 = blur(f, 1.6 * sx, 1.6 * sy)
-    dog = g1 - g2
     gy, gx = np.gradient(g1)
-    strength = np.hypot(gx, gy) * pitch                          # tone change per dot pitch
-    ly, lx = np.gradient(dog)
-    dist = np.abs(dog) / (np.hypot(lx, ly) + 1e-6)               # px to the zero crossing
+    strength = np.hypot(gx * (lx / float(ix)), gy * (ly / float(iy))) * (0.5 * (ix + iy))
+    return g1 - g2, strength
+
+
+def _line_ink(dog, strength, width, edge):
+    """Full size: lines `width` pixels wide along the zero crossings of dog, where the edge is
+    at least `edge` high."""
+    gy, gx = np.gradient(dog)
+    dist = np.abs(dog) / (np.hypot(gx, gy) + 1e-6)               # px to the zero crossing
     return np.clip(0.5 * width - dist + 0.5, 0.0, 1.0) * \
         np.clip((strength - 0.9 * edge) / (0.2 * edge), 0.0, 1.0)
 
 
-def _contours(f, px, py, width, edge, levels):
-    """Contour lines through gentle shading only (at step edges they would double the outline)."""
-    pitch = 0.5 * (px + py)
-    gy, gx = np.gradient(blur(f, 0.5 * px, 0.5 * py))
-    gm = np.hypot(gx, gy)
-    grad = gm * pitch
+def _contour_fields(f, lx, ly, ix, iy, edge):
+    """At working resolution: the gradient size of f, and where the shading is gentle enough for
+    contour lines (at step edges they would double the outline)."""
+    gy, gx = np.gradient(blur(f, 0.5 * lx, 0.5 * ly))
+    gm = np.hypot(gx * (lx / float(ix)), gy * (ly / float(iy)))
+    grad = gm * (0.5 * (ix + iy))
     weak = np.clip((grad - 0.015) / 0.02, 0.0, 1.0) * np.clip((0.7 * edge - grad) / (0.3 * edge), 0.0, 1.0)
+    return gm, weak
+
+
+def _contour_ink(f, gm, weak, width, levels):
     out = np.zeros_like(f)
     for k in range(1, levels + 1):
         dist = np.abs(f - k / (levels + 1.0)) / (gm + 1e-6)
@@ -862,7 +897,8 @@ def tone_lines(P, ix, iy, width, o, color):
     picture is outlined per colour channel, so an edge between two hues of the same brightness
     still gets a line.  The colour of a line is the picture's own, weighted towards the
     colourful side of an edge so a coloured object keeps its colour against a dark ground."""
-    px, py = float(ix), float(iy)
+    ny, nx = P.shape[:2]
+    lx, ly = min(ix, 4), min(iy, 4)                              # working resolution, px per dot
     D = 1.0 - P
     if o.invert:
         D = 1.0 - D
@@ -870,17 +906,24 @@ def tone_lines(P, ix, iy, width, o, color):
     lo, hi = float(np.percentile(Dl, 2)), float(np.percentile(Dl, 98))
     span = (hi - lo) if hi - lo >= 0.04 else 1.0                 # a flat picture is not stretched
     colourful = (P.max(2) - P.min(2)).max() > 0.12
+    sm = 0.7 if o.smooth is None else o.smooth
+
+    def up(a):
+        return a if (lx, ly) == (ix, iy) else _resize(a, nx * ix, ny * iy)
 
     def field(chan):
-        f = blur(_upsample(chan, ix, iy), o.smooth * px, o.smooth * py)
+        f = blur(_upsample(chan, lx, ly), sm * lx, sm * ly)
         return np.clip((f - lo) / span, 0.0, 1.0)
     fl = field(Dl)
     chans = [D[..., k] for k in range(3)] if colourful else [Dl]
-    ink = np.zeros(fl.shape, np.float32)
+    ink = np.zeros((ny * iy, nx * ix), np.float32)
     for chan in chans:
-        ink = np.maximum(ink, _dog_lines(fl if chan is Dl else field(chan), px, py, width, o.scale, o.detail))
+        dog, strength = _dog_fields(fl if chan is Dl else field(chan), lx, ly, ix, iy, o.scale)
+        ink = np.maximum(ink, _line_ink(up(dog), np.maximum(up(strength), 0.0), width, o.detail))
     if o.levels > 0:
-        ink = np.maximum(ink, _contours(fl, px, py, width, o.detail, o.levels))
+        gm, weak = _contour_fields(fl, lx, ly, ix, iy, o.detail)
+        ink = np.maximum(ink, _contour_ink(up(fl), np.maximum(up(gm), 0.0), np.clip(up(weak), 0.0, 1.0),
+                                           width, o.levels))
     if not color:
         return ink.astype(np.float32), None
     chroma = P.max(2) - P.min(2)
@@ -888,12 +931,13 @@ def tone_lines(P, ix, iy, width, o, color):
     den = blur(w, 1.0, 1.0)
     C = np.dstack([blur(P[..., k] * w, 1.0, 1.0) / den for k in range(3)])
     ys, xs = np.nonzero(ink > 0.02)
-    fy = np.clip((ys + 0.5) / iy - 0.5, 0, C.shape[0] - 1.0001)
-    fx = np.clip((xs + 0.5) / ix - 0.5, 0, C.shape[1] - 1.0001)
+    fy = np.clip((ys + 0.5) / iy - 0.5, 0, max(C.shape[0] - 1, 0))
+    fx = np.clip((xs + 0.5) / ix - 0.5, 0, max(C.shape[1] - 1, 0))
     y0, x0 = fy.astype(np.int64), fx.astype(np.int64)
+    y1, x1 = np.minimum(y0 + 1, C.shape[0] - 1), np.minimum(x0 + 1, C.shape[1] - 1)
     wy, wx = (fy - y0)[:, None], (fx - x0)[:, None]
-    rgb = ((C[y0, x0] * (1 - wx) + C[y0, x0 + 1] * wx) * (1 - wy) +
-           (C[y0 + 1, x0] * (1 - wx) + C[y0 + 1, x0 + 1] * wx) * wy) * 255.0
+    rgb = ((C[y0, x0] * (1 - wx) + C[y0, x1] * wx) * (1 - wy) +
+           (C[y1, x0] * (1 - wx) + C[y1, x1] * wx) * wy) * 255.0
     return ink.astype(np.float32), (ys, xs, rgb)
 
 
@@ -1363,7 +1407,7 @@ def hatch_layer(mask, cw, ch, w, space):
     k = 4
     m = np.kron(mask[r0:r1, c0:c1].astype(np.float32), np.ones((k, k), np.float32))
     m = blur(np.pad(m, k, mode="constant"), 0.5 * k, 0.25 * k)[k:-k, k:-k]
-    m = np.asarray(Image.fromarray(m, "F").resize(((c1 - c0) * cw, (r1 - r0) * ch), Image.BICUBIC), np.float32)
+    m = np.asarray(Image.fromarray(m).resize(((c1 - c0) * cw, (r1 - r0) * ch), Image.BICUBIC), np.float32)
     m = smoothstep((m - 0.35) / 0.3)
     ys = np.arange(r0 * ch, r1 * ch, dtype=np.float32)[:, None]
     xs = np.arange(c0 * cw, c1 * cw, dtype=np.float32)[None, :]
@@ -1399,8 +1443,56 @@ def draw_strokes(strokes, W, H, w, ss):
 # --------------------------------------------------------------------------
 # Putting it together
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Block: ANSI art made of blocks and graphic characters, as the picture it is
+# --------------------------------------------------------------------------
+def block_image(grid, glyphs, o):
+    """The art as an image, as a terminal would show it but with exact cell sizes: every cell is
+    its background colour with the character's glyph in its foreground colour on top (blocks and
+    braille are exact rectangles, shade characters blend the two colours, other characters are
+    font glyphs).  Returns (rgb uint8 (h, w, 3), alpha float32 (h, w)); cells with the terminal's
+    default background are transparent wherever the glyph is not."""
+    rows, cols = grid.rows, grid.cols
+    cw, ch = glyphs.cw, glyphs.ch
+    ink_c = tuple(float(v) for v in o.ink)
+    paper_c = tuple(float(v) for v in o.paper)
+
+    def rgb(v, default):
+        if v is None:
+            return default
+        if isinstance(v, str):
+            return ink_c if v == "fgdef" else paper_c
+        return (float(v[0]), float(v[1]), float(v[2]))
+    img = np.zeros((rows * ch, cols * cw, 3), np.uint8)
+    alpha = np.zeros((rows * ch, cols * cw), np.float32)
+    for y in range(rows):
+        M = np.concatenate([glyphs.mask(c) for c in grid.ch[y]], axis=1)             # (ch, W)
+        fg = np.repeat(np.array([rgb(f, ink_c) for f in grid.fg[y]], np.float32), cw, 0)[None]
+        bgl = grid.bg[y]
+        has_bg = np.repeat(np.array([b is not None for b in bgl]), cw)[None, :]
+        bg = np.repeat(np.array([rgb(b, paper_c) for b in bgl], np.float32), cw, 0)[None]
+        Mw = M[..., None]
+        col = np.where(has_bg[..., None], bg * (1.0 - Mw) + fg * Mw, fg)
+        img[y * ch:(y + 1) * ch] = np.clip(col + 0.5, 0, 255).astype(np.uint8)
+        alpha[y * ch:(y + 1) * ch] = np.where(has_bg, 1.0, M)
+    return img, alpha
+
+
+def _soften(img, alpha, sx, sy):
+    """Blur a picture with transparency without bleeding the colour of what is not there: the
+    colour is blurred premultiplied by alpha and divided by the blurred alpha.  Pillow's own
+    Gaussian does it (8 bits, in C, a tenth of the time of doing it in numpy); its radius is one
+    number, so the two sigmas are averaged."""
+    a8 = np.clip(alpha * 255.0 + 0.5, 0, 255).astype(np.uint8)
+    pm = (img.astype(np.float32) * alpha[..., None] + 0.5).astype(np.uint8)
+    out = np.asarray(Image.fromarray(np.dstack([pm, a8])).filter(ImageFilter.GaussianBlur(max(0.3, 0.5 * (sx + sy)))))
+    af = out[..., 3].astype(np.float32) / 255.0
+    col = out[..., :3].astype(np.float32) / np.maximum(af, 1.0 / 255.0)[..., None]
+    return np.clip(col + 0.5, 0, 255).astype(np.uint8), af
+
+
 class Options(object):
-    mode = "auto"           # auto | line | tone | mix
+    mode = "auto"           # auto | lineart | ansi-block (block) | line | tone | mix
     cell_w = 12             # pixels per character cell
     aspect = 2.0            # cell height / width
     weight = 1.0            # pen thickness, relative
@@ -1410,15 +1502,16 @@ class Options(object):
     shade = "X"             # line: runs of these characters are shading (hatched); "" = none
     hatch = 1.0             # line: spacing of that hatching, relative
     text_bold = 0.25        # line: how much letters thicken as the pen gets thicker (0 = not at all)
-    smooth = 0.7            # tone: blur, in dot pitches (smooths the contours)
+    smooth = None           # tone: blur in dot pitches, smooths the contours (default 0.7); block: softens the pixels (0.12)
     detail = 0.12           # tone: smallest edge (tone change per dot pitch) that is drawn
     scale = 0.4             # tone: finest outline feature, in dot pitches
     levels = 3              # tone: contour lines through the shading (0 = outlines only)
     dark = None             # tone: default colours are light on dark (None: yes if the art uses colour)
     invert = False          # tone: draw outlines of the negative (affects nothing for edges)
     color = "auto"          # auto: keep the ANSI colours if the art has any | on | off
-    ink = (0, 0, 0)         # the line colour (and what grey / white text becomes)
-    paper = (255, 255, 255)  # the page, which colours are made legible against
+    ink = None              # the line colour (and what grey / white text becomes).  None: decided from the
+    paper = None            # art and filled in by render_grid_color: black on white, but for colour
+    #                         block art what a terminal shows, light grey on black
     font = None
     cols = 0                # wrap column for cursor-addressed .ANS art (0: never)
     rows = 24               # height of the screen that cursor addressing and scroll regions refer to
@@ -1443,13 +1536,22 @@ def render_grid_color(grid, o):
     drawn in one colour (no colour in it, or color == "off")."""
     cw = max(4, int(o.cell_w))
     cw += cw % 2                                  # half-cell and braille dots need whole pixels
-    mode = o.mode
+    mode = "block" if o.mode == "ansi-block" else o.mode
     shade = shade_cells(grid, o.shade)
-    if mode == "auto":
-        mode, st = classify(grid, shade)
-        _log(o, "auto ->", mode, " ".join("%s=%.2f" % kv for kv in sorted(st.items())))
+    if mode in ("auto", "lineart"):
+        picked, st = classify(grid, shade)
+        if mode == "lineart" and picked == "block":
+            picked = "tone"                       # asked for lines: outline the picture instead
+        _log(o, mode, "->", picked, " ".join("%s=%.2f" % kv for kv in sorted(st.items())))
+        mode = picked
     use_color = o.color == "on" or (o.color == "auto" and grid.has_color())
-    budget = 24e6 if mode in ("tone", "mix") else 48e6      # pixels; a huge picture is drawn smaller
+    # Colour block art is drawn the way a terminal shows it: on black, default text light grey.
+    dark_picture = mode == "block" and (o.dark if o.dark is not None else grid.has_color())
+    if o.paper is None:
+        o.paper = (0, 0, 0) if dark_picture else (255, 255, 255)
+    if o.ink is None:
+        o.ink = ((170, 170, 170) if grid.vga else (229, 229, 229)) if dark_picture else (0, 0, 0)
+    budget = 24e6 if mode in ("tone", "mix", "block") else 48e6    # pixels; a huge picture is drawn smaller
     ch = max(4, int(round(cw * o.aspect / 4.0)) * 4)
     while cw > 4 and (grid.rows * ch + 2 * cw) * (grid.cols * cw + 2 * cw) > budget:
         cw -= 2
@@ -1463,7 +1565,7 @@ def render_grid_color(grid, o):
     wpx = 0.12 * cw * o.weight
     ink_rgb = np.array(o.ink, np.float32)
     rgb = None
-    if use_color:
+    if use_color or mode == "block":
         rgb = np.empty((H, W, 3), np.uint8)
         rgb[:] = np.clip(legible(ink_rgb, ink_rgb, o.paper) + 0.5, 0, 255).astype(np.uint8)
 
@@ -1471,6 +1573,20 @@ def render_grid_color(grid, o):
         t = ink if target is None else target
         h, w = layer.shape
         t[dy:dy + h, dx:dx + w] = np.maximum(t[dy:dy + h, dx:dx + w], layer)
+
+    if mode == "block":
+        img, alpha = block_image(grid, glyphs, o)
+        px, py = pitch_of(grid, cw, ch)
+        sm = 0.12 if o.smooth is None else o.smooth
+        if sm > 0:
+            img, alpha = _soften(img, alpha, sm * px, sm * py)
+        h, w = alpha.shape
+        if o.color == "off":                                     # greys instead of colours
+            grey = np.rint(img.astype(np.float32).dot(np.array([0.299, 0.587, 0.114], np.float32)))
+            img = np.repeat(grey[..., None], 3, 2).astype(np.uint8)
+        ink[pad:pad + h, pad:pad + w] = alpha
+        rgb[pad:pad + h, pad:pad + w] = img
+        _log(o, "block picture %dx%d, smoothing %.2f" % (grid.cols, grid.rows, sm))
 
     if mode == "tone" or mode == "mix":
         if mode == "tone":
@@ -1547,7 +1663,7 @@ def render_grid_color(grid, o):
     if o.crop:
         ys, xs = np.nonzero(ink > 0.02)
         if len(ys):
-            m = int(0.5 * cw)
+            m = 0 if mode == "block" else int(0.5 * cw)       # a picture runs to its edges
             y0, y1, x0, x1 = max(0, ys.min() - m), ys.max() + m + 1, max(0, xs.min() - m), xs.max() + m + 1
             ink = ink[y0:y1, x0:x1]
             rgb = rgb[y0:y1, x0:x1] if rgb is not None else None
@@ -1584,11 +1700,11 @@ def to_image(ink, fg=(0, 0, 0), bg=(255, 255, 255), transparent=False, rgb=None)
         out = np.zeros(a.shape + (4,), np.uint8)
         out[..., :3] = fg if rgb is None else rgb
         out[..., 3] = (a * 255 + 0.5).astype(np.uint8)
-        return Image.fromarray(out, "RGBA")
+        return Image.fromarray(out)
     f = np.array(fg, np.float32) if rgb is None else rgb.astype(np.float32)
     b = np.array(bg, np.float32)
     out = b + (f - b) * a[..., None]
-    return Image.fromarray((out + 0.5).astype(np.uint8), "RGB")
+    return Image.fromarray((out + 0.5).astype(np.uint8))
 
 
 def mask(data, cell_w, cell_h=None, **kw):
@@ -1596,24 +1712,50 @@ def mask(data, cell_w, cell_h=None, **kw):
     drawing.  cell_w / cell_h are the size of one character cell in pixels."""
     kw.setdefault("cell_w", cell_w)
     kw.setdefault("color", "off")
+    kw.setdefault("mode", "lineart")                 # a shape to extrude is lines, not a picture
     if cell_h:
         kw["aspect"] = cell_h / float(cell_w)
     ink = render(data, **kw)
-    return Image.fromarray((np.clip(ink, 0, 1) * 255 + 0.5).astype(np.uint8), "L")
+    return Image.fromarray((np.clip(ink, 0, 1) * 255 + 0.5).astype(np.uint8))
 
 
 # --------------------------------------------------------------------------
 # SIXEL out (ink picture -> a ramp from paper to ink, so both are exact)
 # --------------------------------------------------------------------------
-def _rle(vals):
-    change = np.flatnonzero(vals[1:] != vals[:-1]) + 1
-    starts = np.concatenate(([0], change))
-    ends = np.concatenate((change, [len(vals)]))
-    parts = []
-    for s, e in zip(starts, ends):
-        n, c = int(e - s), chr(int(vals[s]))
-        parts.append(("!%d%s" % (n, c)) if n > 3 else c * n)
-    return "".join(parts)
+def _rle_rows(bits):
+    """SIXEL run-length coding of every row of a (K, W) uint8 array of sixel characters, as K
+    strings.  Runs of 1-3 are written out, longer ones as !<count><char>.  All K rows are done
+    together with array operations (a big picture has hundreds of thousands of runs, and numpy
+    costs too much per call to do them a row at a time)."""
+    K, W = bits.shape
+    flat = bits.reshape(-1)
+    brk = np.zeros(flat.size, bool)
+    brk[::W] = True                                         # a run never crosses a row
+    brk[1:] |= flat[1:] != flat[:-1]
+    starts = np.flatnonzero(brk)
+    lens = np.diff(np.append(starts, flat.size))
+    chars = flat[starts]
+    long_ = lens > 3
+    ndig = 1 + (lens >= 10) + (lens >= 100) + (lens >= 1000) + (lens >= 10000)
+    size = np.where(long_, ndig + 2, lens)
+    off = np.cumsum(size) - size
+    out = np.empty(int(size.sum()), np.uint8)
+    sh = ~long_
+    if sh.any():                                            # a short run: its char, lens times
+        n = lens[sh]
+        base = np.repeat(off[sh] - (np.cumsum(n) - n), n)
+        out[base + np.arange(int(n.sum()))] = np.repeat(chars[sh], n)
+    if long_.any():                                         # a long run: ! digits char
+        o, n, nd = off[long_], lens[long_], ndig[long_]
+        out[o] = 33
+        for k in range(5):
+            has = nd > k                                    # digit k from the right, if the count has one
+            out[(o + nd - k)[has]] = (n[has] // 10 ** k) % 10 + 48
+        out[o + nd + 1] = chars[long_]
+    text = out.tobytes().decode("ascii")
+    first = np.searchsorted(starts, np.arange(K) * W)       # the first run of each row
+    bounds = np.append(off, out.size)[np.append(first, len(starts))].tolist()
+    return [text[bounds[i]:bounds[i + 1]] for i in range(K)]
 
 
 def _sixel_stream(idx, palette, transparent):
@@ -1624,36 +1766,59 @@ def _sixel_stream(idx, palette, transparent):
     for i, c in enumerate(palette):
         out.append("#%d;2;%d;%d;%d" % (i, int(round(c[0] * 100 / 255.0)), int(round(c[1] * 100 / 255.0)),
                                        int(round(c[2] * 100 / 255.0))))
-    weights = (1 << np.arange(6)).astype(np.uint8)[:, None]
+    weights = (1 << np.arange(6)).astype(np.uint8)[None, :, None]
+    tail = re.compile(r"!\d+\?$")
     for top in range(0, H, 6):
         band = idx[top:top + 6]
         if band.shape[0] < 6:
             band = np.vstack([band, np.full((6 - band.shape[0], W), 255, np.uint8)])
-        present = [c for c in np.unique(band) if c != 255 and not (transparent and c == 0)]
-        for n, c in enumerate(present):
-            bits = ((band == c).astype(np.uint8) * weights).sum(0).astype(np.uint8) + 63
-            s = _rle(bits)
+        present = [c for c in np.unique(band).tolist() if c != 255 and not (transparent and c == 0)]
+        # for each colour present: which of the six pixels in a column have it, as one sixel character
+        bits = ((band[None] == np.array(present, np.uint8)[:, None, None]).astype(np.uint8) * weights).sum(1)
+        rows = _rle_rows((bits + 63).astype(np.uint8))
+        for n, (c, s) in enumerate(zip(present, rows)):
             if s.endswith("?") and not s.endswith("!?"):
-                s = s.rstrip("?")
+                s = s.rstrip("?")                           # trailing "nothing here": not needed
             else:
-                s = re.sub(r"!\d+\?$", "", s)
+                s = tail.sub("", s)
             out.append("#%d%s%s" % (c, s, "$" if n < len(present) - 1 else ""))
         out.append("-")
     out.append("\x1b\\")
     return "".join(out).encode("ascii")
 
 
-def sixel(ink, fg=(0, 0, 0), bg=(255, 255, 255), levels=16, transparent=False, rgb=None, ncolors=24, shades=6):
+def sixel(ink, fg=(0, 0, 0), bg=(255, 255, 255), levels=16, transparent=False, rgb=None, ncolors=24, shades=6,
+          image=None):
     """SIXEL stream (bytes) for an ink picture.  Pixels are painted in `levels` blends of
     bg -> fg; with transparent=True the bg pixels are left unpainted.  With rgb (from
     render_color) the lines keep their colours: those are reduced to `ncolors`, each painted
-    in `shades` blends with the paper, which keeps the paper exact and the lines antialiased."""
+    in `shades` blends with the paper, which keeps the paper exact and the lines antialiased.
+    A picture that covers much of the area (block art; image=True forces it) is composited on the
+    paper and painted with its own colours: exactly if it has at most 254, else median-cut."""
     ink = np.clip(ink, 0, 1)
     bg = np.array(bg, np.float64)
 
     def blend(c, t):
         return bg + (np.array(c, np.float64) - bg) * t
     sel = ink > 0.25
+    if rgb is not None and (image or (image is None and sel.mean() > 0.25)):
+        H, W = ink.shape
+        comp = np.clip(bg + (rgb.astype(np.float64) - bg) * ink[..., None] + 0.5, 0, 255).astype(np.uint8)
+        flat = comp.reshape(-1, 3).astype(np.int32)
+        key = (flat[:, 0] << 16) | (flat[:, 1] << 8) | flat[:, 2]
+        uniq, inv = np.unique(key, return_inverse=True)
+        if len(uniq) <= 254:
+            pal = [((k >> 16) & 255, (k >> 8) & 255, k & 255) for k in uniq.tolist()]
+            idx = inv.reshape(H, W)
+        else:
+            q = Image.fromarray(comp).quantize(254, Image.MEDIANCUT)
+            p = q.getpalette()[:254 * 3]
+            pal = [tuple(p[i:i + 3]) for i in range(0, len(p), 3)]
+            idx = np.asarray(q)
+        idx = (idx + 1).astype(np.uint8)
+        if transparent:
+            idx[ink < 0.02] = 0
+        return _sixel_stream(idx, [bg] + pal, transparent)
     if rgb is None or not sel.any():
         idx = np.clip(np.rint(ink * (levels - 1)), 0, levels - 1).astype(np.uint8)
         return _sixel_stream(idx, [blend(fg, i / float(levels - 1)) for i in range(levels)], transparent)
@@ -1693,8 +1858,10 @@ def main(argv=None):
     ap.add_argument("-o", "--output", metavar="FILE", help="write a PNG here ('-' = stdout)")
     ap.add_argument("-s", "--sixel", action="store_true",
                     help="print SIXEL to stdout (default when stdout is a terminal)")
-    ap.add_argument("-m", "--mode", choices=["auto", "line", "tone", "mix"], default="auto",
-                    help="line: strokes, tone: density -> outlines, mix: both (default auto)")
+    ap.add_argument("-m", "--mode", choices=["auto", "lineart", "ansi-block", "block", "line", "tone", "mix"], default="auto",
+                    help="lineart: line drawing (cowsay, figlet; picture-style art is outlined); ansi-block: "
+                         "block/graphic-character art as the coloured picture it is; auto picks one (default). "
+                         "line, tone, mix: force one lineart method")
     ap.add_argument("-c", "--cell", type=int, default=12, metavar="PX",
                     help="width of one character cell in output pixels (default 12)")
     ap.add_argument("-a", "--aspect", type=float, default=2.0,
@@ -1713,7 +1880,8 @@ def main(argv=None):
                     help="line mode: how much letters thicken with --weight above 1.2 (default 0.25; 0 = never)")
     ap.add_argument("--hatch", type=float, default=1.0, metavar="F",
                     help="line mode: spacing of the hatching (default 1)")
-    ap.add_argument("--smooth", type=float, default=0.7, help="tone: blur in dot pitches (default 0.7)")
+    ap.add_argument("--smooth", type=float, default=None,
+                    help="tone: blur in dot pitches (default 0.7); ansi-block: softening of the pixels (default 0.12, 0 = crisp)")
     ap.add_argument("--detail", type=float, default=0.12,
                     help="tone: smallest tonal step that gets an outline (0..1, default 0.12)")
     ap.add_argument("--scale", type=float, default=0.4,
@@ -1727,8 +1895,10 @@ def main(argv=None):
     ap.add_argument("--mono", dest="color", action="store_const", const="off",
                     help="draw in one colour (--ink) even if the art has colours")
     ap.add_argument("--invert", action="store_true", help="tone: outline the negative")
-    ap.add_argument("--ink", default="black", help="line colour (default black)")
-    ap.add_argument("--paper", default="white", help="background colour (default white)")
+    ap.add_argument("--ink", default=None,
+                    help="line colour, and what grey / white text becomes (default black; light grey for colour block art)")
+    ap.add_argument("--paper", default=None,
+                    help="background colour (default white; black for colour block art, as a terminal shows it)")
     ap.add_argument("--transparent", action="store_true", help="PNG/SIXEL with a transparent background")
     ap.add_argument("--width", type=int, metavar="PX", help="scale the picture to this width")
     ap.add_argument("--font", help="monospace font file (default: look for DejaVu Sans Mono, Consolas, ...)")
@@ -1748,7 +1918,7 @@ def main(argv=None):
     else:
         with open(a.file, "rb") as f:
             data = f.read()
-    fg, bg = _color(a.ink), _color(a.paper)
+    fg, bg = (_color(a.ink) if a.ink else None), (_color(a.paper) if a.paper else None)
     o = Options(mode=a.mode, cell_w=a.cell, aspect=a.aspect, weight=a.weight, join=a.join * 1.0,
                 round_lines=not a.no_round, spline=a.spline, shade=a.shade, hatch=a.hatch,
                 text_bold=a.text_bold, smooth=a.smooth, detail=a.detail, scale=a.scale, levels=a.levels,
@@ -1763,12 +1933,13 @@ def main(argv=None):
     except ValueError as e:
         sys.exit("unascii: %s" % e)
     ink, rgb = render_grid_color(grid, o)
+    fg, bg = o.ink, o.paper                  # decided from the art unless given (see Options)
     if a.width and a.width != ink.shape[1]:
         h = max(1, int(round(ink.shape[0] * a.width / float(ink.shape[1]))))
-        im = Image.fromarray((np.clip(ink, 0, 1) * 255 + 0.5).astype(np.uint8), "L")
+        im = Image.fromarray((np.clip(ink, 0, 1) * 255 + 0.5).astype(np.uint8))
         ink = np.asarray(im.resize((a.width, h), Image.LANCZOS), np.float32) / 255.0
         if rgb is not None:
-            rgb = np.asarray(Image.fromarray(rgb, "RGB").resize((a.width, h), Image.NEAREST))
+            rgb = np.asarray(Image.fromarray(rgb).resize((a.width, h), Image.NEAREST))
 
     out = sys.stdout.buffer
     want_sixel = a.sixel or (not a.output and sys.stdout.isatty())

@@ -17,6 +17,9 @@
   scroll regions, DEC line drawing, OSC skipped), so screen dumps and `ESC[9999;1H` art work
   (a 256-colour chart that took 300 s takes under a second), and keeps ANSI colours when used on its
   own (`unascii art.ans -o art.png`); bidet3d still takes only the shape.
+- unascii has two modes: `lineart` (line drawings; what bidet3d always asks for) and `ansi-block`
+  (art made of blocks and graphic characters, rendered as the coloured picture it is). On its own
+  it picks one automatically; `-m lineart` / `-m ansi-block` force it.
 - `--image FILE`, or a PNG/JPEG/GIF on stdin, extrudes a picture instead of text, so
   `unascii art.txt -o - | bidet3d` works as a pipeline.
 

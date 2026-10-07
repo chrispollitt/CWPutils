@@ -41,9 +41,10 @@ uncommitted work of theirs; never `git add -A`).
 | Image helpers | numpy-only blur (exact taps < 2.5 px, 3 box passes above), smoothstep | `blur`, `_box_sizes`, `_box_pass` |
 | Tone | density -> picture -> outlines, per colour channel for coloured art | `pitch_of`, `dot_field` (picture at dot resolution), `_upsample`, `tone_lines`, `_dog_lines`, `_contours` |
 | Colour | line colours made legible on the page, per-cell colour map | `legible`, `cell_color_map` |
+| Block | ansi-block mode: the art as the coloured picture it is (exact blocks, shade blends, default-background cells transparent) | `block_image`, `_soften` |
 | Line | strokes, linking, chains, smoothing, hatching, drawing | `GEOM`, `box_arms`/`box_paths`, `glyph_paths`, `link_paths`, `chains`, `spline_smooth`/`_smooth_span`, `fillet` (older corner rounding, `--spline 0`), `hatch_layer`, `draw_strokes` |
 | Assembly | `Options`, `render_grid_color` (the pipeline: ink + per-pixel colour), `render_grid` (ink only), `render`, `render_color`, `mask` (API for bidet3d, colour off), `to_image` | |
-| SIXEL | own encoder: paper->ink ramp (mono) or up to 24 clustered colours x 6 shades (coloured), paper exact | `sixel`, `_sixel_stream`, `_rle` |
+| SIXEL | own encoder: paper->ink ramp (mono), up to 24 clustered colours x 6 shades (coloured lines, paper exact), or the picture's own colours when the image covers > 25% of the area (exact if <= 254, else median cut) | `sixel`, `_sixel_stream`, `_rle` |
 | CLI | argparse `main` | |
 
 bidet3d side (`../3D/bidet3d.py`): `load_unascii`, `read_stdin` (cached bytes;
@@ -92,7 +93,20 @@ plus a few contour lines only where shading is gentle (`--levels`).
 - **Tone mode on coloured art** treats default colours as light-on-dark (`dark=None` auto) and
   outlines each RGB channel (max of the three), else hue-only edges are missed. Glyph coverage is
   pooled per dot directly (no full-resolution picture any more: faster, less memory).
-- **Pixel budget**: huge art is drawn with a smaller cell (24 MP for tone/mix, 48 MP for line).
+- **Two modes** (user's design, 2026-10-07): `lineart` (cowsay, figlet; its methods are line / tone /
+  mix) and `ansi-block` (art made of blocks and graphic characters). The user saw DOPEFISH.ANS come out
+  as meaningless contour loops and asked for the split. `classify` returns `block` when > 30% of the
+  cells are blocks, braille or have a background colour; `-m lineart` turns that into `tone`. In block
+  mode the returned ink is the *alpha* of the picture (default-background cells are 0) and rgb is its
+  colour, so everything downstream (to_image, sixel) is unchanged. `mask()` and bidet3d force
+  `mode="lineart"` (bidet3d checks `unascii.VERSION >= "0.2"`) because a block picture as a shape would
+  be a solid rectangle. Colour block art is drawn like a terminal: `Options.ink` / `paper` are None by
+  default and `render_grid_color` fills them in (black paper + light-grey default text for dark colour
+  art, so the CLI reads `o.ink` / `o.paper` after rendering); `Grid.vga` (set for CP437 input) switches
+  the 16 ANSI colours to the VGA palette, which is what DOSBox shows (light red = coral). The user
+  compared `ansilove.ans` against DOSBox to arrive at this. An `--outline` overlay for block mode was tried (DoG lines over pixel art)
+  and removed: scribbles. Default softening is 0.12 dots (0.25 is blurry, 0 is crisp pixel art).
+- **Pixel budget**: huge art is drawn with a smaller cell (24 MP for tone/mix/block, 48 MP for line).
 - **Drawing**: PIL rounds a wide line differently by direction, and a cap wider than the line shows
   as beads; `draw_strokes` always draws left to right and caps with the integer width. Straight
   box-drawing cells are one stroke, edge to edge.
@@ -127,6 +141,37 @@ decoding with libsixel's `sixel2png` (max pixel diff = the 16-level
 quantization). For ad-hoc looks: `python unascii.py FILE -c 16 -w 1.3 -o
 out/x.png` then view the PNG; `out/` is gitignored. bidet3d needs
 `COLUMNS=160 LINES=60` set to render large PNGs when stdout is not a tty.
+
+## Performance (profiled 2026-10-07; `./bench.py [-p] [files]` shows parse / render / PNG / SIXEL)
+
+The sample set renders in ~1.2 s in all; the big pictures are where it shows (`UTF-8-demo.txt`, 211
+rows, mix mode: 4.7 s -> 1.1 s; the 156-row colour chart: 2.6 -> 0.8 s; the whole ScreenTests set
+and samples: 12.3 s -> 3.8 s). Python start + numpy/Pillow import is 0.35 s of any CLI run, which
+no code change helps. What was found, so it is not rediscovered:
+
+- **Work at the resolution the data has.** The picture that tone mode outlines is smooth (one value
+  per dot, blurred over many pixels), so its blurs / DoG / gradients run at ~4 px per dot and only the
+  signed DoG, edge strength and shading fields are scaled up (bicubic); the sub-pixel line position
+  is found on the full-size signed field. Output moved by a median 0 px (95th percentile 1-2 px).
+  Do not upsample the *distance* map: |x| has a V at the zero crossing and blurs.
+- **numpy is slow per call, fast per element.** Batch: the SIXEL encoder run-length codes all colours of
+  a six-row band in one go (`_rle_rows`); doing it row by row with array code was *slower* than a
+  Python loop. Convert to Python ints/lists before per-element loops.
+- **Pillow's C filters beat numpy blurs** (`ImageFilter.GaussianBlur` on 8-bit RGBA: ~130 ms for
+  3.5 MP, 4 channels). Block-mode softening uses it (premultiplied by alpha, isotropic radius).
+  The numpy `blur` is exact taps below sigma 6 and three box passes (cumsum) above: the box version
+  costs ~700 ms per 3.5 MP whatever sigma, so it only wins for wide blurs.
+- Line mode was never the problem (turkey: 0.07 s). Hatching at full resolution was (fixed earlier,
+  see `hatch_layer`); keep per-cell work at cell/sample resolution and scale up smoothly.
+- Still slowest: SIXEL of a tall many-colour picture (1.4 s for 948x3744): palette (`np.unique`,
+  median cut) plus the stream. Not worth more.
+
+## Third-party art: do not add it to the repo
+
+`DOPEFISH.ANS` and the other files in the user's ScreenTests folder are other people's artwork
+(DOPEFISH carries a "JS_LJ" credit) and this repo is public. Test with them from where they are;
+`samples/` and `examples/` hold only art generated here (cowsay, figlet, jp2a, chafa of a synthetic
+image, lolcat of cowsay).
 
 ## Stress tests (the user's ScreenTests folder, 2026-10-07)
 

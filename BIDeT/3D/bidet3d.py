@@ -290,7 +290,9 @@ def shape_mask(lines, font, line_mul, path, args):
         im = Image.fromarray((m * 255).astype(np.uint8)).resize((w, h), Image.LANCZOS)
     else:
         ua = load_unascii(required=True)
-        mode = args.lineart if isinstance(args.lineart, str) else "auto"
+        mode = args.lineart if isinstance(args.lineart, str) and args.lineart != "auto" else "auto"
+        if mode == "auto" and getattr(ua, "VERSION", "0.1") >= "0.2":
+            mode = "lineart"                     # never a block picture: a solid rectangle is no shape to extrude
         o = ua.Options(mode=mode, cell_w=int(round(adv)), aspect=(asc + desc) * line_mul / adv,
                        weight=args.pen, font=path, crop=True, verbose=args.debug)
         if hasattr(o, "color"):
