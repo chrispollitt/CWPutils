@@ -475,12 +475,46 @@ def _kernel(sigma):
     return (k / k.sum()).astype(np.float32), r
 
 
+def _box_sizes(sigma, n=3):
+    """Widths (odd) of n box filters whose product approximates a Gaussian of `sigma`."""
+    ideal = math.sqrt(12.0 * sigma * sigma / n + 1.0)
+    wl = int(math.floor(ideal))
+    if wl % 2 == 0:
+        wl -= 1
+    wl = max(1, wl)
+    m = int(round((12.0 * sigma * sigma - n * wl * wl - 4.0 * n * wl - 3.0 * n) / (-4.0 * wl - 4.0)))
+    return [wl if i < m else wl + 2 for i in range(n)]
+
+
+def _box_pass(a, width, axis):
+    """Moving average of `width` (odd) along axis, edges replicated: one cumulative sum, so
+    the cost does not depend on the width."""
+    r = width // 2
+    if r == 0:
+        return a
+    pad = [(0, 0), (0, 0)]
+    pad[axis] = (r, r)
+    c = np.cumsum(np.pad(a, pad, mode="edge"), axis=axis, dtype=np.float64)
+    n = a.shape[axis]
+    if axis == 1:
+        hi, lo = c[:, width - 1:width - 1 + n], np.concatenate([np.zeros((c.shape[0], 1)), c[:, :n - 1]], 1)
+    else:
+        hi, lo = c[width - 1:width - 1 + n], np.concatenate([np.zeros((1, c.shape[1])), c[:n - 1]], 0)
+    return ((hi - lo) / width).astype(np.float32)
+
+
 def blur(a, sx, sy=None):
-    """Gaussian blur, separable, edge-replicating.  sigma in pixels per axis."""
+    """Gaussian blur, separable, edge-replicating.  sigma in pixels per axis.  Small sigmas
+    are convolved exactly; from 2.5 px up three box filters stand in for the Gaussian (within a
+    percent or two of it, and no slower for a wide blur than a narrow one)."""
     sy = sx if sy is None else sy
     a = a.astype(np.float32)
     for axis, s in ((1, sx), (0, sy)):
         if s < 0.3:
+            continue
+        if s >= 2.5:
+            for width in _box_sizes(s):
+                a = _box_pass(a, width, axis)
             continue
         k, r = _kernel(s)
         pad = [(0, 0), (0, 0)]
@@ -1008,15 +1042,25 @@ def hatch_layer(mask, cw, ch, w, space):
     """Diagonal hatching ("/" lines, w pixels wide, `space` pixels apart across the lines)
     filling the cells where mask is true.  The pattern is anchored to the picture, so
     neighbouring shaded regions line up."""
-    m = np.kron(np.asarray(mask, np.float32), np.ones((ch, cw), np.float32))
-    # the region follows the cell grid; soften it so slanted edges are slanted, not stepped
-    m = smoothstep((blur(np.pad(m, ((ch, ch), (cw, cw)), mode="constant"), 0.5 * cw, 0.25 * ch)
-                    [ch:-ch, cw:-cw] - 0.35) / 0.3)
-    ys, xs = np.mgrid[0:m.shape[0], 0:m.shape[1]]
+    mask = np.asarray(mask, bool)
+    rows, cols = mask.shape
+    out = np.zeros((rows * ch, cols * cw), np.float32)
+    ys_, xs_ = np.nonzero(mask)
+    r0, r1, c0, c1 = max(0, ys_.min() - 1), min(rows, ys_.max() + 2), max(0, xs_.min() - 1), min(cols, xs_.max() + 2)
+    # the region follows the cell grid; soften it so slanted edges are slanted, not stepped.
+    # Done on 4x4 samples per cell and scaled up smoothly: a wide blur at full size is slow.
+    k = 4
+    m = np.kron(mask[r0:r1, c0:c1].astype(np.float32), np.ones((k, k), np.float32))
+    m = blur(np.pad(m, k, mode="constant"), 0.5 * k, 0.25 * k)[k:-k, k:-k]
+    m = np.asarray(Image.fromarray(m, "F").resize(((c1 - c0) * cw, (r1 - r0) * ch), Image.BICUBIC), np.float32)
+    m = smoothstep((m - 0.35) / 0.3)
+    ys = np.arange(r0 * ch, r1 * ch, dtype=np.float32)[:, None]
+    xs = np.arange(c0 * cw, c1 * cw, dtype=np.float32)[None, :]
     period = space * math.sqrt(2.0)
-    u = (xs + ys) % period
+    u = np.mod(xs + ys, period)
     dist = np.minimum(u, period - u) / math.sqrt(2.0)
-    return (np.clip(0.5 * w - dist + 0.5, 0.0, 1.0) * m).astype(np.float32)
+    out[r0 * ch:r1 * ch, c0 * cw:c1 * cw] = np.clip(0.5 * w - dist + 0.5, 0.0, 1.0) * m
+    return out
 
 
 def draw_strokes(strokes, W, H, w, ss):
