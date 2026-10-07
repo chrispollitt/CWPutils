@@ -278,6 +278,26 @@ def draw_mask(lines, font, spacing, line_mul, block=False):
     return im.crop(im.getbbox() or (0, 0, 1, 1))
 
 
+def shape_mask(lines, font, line_mul, path, args):
+    """The flat shape to extrude when it is not just text in a font: ASCII art redrawn as a
+    line drawing by unascii (one character cell = one cell of this font), or a picture."""
+    asc, desc = font.getmetrics()
+    adv = _advance(font, "M")
+    if args._image is not None:
+        m = image_mask(args._image)
+        w = max(1, int(max(len(ln) for ln in lines) * adv))
+        h = max(1, int(round(w * m.shape[0] / float(m.shape[1]))))
+        im = Image.fromarray((m * 255).astype(np.uint8)).resize((w, h), Image.LANCZOS)
+    else:
+        ua = load_unascii(required=True)
+        mode = args.lineart if isinstance(args.lineart, str) else "auto"
+        o = ua.Options(mode=mode, cell_w=int(round(adv)), aspect=(asc + desc) * line_mul / adv,
+                       weight=args.pen, font=path, crop=True, verbose=args.debug)
+        ink = ua.render_grid(args._grid, o)
+        im = Image.fromarray((np.clip(ink, 0, 1) * 255 + 0.5).astype(np.uint8))
+    return im.crop(im.getbbox() or (0, 0, 1, 1))
+
+
 def bilinear(arr, sx, sy):
     h, w = arr.shape
     x0 = np.floor(sx).astype(np.int32)
@@ -463,12 +483,18 @@ def build_layer(lines, p, px, ss, args, tex_dir):
     font = load_font(path, sz)
     if args.debug:
         print("font: %s" % path, file=sys.stderr)
+    drawn = getattr(args, "_grid", None) is not None or getattr(args, "_image", None) is not None
     if args.line is not None:
         line_mul = args.line
+    elif drawn:
+        line_mul = 1.0               # drawn strokes meet at the cell edge; no overlap needed
     else:
         line_mul = ART_LINE if art else (0.8 if p["stacked"] else 1.0)
-    mask_im = draw_mask(lines, font, 0.0 if art else p["spacing"] * sz, line_mul,
-                         block=args.preserve)
+    if drawn:
+        mask_im = shape_mask(lines, font, line_mul, path, args)
+    else:
+        mask_im = draw_mask(lines, font, 0.0 if art else p["spacing"] * sz, line_mul,
+                            block=args.preserve)
     m = np.asarray(mask_im, np.float32) / 255.0
     shape = args.shape or p["shape"]
     if shape and shape != "plain":
@@ -901,10 +927,60 @@ def looks_like_art(raw):
     return symbols >= 0.3 or gappy >= 2 and gappy * 3 >= len(rows)
 
 
+_stdin_bytes = None
+IMAGE_MAGIC = (b"\x89PNG", b"\xff\xd8\xff", b"GIF8")
+IMAGE_COLS = 64          # a picture is sized as if it were this many characters wide
+
+
+def read_stdin():
+    global _stdin_bytes
+    if _stdin_bytes is None:
+        _stdin_bytes = b"" if sys.stdin.isatty() else sys.stdin.buffer.read()
+    return _stdin_bytes
+
+
+def load_image(source):
+    """--image FILE ('-' = stdin), or a picture piped in: a PIL image, or None."""
+    try:
+        if source == "-":
+            return Image.open(io.BytesIO(read_stdin())).copy()
+        return Image.open(source).copy()
+    except (IOError, OSError, ValueError) as e:
+        sys.exit("bidet3d: cannot read image %s: %s" % ("on stdin" if source == "-" else source, e))
+
+
+def image_mask(img):
+    """A picture as a flat shape, float32 0..1: its alpha if it has any, else how far each
+    pixel differs from the background (the median of the border), so black-on-white line
+    drawings and white-on-black ones both work."""
+    if img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info:
+        a = np.asarray(img.convert("RGBA"), np.float32)[..., 3]
+        if a.min() < 250:
+            return a / 255.0
+    g = np.asarray(img.convert("L"), np.float32)
+    edge = np.concatenate([g[0], g[-1], g[:, 0], g[:, -1]])
+    diff = np.abs(g - np.median(edge))
+    return np.clip(diff / max(48.0, float(np.percentile(diff, 99.5))), 0, 1)
+
+
 def get_lines(args, preset):
     from_stdin = not args.text or args.text == ["-"]
+    args._grid = args._image = None
+    if args.image:
+        args._image = load_image(args.image)
+    elif from_stdin and read_stdin().startswith(IMAGE_MAGIC):
+        args._image = load_image("-")
+    if args._image is not None:                  # a picture is sized like a block of text
+        cell = 0.6 / 1.1                         # character width / line height
+        rows = max(1, int(round(IMAGE_COLS * cell * args._image.height / float(args._image.width))))
+        args.art = args.preserve = True
+        return [" " * IMAGE_COLS] * rows
     if from_stdin:
-        raw = sys.stdin.read().splitlines() if not sys.stdin.isatty() else []
+        data = read_stdin()
+        try:                                     # UTF-8 if it is (cowsay, jp2a...), else the locale's
+            raw = data.decode("utf-8").splitlines()
+        except UnicodeDecodeError:
+            raw = data.decode(sys.stdin.encoding or "latin-1", "replace").splitlines()
     else:
         raw = args.text
     if not raw:
@@ -915,6 +991,11 @@ def get_lines(args, preset):
             print("art: detected ASCII art (use --no-art to wrap as prose)", file=sys.stderr)
     if args.art:
         args.preserve = True
+        if args.lineart is not False:            # draw it as pen strokes instead of font glyphs
+            ua = load_unascii(required=args.lineart is not None)
+            if ua:
+                args._grid = ua.parse("\n".join(raw))
+                return ["".join(r) for r in args._grid.ch]
         return [l.expandtabs(8) for ln in raw for l in ln.split("\n")]
     if preset["stacked"]:
         chars = "".join(raw).replace("\n", "")
@@ -1008,6 +1089,34 @@ def load_gfx(name):
             return _gfx[name]
     sys.exit("bidet3d: this output format needs the gfx-conv converters (%s.py not found).\n"
              "Run 'make install', or point BIDET3D_GFX at the gfx-conv directory." % name)
+
+
+_unascii = None
+
+
+def load_unascii(required=False):
+    """Import unascii (ASCII art -> line drawing), looked for in $BIDET3D_UNASCII, next to a
+    source checkout (../unascii), and where 'make install' puts it.  None if it is not
+    there, unless required (then bidet3d exits)."""
+    global _unascii
+    if _unascii is None:
+        here = os.path.dirname(os.path.realpath(__file__))
+        dirs = [os.environ.get("BIDET3D_UNASCII"), os.path.join(here, "..", "unascii"),
+                os.path.join(here, "unascii"), os.path.join(here, "..", "share", "BIDeT3D", "unascii"),
+                "/usr/local/share/BIDeT3D/unascii", "/usr/share/BIDeT3D/unascii"]
+        _unascii = False
+        for d in dirs:
+            if d and os.path.isfile(os.path.join(d, "unascii.py")):
+                sys.path.insert(0, d)
+                try:
+                    _unascii = __import__("unascii")
+                finally:
+                    sys.path.pop(0)
+                break
+    if not _unascii and required:
+        sys.exit("bidet3d: --lineart needs unascii (unascii.py not found).\n"
+                 "Run 'make install', or point BIDET3D_UNASCII at the unascii directory.")
+    return _unascii or None
 
 
 def pick_format(sixel_ok):
@@ -1564,6 +1673,19 @@ def main():
                     help="input is ASCII art: keep lines aligned, use a monospace font, no letter-spacing, "
                          "tighter lines (implies -p).  Piped multi-line art is detected automatically")
     ap.add_argument("--no-art", dest="art", action="store_false", help="never auto-detect ASCII art")
+    ap.add_argument("--lineart", nargs="?", const="auto", default=None, dest="lineart",
+                    choices=["auto", "line", "tone", "mix"], metavar="MODE",
+                    help="ASCII art is redrawn as a line drawing (by unascii) before it is extruded; this is "
+                         "the default whenever art mode is on.  MODE: line (strokes), tone (picture-style "
+                         "art: outlines of the density), mix, or auto (default)")
+    ap.add_argument("--no-lineart", dest="lineart", action="store_const", const=False,
+                    help="extrude the font's glyphs as they are instead of redrawing the art")
+    ap.add_argument("--pen", type=float, default=2.2,
+                    help="line drawing: pen thickness, 1 = about the font's stem (default 2.2)")
+    ap.add_argument("--image", metavar="FILE",
+                    help="extrude a picture instead of text: its alpha, or whatever differs from its "
+                         "background ('-' = stdin; a PNG/JPEG/GIF piped in is recognised, e.g. "
+                         "unascii art.txt -o - | bidet3d)")
     ap.add_argument("-l", "--line", type=float, default=None,
                     help="line spacing (default 1.0; %s for ASCII art)" % ART_LINE)
     ap.add_argument("-p", "--preserve", action="store_true", help="preserve newlines instead of re-wrapping")
@@ -1635,6 +1757,7 @@ def main():
     if args.colors is None:
         args.colors = 256       # animations share one palette across frames; 128 showed contour banding
     args._fill = ("solid", "#%02x%02x%02x" % parse_color(args.colour)) if args.colour else None
+    args._grid = args._image = None
 
     global _verbose
     _verbose = args.debug

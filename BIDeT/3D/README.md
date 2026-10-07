@@ -67,6 +67,8 @@ width, `-d` debug, `-v` version. Text comes from the arguments or stdin.
 | option | meaning |
 | --- | --- |
 | `-a`, `--art` | input is ASCII art: lines stay aligned, monospace font, no letter-spacing, line spacing 0.9 (implies `-p`). Piped multi-line art such as `cowsay` output is detected automatically; `--no-art` disables that |
+| `--lineart[=MODE]`, `--no-lineart`, `--pen N` | art mode redraws the art as a line drawing with [`../unascii`](../unascii/) before extruding it: strokes joined into continuous curves instead of rows of glyphs. On by default in art mode; `MODE` is `line`, `tone`, `mix` or `auto`; `--pen` is the thickness (default 2.2) |
+| `--image FILE` | extrude a picture instead of text (alpha, or what differs from the background; `-` = stdin). A PNG/JPEG/GIF piped in is recognised: `unascii art.txt -o - \| bidet3d` |
 | `-P NAME` | preset (`--list-presets`), or `random`; default `rainbow` |
 | `--gallery` | show every preset with your text |
 | `--depth EM` | extrusion depth |

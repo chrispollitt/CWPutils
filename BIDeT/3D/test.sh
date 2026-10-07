@@ -16,6 +16,17 @@ for f in kitty iterm ansi tek tek-dots tek-contour; do
 done
 head -c 8 "$out/f.kitty" | grep -q $'^\x1b_Ga=T' || { echo "FAIL --format kitty header"; fail=1; }
 echo "output formats ok"
+# ASCII art: redrawn as a line drawing by ../unascii (the default in art mode), the old glyphs,
+# and a picture piped in from unascii as the shape
+if [ -f ../unascii/unascii.py ]; then
+  art=$'  ___\n (o o)\n  \\_/ \n /| |\\\n  | |'
+  printf '%s\n' "$art" | $py bidet3d.py --png "$out/art.png" && [ -s "$out/art.png" ] || { echo "FAIL art lineart"; fail=1; }
+  printf '%s\n' "$art" | $py bidet3d.py --no-lineart --png "$out/art-glyphs.png" && [ -s "$out/art-glyphs.png" ] || { echo "FAIL art --no-lineart"; fail=1; }
+  printf '%s\n' "$art" | $py bidet3d.py --lineart=tone --pen 3 --png "$out/art-tone.png" || { echo "FAIL --lineart=tone"; fail=1; }
+  printf '%s\n' "$art" | $py ../unascii/unascii.py -w 2 -o - | $py bidet3d.py --png "$out/art-pipe.png" && [ -s "$out/art-pipe.png" ] \
+    || { echo "FAIL unascii | bidet3d"; fail=1; }
+  echo "lineart + image input ok"
+fi
 if command -v img2sixel >/dev/null || $py -c "import libsixel" 2>/dev/null; then
   $py bidet3d.py -P chrome "Hello, SIXEL" > "$out/t.six" && head -c 2 "$out/t.six" | grep -q $'\x1bP' || { echo "FAIL sixel"; fail=1; }
   $py bidet3d.py --spin --frames 3 --fps 5 --spin-speed 120 -P superhero "Spin" >/dev/null || fail=1

@@ -77,6 +77,30 @@ spaces) is treated this way automatically.
 .B \-\-no\-art
 Never auto\-detect ASCII art.
 .TP
+.BR \-\-lineart [=\fIMODE\fR]
+Redraw ASCII art as a line drawing before it is extruded, using
+.BR unascii (1):
+the characters are read as pen strokes whose ends are joined into continuous curves
+(\fBline\fR), or as ink density from which outlines are traced, for picture\-style
+art such as jp2a output (\fBtone\fR); \fBmix\fR does both and \fBauto\fR (the default) chooses.
+This is on by default whenever art mode is, whether from \fB\-a\fR or from auto\-detection,
+if \fIunascii.py\fR can be found (see \fBBIDET3D_UNASCII\fR); the line spacing is then 1.0.
+.TP
+.B \-\-no\-lineart
+Extrude the font's glyphs as they are instead.
+.TP
+.BR \-\-pen =\fIN\fR
+Pen thickness of the line drawing, 1 being about the stem of the font (default 2.2).
+.TP
+.BR \-\-image =\fIFILE\fR
+Extrude a picture instead of text.
+Its alpha channel is the shape if it has one, otherwise whatever differs from its background
+(the median of its border), so black\-on\-white and white\-on\-black line drawings both work.
+\fB\-\fR reads the picture from standard input.
+A PNG, JPEG or GIF piped in is recognised without this option, which makes
+.B unascii art.txt \-o \- | bidet3d
+work.
+.TP
 .BR \-p ", " \-\-preserve
 Keep the input's newlines instead of re\-wrapping the text to the wrap width.
 .TP
@@ -368,6 +392,11 @@ Directory with the \fIgfx\-conv\fR converters (\fIsixel2kitty.py\fR and the othe
 By default they are looked for next to a source checkout (\fI../gfx\-conv\fR) and in
 \fI../share/BIDeT3D/gfx\fR relative to the program, where \fBmake install\fR puts them.
 .TP
+.B BIDET3D_UNASCII
+Directory with \fIunascii.py\fR, used by \fB\-\-lineart\fR.
+By default it is looked for next to a source checkout (\fI../unascii\fR) and in
+\fI../share/BIDeT3D/unascii\fR relative to the program, where \fBmake install\fR puts it.
+.TP
 .B BIDET3D_EMULATE
 If set, \fB\-\-time\-machine\fR draws its own imitations of banner, FIGlet and TOIlet
 even if the real programs are installed.
@@ -413,6 +442,8 @@ bidet3d \-\-gallery
 bidet3d \-\-time\-machine "BIDeT"
 bidet3d \-\-time\-machine \-\-stage\-time 5 \-P superhero \-\-sway 25 "Hello"
 echo "From a pipe" | bidet3d \-P rainbow
+cowthink \-f turkey "gobble" | bidet3d \-P rainbow
+cowsay \-f dragon "Rawr" | unascii \-w 2.5 \-o \- | bidet3d \-P chrome
 bidet3d \-P chrome \-\-png chrome.png "Look, a PNG"
 .fi
 .SH "DIFFERENCES FROM BIDET"
@@ -454,6 +485,7 @@ Add additional effects (borders, patterns and so on).
 .BR figlet (6),
 .BR toilet (1),
 .BR img2sixel (1),
+.BR unascii (1),
 .BR mintty (1),
 .BR xterm (1),
 .BR mlterm (1)

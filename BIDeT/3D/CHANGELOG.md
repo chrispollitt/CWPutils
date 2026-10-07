@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- ASCII art is redrawn before it is extruded: art mode (`-a`, or art detected on a pipe) now
+  runs the art through the new `../unascii`, which reads the characters as pen strokes, joins
+  the ends that meet into continuous curves and rounds the corners (cowsay, figlet, boxes), or
+  traces outlines of the density for picture-style art (jp2a, chafa, braille, half blocks). The
+  extruded result is one drawing instead of rows of glyphs. `--no-lineart` restores the old
+  glyphs, `--lineart=MODE` forces a method, `--pen` sets the thickness; line spacing is 1.0 for
+  drawn art. `BIDET3D_UNASCII` / `make install` find `unascii.py` like the gfx-conv modules; if it
+  is missing, art mode falls back to glyphs.
+- Drawn art (unascii): joined strokes are spline-smoothed (diagonals and waves instead of staircases;
+  corners stay sharp), cowsay speech bubbles close at the bottom, and runs of `X` become hatched
+  shading. `unascii --spline F`, `--shade CHARS`, `--hatch F`; defaults apply in bidet3d.
+- `--image FILE`, or a PNG/JPEG/GIF on stdin, extrudes a picture instead of text, so
+  `unascii art.txt -o - | bidet3d` works as a pipeline.
+
 - `-F/--format`: print kitty graphics, iTerm2 inline images, ANSI art or Tektronix vectors as well as SIXEL
   (or `auto`), via the `../gfx-conv` converters, which `make install` now installs under
   `share/BIDeT3D/gfx` and links into `bin`. `BIDET3D_GFX` points elsewhere. These formats keep a

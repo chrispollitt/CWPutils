@@ -17,6 +17,10 @@ GFX      = ../gfx-conv
 GFXLIB   = sixeldec.py
 GFXTOOLS = sixel2ans sixel2iterm sixel2kitty sixel2tek
 
+# ASCII art -> line drawing (--lineart, and a tool of its own) lives in ../unascii; installed
+# under DATADIR/unascii and linked into BINDIR as unascii.
+UNASCII  = ../unascii
+
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bidet3d.py)
 DOCS    = README.md LICENSE 3RDPARTY CHANGELOG.md
 DISTFILES = bidet3d.py bidet3d.1 Makefile requirements.txt test.sh profiling.sh get-textures.sh \
@@ -30,7 +34,7 @@ help:
 	@echo "  test, check  - lint, then render every preset (test.sh)"
 	@echo "  man          - read the man page without installing it"
 	@echo "  textures     - fetch the optional Word textures (get-textures.sh)"
-	@echo "  install      - install bidet3d, its man page, docs and the gfx-conv converters under PREFIX"
+	@echo "  install      - install bidet3d, its man page, docs, the gfx-conv converters and unascii under PREFIX"
 	@echo "  uninstall    - remove them again"
 	@echo "  installreq   - install the required OS packages (Debian/Ubuntu, as root)"
 	@echo "  dist         - make bidet3d-$(VERSION).tar.gz"
@@ -47,6 +51,8 @@ lint:
 	@for f in $(GFXLIB) $(addsuffix .py,$(GFXTOOLS)); do \
 	    $(PYTHON) -c "import ast,sys; ast.parse(open(sys.argv[1], encoding='utf-8').read())" $(GFX)/$$f || exit 1; \
 	done
+	@$(PYTHON) -c "import ast,sys; ast.parse(open(sys.argv[1], encoding='utf-8').read())" $(UNASCII)/unascii.py
+	@sh -n $(UNASCII)/test.sh
 	@if command -v groff >/dev/null 2>&1; then \
 	    out=$$(groff -man -ww -z bidet3d.1 2>&1); \
 	    if [ -n "$$out" ]; then echo "$$out"; exit 1; fi; \
@@ -58,6 +64,7 @@ lint:
 test check: lint
 	./test.sh
 	cd $(GFX) && PYTHON=$(PYTHON) ./test.sh
+	cd $(UNASCII) && PYTHON=$(PYTHON) ./test.sh
 
 man:
 	man ./bidet3d.1
@@ -66,7 +73,7 @@ textures:
 	./get-textures.sh
 
 # Run as root (or set PREFIX and DESTDIR)
-install: install-bin install-man install-data install-gfx
+install: install-bin install-man install-data install-gfx install-unascii
 
 install-bin:
 	$(INSTALL) -d $(BINDIR)
@@ -96,9 +103,18 @@ install-gfx:
 	$(INSTALL) -m 644 $(GFX)/GRAPHICS-HISTORY.md $(DOCDIR)
 	for t in $(GFXTOOLS); do ln -sf ../share/BIDeT3D/gfx/$$t.py $(BINDIR)/$$t; done
 
+# unascii: the module (where bidet3d --lineart finds it) and the tool, linked into BINDIR
+install-unascii:
+	$(INSTALL) -d $(DATADIR)/unascii $(BINDIR)
+	$(INSTALL) -m 755 $(UNASCII)/unascii.py $(DATADIR)/unascii
+	$(INSTALL) -d $(DOCDIR)
+	$(INSTALL) -m 644 $(UNASCII)/README.md $(DOCDIR)/unascii.md
+	ln -sf ../share/BIDeT3D/unascii/unascii.py $(BINDIR)/unascii
+
 uninstall:
 	rm -f $(BINDIR)/bidet3d $(MANDIR)/bidet3d.1
 	for t in $(GFXTOOLS); do rm -f $(BINDIR)/$$t; done
+	rm -f $(BINDIR)/unascii
 	rm -rf $(DOCDIR) $(DATADIR)
 
 # Run once, as root.  Elsewhere: pip install -r requirements.txt  (and see README.md)
@@ -118,6 +134,9 @@ dist: lint
 	mkdir -p dist/bidet3d-$(VERSION)/gfx
 	cp $(addprefix $(GFX)/,$(GFXLIB) $(addsuffix .py,$(GFXTOOLS)) README.md GRAPHICS-HISTORY.md test.sh) \
 	   dist/bidet3d-$(VERSION)/gfx
+	mkdir -p dist/bidet3d-$(VERSION)/unascii/samples
+	cp $(UNASCII)/unascii.py $(UNASCII)/README.md $(UNASCII)/test.sh dist/bidet3d-$(VERSION)/unascii
+	cp $(UNASCII)/samples/* dist/bidet3d-$(VERSION)/unascii/samples
 	tar -C dist -czf bidet3d-$(VERSION).tar.gz bidet3d-$(VERSION)
 	rm -rf dist
 	@echo "made bidet3d-$(VERSION).tar.gz (the css3wordart textures are not included)"
@@ -126,4 +145,4 @@ clean:
 	rm -rf __pycache__ dist bidet3d-*.tar.gz
 
 .PHONY: all help version lint test check man textures install install-bin install-man \
-        install-data install-gfx uninstall installreq dist clean
+        install-data install-gfx install-unascii uninstall installreq dist clean
