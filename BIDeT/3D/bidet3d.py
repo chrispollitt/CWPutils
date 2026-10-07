@@ -939,8 +939,30 @@ def make_scene(args, name, tex_dir, max_w, max_h, px=None, ss=None):
     if px is None:
         px = args.size or auto_px(lines, p, max_w, max_h)
     ss = ss or args.ss
+    px = fit_px(lines, p, px, args, tex_dir, max_w, max_h)
     L = build_layer(lines, p, px, ss, args, tex_dir)
     return p, L
+
+
+PROBE_PX = 24
+
+
+def fit_px(lines, p, px, args, tex_dir, max_w, max_h):
+    """finish() shrinks the picture to the terminal, so a font size that makes the layer
+    larger than that only buys discarded pixels, and the cost grows ~ px**3 (a layer
+    5000 px wide takes 30 s on a laptop).  Cap px at the size that just fits; layer size
+    is linear in px, so one cheap probe build says where that is."""
+    if px <= PROBE_PX:
+        return px
+    probe_args = copy.copy(args)
+    probe_args.debug = False
+    L = build_layer(lines, p, PROBE_PX, 1, probe_args, tex_dir)
+    fit = max(PROBE_PX, int(min(max_w / float(L.w), max_h / float(L.h)) * PROBE_PX))
+    if fit < px:
+        if args.debug:
+            print("size: -s %d does not fit the terminal; using %d" % (px, fit), file=sys.stderr)
+        px = fit
+    return px
 
 
 def pick_view(p, args):

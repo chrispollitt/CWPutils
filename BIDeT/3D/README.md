@@ -151,6 +151,7 @@ Without them a procedural stand-in is used and everything still works.
 - `requirements.txt`, `CHANGELOG.md`, `LICENSE`
 - `bidet3d.1`: man page (`man ./bidet3d.1`; install to `/usr/local/share/man/man1/`)
 - `test.sh`: smoke test (renders every preset to PNG; SIXEL if img2sixel is there)
+- `profiling.sh`: how render time grows with `-s`, build vs render stage (`./profiling.sh scale`)
 - `get-textures.sh`: optional texture download
 - `3RDPARTY`: what this borrows from, and from whom
 

@@ -7,3 +7,6 @@ dist/
 bidet3d-*.tar.gz
 # raw screen recordings (the README uses images/time-machine.*)
 Capture*.wmv
+# profiling.sh output
+profiling.log
+profiling-input.txt

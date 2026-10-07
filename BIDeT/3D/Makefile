@@ -19,7 +19,7 @@ GFXTOOLS = sixel2ans sixel2iterm sixel2kitty sixel2tek
 
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bidet3d.py)
 DOCS    = README.md LICENSE 3RDPARTY CHANGELOG.md
-DISTFILES = bidet3d.py bidet3d.1 Makefile requirements.txt test.sh get-textures.sh \
+DISTFILES = bidet3d.py bidet3d.1 Makefile requirements.txt test.sh profiling.sh get-textures.sh \
             .gitattributes .gitignore $(DOCS)
 
 all: lint
@@ -43,7 +43,7 @@ version:
 
 lint:
 	@$(PYTHON) -c "import ast; ast.parse(open('bidet3d.py', encoding='utf-8').read())"
-	@sh -n test.sh && sh -n get-textures.sh
+	@sh -n test.sh && sh -n profiling.sh && sh -n get-textures.sh
 	@for f in $(GFXLIB) $(addsuffix .py,$(GFXTOOLS)); do \
 	    $(PYTHON) -c "import ast,sys; ast.parse(open(sys.argv[1], encoding='utf-8').read())" $(GFX)/$$f || exit 1; \
 	done
