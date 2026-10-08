@@ -13,11 +13,11 @@ DOCDIR  = $(DESTDIR)$(PREFIX)/share/doc/bidet4d
 # The tools (linked into BINDIR without the .py) and the modules they import.  All of them are installed
 # together in DATADIR: a tool linked into BINDIR runs from there, because Python puts the directory of the
 # real script first on its path.
-TOOLS   = bif bifin bifout
+TOOLS   = bif bifin bifop bifout
 LIB     = bifrender.py bifsixel.py bifin_text.py ttfglyphs.py tonetrace.py
 PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB)
 DOCS    = README.md BIF-SPEC.md HANDOFF.md
-TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifin.py tests/test_tonetrace.py tests/test_parity.py \
+TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifin.py tests/test_tonetrace.py tests/test_bifop.py tests/test_parity.py \
           tests/make_testdata.py tests/reference/unascii_v3.py
 
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bifin.py)
@@ -55,6 +55,7 @@ test-quick: lint
 	$(PYTHON) -W ignore tests/test_bifout.py
 	$(PYTHON) -W ignore tests/test_bifin.py
 	$(PYTHON) -W ignore tests/test_tonetrace.py
+	$(PYTHON) -W ignore tests/test_bifop.py
 
 test check: lint
 	PYTHON=$(PYTHON) ./test.sh --quick

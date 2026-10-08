@@ -1,15 +1,16 @@
 # BIDeT 4D
 
 Re-architecture of BIDeT3D / unascii into three tools that talk through one file format.
-Status: 2026-10-07, **M0 to M3 done**: the format spec (draft 2), its reference library `bif.py`,
+Status: 2026-10-07, **M0 to M3 done, M4 started**: the format spec (draft 2), its reference library `bif.py`,
 Tool 3 (`bifout`: BIF -> PNG / SIXEL) and Tool 1 for terminal art (`bifin`) exist, are tested, and draw
-what unascii draws (the parity gate).  New here? Read [`HANDOFF.md`](HANDOFF.md).
-Tool 2 (`bifop`) does not exist yet. `../3D` (BIDeT3D, with `3D/unascii` and `3D/gfx-conv`) is **legacy**:
+what unascii draws (the parity gate); Tool 2 (`bifop`) has its first operations.  New here? Read
+[`HANDOFF.md`](HANDOFF.md). `../3D` (BIDeT3D, with `3D/unascii` and `3D/gfx-conv`) is **legacy**:
 it gets no new features or fixes. 4D does not depend on it: the parity tests use a frozen copy of unascii
 (`tests/reference/`) and 4D's own `samples/`; only an optional SIXEL decoder test looks in `3D/gfx-conv`.
 
     bifin cow.txt | bifout -s                     # the whole pipeline, SIXEL on the terminal
     bifin art.ans -o art.bif && bifout art.bif -o art.png --scale 3 --ink "#00ff66" --paper "#101820"
+    bifin figlet.txt | bifop wave:amplitude=0.1 pen:1.5 crop:margin=8 | bifout -o wordart.png --scale 2
 
 | file | what |
 | --- | --- |
@@ -19,11 +20,12 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
 | [`bifin_text.py`](bifin_text.py) | the text importer: unascii's reader, classifier and line / tone / block methods (ported by copy, unchanged) plus a new assembly that emits layers: `strokes`, `text` and `tone` (vector), `text-mask`, `hatch`, `picture` (raster), `cells` (hidden grid); SAUCE records read (title, credit, width) |
 | [`ttfglyphs.py`](ttfglyphs.py) | TrueType outlines (glyf, cmap 4 / 12, composites, .ttc) with no dependencies: letters become vectors. CFF / other fonts fall back to a raster `text-mask` |
 | [`tonetrace.py`](tonetrace.py) | marching squares: contour lines of a field as sub-pixel polylines, plus stitching, simplification and bilinear sampling. Tone mode (picture-style art: jp2a, chafa, shaded ASCII) is traced with it, so its outlines are vectors whose width fades with the edge strength (`--tone-raster` for unascii's raster of them) |
+| [`bifop.py`](bifop.py) | **Tool 2**: `bifop OP [OP ...]` reads a BIF (stdin or `-i`), writes the changed BIF (stdout or `-o`). Operations: `pen` (line thickness), `theme` / `recolor` (colours by role or number), `opacity`, `blend`, `crop`, `scale`, `rotate`, `flip`, `keep` / `drop` / `hide` / `show` (layers), `frame`, `meta`, `simplify`, and the WordArt warps `wave`, `arc`, `squeeze` (on vector layers). `bifop --list` describes them; they are registered with `@op`. It does what BIF-SPEC.md asks of a manipulator: passes on everything it does not know, keeps the credit and licence, appends to `meta.history`. |
 | [`bifout.py`](bifout.py) | **Tool 3**: `bifout x.bif -o x.png [--scale S \| --width PX] [--ink C --paper C]`, `bifout x.bif -s` (SIXEL), pipes both ways. Writers are registered in `WRITERS` |
 | [`bifrender.py`](bifrender.py) | BIF -> pixels: vector layers (strokes, fills with holes, caps / joins, tapers, transforms), raster layers (affine, smooth or nearest), blend modes, `ink` / `paper` role overrides |
 | [`bifsixel.py`](bifsixel.py) | the SIXEL encoder (from v3, with a bug fixed, see below) |
 | [`testdata/`](testdata/) | reference files for any implementation: `good/` (with the expected contents as JSON) and `bad/` (each must be rejected; `manifest.json` says why) |
-| [`tests/`](tests/) | `test_bif.py` (37 tests: the files above, round trips, fuzzing, API, CLI), `test_bifout.py` (47: geometry, rasters, blending, SIXEL decoded back, CLI, parity with v3's `draw_strokes` / `sixel`), `test_bifin.py` (47: outlines vs FreeType, SAUCE, every sample, the cells layer equals the art, modes and options, hostile input, tone as vector lines, parity with unascii per sample, CLI), `test_tonetrace.py` (14: marching squares: every traced point is on the level, loops, saddles, borders, speed), `test_parity.py` (**the M3 gate**, see Milestones; also the vector tone lines), `reference/unascii_v3.py` (the frozen v3 it compares with), `make_testdata.py` |
+| [`tests/`](tests/) | `test_bif.py` (37 tests: the files above, round trips, fuzzing, API, CLI), `test_bifout.py` (47: geometry, rasters, blending, SIXEL decoded back, CLI, parity with v3's `draw_strokes` / `sixel`), `test_bifin.py` (47: outlines vs FreeType, SAUCE, every sample, the cells layer equals the art, modes and options, hostile input, tone as vector lines, parity with unascii per sample, CLI), `test_tonetrace.py` (14: marching squares: every traced point is on the level, loops, saddles, borders, speed), `test_bifop.py` (44: the manipulator contract, each operation against what it must do to the drawing, the warps against their formulas, CLI), `test_parity.py` (**the M3 gate**, see Milestones; also the vector tone lines), `reference/unascii_v3.py` (the frozen v3 it compares with), `make_testdata.py` |
 | [`samples/`](samples/) | the art the tests use (cowsay, figlet, toilet, jp2a, chafa output; nothing third-party) |
 | [`HANDOFF.md`](HANDOFF.md) | state, decisions, gaps and working notes for whoever continues |
 | [`test.sh`](test.sh) | runs the tests: everything (about 10 minutes), or `--quick` (a smoke subset of the parity gate, about 3 minutes); verified on Python 3.11 / numpy 2.2 / Pillow 11 and Python 3.8 / numpy 1.17 / Pillow 7, the fast suites also on Cygwin's Python 3.12 / numpy 2.5 / Pillow 12 (not on 3.7 / 1.16 / 5.4) |
@@ -105,7 +107,10 @@ the `shape` layer of a BIF instead of the lossy `mask()` call.
    The files are 3-5x smaller than the raster ones, and the lines are sharp and smooth at any `bifout
    --scale`. The three colour channels' outlines of one edge are merged into one line (v3's raster unions
    them into a slightly bold one). The exact comparison with v3 (tone within 0.6%) still runs, on `--tone-raster`.
-5. **M4** `bifop` (shape layer in, frames out; the idea of integrating with bidet3d is dropped, 3D is legacy).
+5. **M4** (started) `bifop`. Done: the operation registry and CLI, and the operations listed above (44 tests).
+   Still to do: `extrude` / a 3D step (the shape layer in, rendered frames out, as bidet3d does; the idea of
+   integrating with bidet3d itself is dropped, 3D is legacy), `smooth` (needs `vflag` from `bifin`), `merge` of
+   several BIFs, warps of raster layers, `rasterize`, `bold` (thicken filled letters), multi-input animation.
 6. **M5** more importers / exporters, animation.
 
 ## Open decisions

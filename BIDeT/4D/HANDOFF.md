@@ -14,7 +14,7 @@ thresholded raster, bifin on the strokes' extent). Python 3.7 / Pillow 5.4 / num
 
 ## What exists
 
-Three tools around one file format, `.bif`. Milestones M0-M3 are done.
+Three tools around one file format, `.bif`. Milestones M0-M3 are done; M4 (`bifop`) is started.
 
 | | |
 | --- | --- |
@@ -24,8 +24,11 @@ Three tools around one file format, `.bif`. Milestones M0-M3 are done.
 | M3 | the parity gate, `tests/test_parity.py`, against a frozen copy of v3 (`tests/reference/unascii_v3.py`) and 4D's own `samples/` |
 | after M3 | tone mode as traced vector lines: `tonetrace.py` (marching squares, tested on its own), `tone_vectors` / `_tone_layer` in `bifin_text.py`, `bifin --tone-raster` for the old raster; `bifrender` draws a stroke whose width multiplier is constant as an ordinary pen |
 
-Not started: Tool 2 (`bifop`), other importers (PNG/JPEG trace, SIXEL, SVG, font+string) and exporters
-(kitty, iTerm2, SVG, ANSI, Tektronix, animation).
+| M4 (started) | `bifop.py` (Tool 2): registry of operations (`@op(name, params, doc)`; first parameter may be given bare; ids joined with `+`), `apply()`/`clone()`, CLI (`-i`, `-o`, `--list`). Ops: pen, theme, recolor, opacity, blend, crop, scale, rotate, flip, keep/drop/hide/show, frame, meta, simplify, wave/arc/squeeze. Design: ops never write into arrays (they share the input's), transforms are composed into the layers' `transform` (non-destructive), `cells` layers sit on the grid so they are not transformed, and anything that breaks the grid (rotate, flip, warps) drops `grid` and the `cells` layer; warps bake the transform into the vertices (densify first so strokes bend) and skip rasters with a warning |
+
+Not started: other importers (PNG/JPEG trace, SIXEL, SVG, font+string) and exporters (kitty, iTerm2, SVG, ANSI,
+Tektronix, animation). `bifop` still lacks: an extrude / 3D step, `smooth` (needs `vflag` from `bifin`), `merge` of
+several BIFs, raster warps, `rasterize`, `bold`.
 
 ## Decisions the user made (do not re-litigate)
 
@@ -43,7 +46,7 @@ Not started: Tool 2 (`bifop`), other importers (PNG/JPEG trace, SIXEL, SVG, font
 ## Tests
 
 ```
-make test-quick    # ~1 min: test_bif (37), test_bifout (47), test_bifin (47), test_tonetrace (14)
+make test-quick    # ~1 min: test_bif (37), test_bifout (47), test_bifin (47), test_tonetrace (14), test_bifop (44)
 make test          # ~3 min: that plus a smoke subset of the parity gate (PARITY_QUICK=1: every mode, 7 samples)
 make test-full     # ~10 min: everything, the full parity matrix (1232 cases)
 python tests/test_parity.py --report     # the whole parity table and its distribution
