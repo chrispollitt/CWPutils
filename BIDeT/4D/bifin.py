@@ -100,6 +100,7 @@ def main(argv=None):
     ap.add_argument("--paper", default=None, help="the page colour in the palette (default white; black for colour block art)")
     ap.add_argument("--font", help="monospace TrueType font file (default: look for DejaVu Sans Mono, Consolas, ...)")
     ap.add_argument("--no-outlines", action="store_true", help="letters as a raster layer, as unascii draws them, not vector outlines")
+    ap.add_argument("--tone-raster", action="store_true", help="tone: the outlines as a raster layer, as unascii draws them, not traced vector lines")
     ap.add_argument("--encoding", help="input encoding (default: UTF-8, else CP437)")
     ap.add_argument("--cols", type=int, default=0, help="wrap column for .ANS art (default: from SAUCE, else 80 for .ans, else none)")
     ap.add_argument("--rows", type=int, default=24, help="screen height for cursor addressing and scroll regions (default 24)")
@@ -126,7 +127,7 @@ def main(argv=None):
                    round_lines=not a.no_round, spline=a.spline, shade=a.shade, hatch=a.hatch, text_bold=a.text_bold,
                    smooth=a.smooth, detail=a.detail, scale=a.scale, levels=a.levels, dark=a.dark, invert=a.invert,
                    font=a.font, rows=a.rows, color=a.color, cols=a.cols, crop=not a.no_crop, verbose=a.verbose,
-                   outlines=not a.no_outlines, cells=not a.no_cells, keep_source=a.keep_source,
+                   outlines=not a.no_outlines, tone_vectors=not a.tone_raster, cells=not a.no_cells, keep_source=a.keep_source,
                    name=None if a.file == "-" else a.file, encoding=a.encoding)
     if a.ink:
         options["ink"] = _color(a.ink)

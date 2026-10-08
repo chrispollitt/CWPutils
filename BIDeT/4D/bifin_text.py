@@ -14,7 +14,9 @@ instead of pixels:
   line     vector layer `strokes` (smoothed polylines, one paint per colour run), vector layer `text`
            (letters as font outlines; a raster layer `text-mask` for characters that have none: blocks,
            braille, a font that cannot be read), raster layer `hatch`
-  tone     raster layer `tone` (outlines recovered from the picture, drawn at the nominal resolution)
+  tone     vector layer `tone`: the outlines recovered from the picture, traced (tonetrace.py) as polylines
+           whose width at each vertex follows the edge strength, so they fade out as the edge does; coloured
+           from the picture.  `tone_vectors=False` gives unascii's raster of them instead
   block    raster layer `picture` (the coloured picture, alpha = what is not the terminal's background)
   always   hidden layer `cells`: the character grid, so the art can be turned back into text
 
@@ -1499,6 +1501,7 @@ class Options(object):
     outlines = True         # BIF: letters as vector outlines of the font (False: a raster layer, as unascii draws them)
     cells = True            # BIF: keep the character grid as a hidden `cells` layer
     keep_source = False     # BIF: store the input bytes in the file (the srce chunk)
+    tone_vectors = True     # BIF: tone mode as traced vector lines (False: a raster of them, as unascii draws them)
     name = None             # BIF: the input's name, for the metadata
 
     def __init__(self, **kw):
@@ -1521,6 +1524,7 @@ try:
     import ttfglyphs
 except ImportError:                                      # letters then come out as a raster layer
     ttfglyphs = None
+import tonetrace
 
 
 def _sauce_text(b):
@@ -1652,6 +1656,151 @@ def _bold_width(factor, wpx):
     return 2.0 * 0.25 * wpx * _phi_inv(1.0 - 0.5 / factor)
 
 
+def tone_vectors(P, ix, iy, width, o, color):
+    """The lines tone_lines draws, as vectors.  P, ix, iy, o as there; `width` the pen in pixels.  Returns
+    [(pts, wmul, rgb)]: pts float (n, 2) in pixels from the picture's top-left corner, wmul (n,) the pen width at
+    each vertex as a fraction of `width` (the outline fades out where the edge does), rgb (n, 3) 0..255 or None.
+
+    The outlines are the zero crossings of the same signed difference-of-Gaussians field, found at the same
+    working resolution, so a line is where tone_lines puts it; the strength of the edge there, which tone_lines
+    turns into the line's coverage, becomes its width here.  The contour lines through gentle shading are traced
+    in the same way (a 0.4 pen, faded by how gentle the shading is)."""
+    ny, nx = P.shape[:2]
+    lx, ly = min(ix, 4), min(iy, 4)                              # working resolution, px per dot
+    D = 1.0 - P
+    if o.invert:
+        D = 1.0 - D
+    Dl = 0.299 * D[..., 0] + 0.587 * D[..., 1] + 0.114 * D[..., 2]
+    lo, hi = float(np.percentile(Dl, 2)), float(np.percentile(Dl, 98))
+    span = (hi - lo) if hi - lo >= 0.04 else 1.0
+    colourful = (P.max(2) - P.min(2)).max() > 0.12
+    sm = 0.7 if o.smooth is None else o.smooth
+
+    def field(chan):
+        f = blur(_upsample(chan, lx, ly), sm * lx, sm * ly)
+        return np.clip((f - lo) / span, 0.0, 1.0)
+    fl = field(Dl)
+    chans = [D[..., k] for k in range(3)] if colourful else [Dl]
+    sx, sy = ix / float(lx), iy / float(ly)                      # full-size pixels per working sample
+    # Trace on a grid of about 1.5 px or finer (the fields are smooth, so scaling them up is cheap): the lines are
+    # then smooth when drawn big, not faceted by the working grid.  kx, ky: full-size pixels per traced sample.
+    ux, uy = max(1, int(math.ceil(sx / 1.5))), max(1, int(math.ceil(sy / 1.5)))
+    kx, ky = sx / ux, sy / uy
+
+    def up(a):
+        return a if (ux, uy) == (1, 1) else _resize(a, a.shape[1] * ux, a.shape[0] * uy)
+    Hu, Wu = fl.shape[0] * uy, fl.shape[1] * ux
+    found = []                                                   # (points in traced samples, wmul)
+    # Where the three colour channels have an edge, their outlines lie about a pixel apart: v3's raster unions
+    # them into one slightly bold line, but as vectors they would be two or three parallel lines.  So a channel's
+    # line is dropped where an earlier channel already has one within a pen's width.
+    occ_img = Image.new("L", (Wu, Hu), 0)
+    occ = [None]
+    merge = max(1.0, 0.8 * width)
+
+    def trace(F, level, gate_field, gate, weight, batch):
+        for pts, closed in tonetrace.contours(F, level):
+            if closed:
+                pts = np.vstack([pts, pts[:1]])
+            g = gate(tonetrace.bilinear(gate_field, pts[:, 0], pts[:, 1]))
+            trimmed = False
+            if occ[0] is not None:
+                yy = np.clip(np.rint(pts[:, 1]).astype(np.int64), 0, Hu - 1)
+                xx = np.clip(np.rint(pts[:, 0]).astype(np.int64), 0, Wu - 1)
+                hit = occ[0][yy, xx]
+                trimmed = bool(hit.any())
+                g = np.where(hit, 0.0, g)
+            for a, b in tonetrace.runs(g > 0.02):
+                if b - a < 2:
+                    continue
+                seg, gg = pts[a:b], g[a:b]
+                if trimmed and np.hypot(*np.diff(seg * (kx, ky), axis=0).T).sum() < 6.0:
+                    continue                                     # a bead left over where another line took over
+                if len(gg) > 4:                                  # the width follows the edge, not the noise in it
+                    padg = np.concatenate([np.repeat(gg[:1], 3), gg, np.repeat(gg[-1:], 3)])
+                    gg = np.convolve(padg, np.array([1, 2, 3, 4, 3, 2, 1], np.float64) / 16.0, mode="valid")
+                keep = tonetrace.simplify(seg * (kx, ky), 0.04, index=True)       # (0.04 px at full size)
+                if len(keep) >= 2:
+                    batch.append((seg[keep], gg[keep] * weight))
+
+    def commit(batch):
+        found.extend(batch)
+        d = ImageDraw.Draw(occ_img)
+        wdt = max(1, int(round(2 * merge / min(kx, ky))))
+        for seg, _ in batch:
+            d.line([tuple(p) for p in (seg + 0.5).tolist()], fill=255, width=wdt)
+        occ[0] = np.asarray(occ_img) > 0
+    edge = o.detail
+    for chan in chans:
+        dog, strength = _dog_fields(fl if chan is Dl else field(chan), lx, ly, ix, iy, o.scale)
+        batch = []
+        trace(up(dog), 0.0, up(np.maximum(strength, 0.0)), lambda s: np.clip((s - 0.9 * edge) / (0.2 * edge), 0.0, 1.0), 1.0, batch)
+        commit(batch)
+    if o.levels > 0:
+        gm, weak = _contour_fields(fl, lx, ly, ix, iy, edge)
+        weak, flu = np.clip(up(np.clip(weak, 0.0, 1.0)), 0.0, 1.0), up(fl)
+        for k in range(1, o.levels + 1):
+            batch = []
+            trace(flu, k / (o.levels + 1.0), weak, lambda s: s, 0.4, batch)
+            commit(batch)
+    if not found:
+        return []
+    C = None
+    if color:
+        chroma = P.max(2) - P.min(2)
+        w = (chroma + 0.03) ** 2
+        den = blur(w, 1.0, 1.0)
+        C = [blur(P[..., k] * w, 1.0, 1.0) / den for k in range(3)]
+    out = []
+    for seg, wm in found:
+        px = np.stack([(seg[:, 0] + 0.5) * kx, (seg[:, 1] + 0.5) * ky], 1)
+        cols = None
+        if C is not None:                                        # the picture's colour under the line (bilinear, as tone_lines)
+            fx, fy = px[:, 0] / ix - 0.5, px[:, 1] / iy - 0.5
+            cols = np.stack([tonetrace.bilinear(C[k], fx, fy) for k in range(3)], 1) * 255.0
+        out.append((px, wm, cols))
+    return out
+
+
+def _tone_layer(lines, pad, wpx, pal, ink_rgb, paper_c):
+    """tone_vectors' lines -> a vector layer, and its (paths, widths) for the crop.  A coloured line is cut
+    into pieces where its (smoothed, legible, 16-level) colour changes."""
+    paths, wms, paints = [], [], []
+    for px, wm, cols in lines:
+        px = px + pad
+        if cols is None:
+            paths.append(px)
+            wms.append(wm)
+            paints.append(0)
+            continue
+        n = len(px)
+        k = 2
+        padc = np.vstack([np.repeat(cols[:1], k, 0), cols, np.repeat(cols[-1:], k, 0)])
+        sm = sum(padc[i:i + n] for i in range(2 * k + 1)) / float(2 * k + 1)           # a moving average along the line
+        lg = legible(sm, ink_rgb, paper_c)
+        is_ink = (np.abs(lg - np.array(ink_rgb, np.float32)).max(1) < 0.5)
+        q = np.clip(np.rint(lg / 17.0) * 17.0, 0, 255).astype(np.int64)
+        keys = (q[:, 0] << 16) | (q[:, 1] << 8) | q[:, 2]
+        keys[is_ink] = -1
+        start = 0
+        for i in range(1, n + 1):
+            if i == n or keys[i] != keys[start]:
+                end = min(i + 1, n)                                                      # share the vertex: no gap
+                if end - start >= 2:
+                    paths.append(px[start:end])
+                    wms.append(wm[start:end])
+                    paints.append(0 if keys[start] == -1 else pal.add(q[start]))
+                start = i
+    allw = np.concatenate(wms)
+    kw = {}
+    if not np.all(allw == 1.0):
+        kw["vwidth"] = allw
+    if any(p != 0 for p in paints):
+        kw["strokes"] = paints
+    lay = bif.vector_layer(paths, id="tone", width=wpx, **kw)
+    return lay, paths, [wpx * float(w.max()) for w in wms]
+
+
 def _dict_of_options(o):
     out = {}
     for k in dir(Options):
@@ -1738,12 +1887,19 @@ def import_grid(grid, o, info=None):
         ix, iy = max(1, int(round(px))), max(1, int(round(py)))
         dark = o.dark if o.dark is not None else grid.has_color()
         P = dot_field(grid, glyphs, only, dark, max(1, cw // ix), max(1, ch // iy))
-        tone, sparse = tone_lines(P, ix, iy, wpx, o, use_color)
-        put(tone, ink)
-        if sparse is not None:
-            ys, xs, col = sparse
-            rgb[ys + pad, xs + pad] = np.clip(legible(col, ink_rgb, paper_c) + 0.5, 0, 255).astype(np.uint8)
-        rasters.append(_Raster("tone", ink, rgb, 0, 0))
+        if o.tone_vectors:
+            lines = tone_vectors(P, ix, iy, wpx, o, use_color)
+            _log(o, "tone: %d traced lines, %d vertices" % (len(lines), sum(len(l[0]) for l in lines)))
+            if lines:
+                lay, tp, tw = _tone_layer(lines, pad, wpx, pal, ink_rgb, paper_c)
+                vectors.append((lay, tp, tw))
+        else:
+            tone, sparse = tone_lines(P, ix, iy, wpx, o, use_color)
+            put(tone, ink)
+            if sparse is not None:
+                ys, xs, col = sparse
+                rgb[ys + pad, xs + pad] = np.clip(legible(col, ink_rgb, paper_c) + 0.5, 0, 255).astype(np.uint8)
+            rasters.append(_Raster("tone", ink, rgb, 0, 0))
 
     if mode == "line" or mode == "mix":
         paths, cache = [], {}

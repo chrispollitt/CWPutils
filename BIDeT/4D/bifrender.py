@@ -293,6 +293,8 @@ def _draw_run(plane, run, X, Y, st, k, width, flags, vwidth, cap, join, miter, g
     y1 = int(min(geo.H, math.ceil(Y[lo:hi].max() + pad)))
     if x1 <= x0 or y1 <= y0:
         return
+    if ss is None:                                   # as much as fits in a 64 MB mask for this run, at most 4
+        ss = max(1, min(4, int(math.sqrt(64e6 / float((x1 - x0) * (y1 - y0))))))
     size = ((x1 - x0) * ss, (y1 - y0) * ss)
     mask = Image.new("L", size, 0)
     dr = ImageDraw.Draw(mask)
@@ -319,8 +321,11 @@ def _draw_run(plane, run, X, Y, st, k, width, flags, vwidth, cap, join, miter, g
         else:
             q = qs[0]
             vw = vwidth[st[q]:st[q + 1]] if vwidth else None
+            wq = width[q] * k * ss
+            if vw and min(vw) == max(vw):                    # the same multiplier all along: an ordinary pen
+                wq, vw = wq * vw[0], None
             if st[q + 1] > st[q]:
-                _stroke(dr, pts(q), width[q] * k * ss, bool(flags[q] & 1), cap, join, miter, vw)
+                _stroke(dr, pts(q), wq, bool(flags[q] & 1), cap, join, miter, vw)
     if ss > 1:
         mask = mask.resize((x1 - x0, y1 - y0), Image.BOX)
     cov = np.asarray(mask, np.float32) / 255.0
@@ -460,15 +465,14 @@ def size_for(pic, scale=None, width=None, height=None, max_pixels=DEFAULT_MAX_PI
 def render(pic, frame=0, scale=None, width=None, height=None, ss=None, ink=None, paper=None,
            max_pixels=DEFAULT_MAX_PIXELS, layers=None):
     """Draw frame `frame` of a picture.  scale: pixels per canvas unit (default 1), or width / height in
-    pixels (the picture is fitted inside both).  ss: supersampling of vector layers (default: as much as
-    fits in 16 million pixels, at most 4).  ink / paper: colours that replace the palette entries with those
+    pixels (the picture is fitted inside both).  ss: supersampling of vector layers (default: for each run of
+    strokes, as much as fits in a 64 MB mask, at most 4: a big drawing of small strokes is antialiased fully,
+    one huge stroke layer a little less).  ink / paper: colours that replace the palette entries with those
     roles, and the page colour.  layers: only draw these layer ids."""
     if not 0 <= frame < len(pic.frames):
         raise bif.BifError("no frame %d (the picture has %d)" % (frame, len(pic.frames)))
     sx, sy, W, H, notes = size_for(pic, scale, width, height, max_pixels)
     geo = _Geo(W, H, sx, sy)
-    if ss is None:
-        ss = max(1, min(4, int(math.sqrt(16e6 / float(W * H)))))
     pal = _palette(pic, ink, paper)
     canvas = Plane(W, H)
     for L in pic.frames[frame].layers:

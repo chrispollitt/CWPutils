@@ -14,10 +14,10 @@ DOCDIR  = $(DESTDIR)$(PREFIX)/share/doc/bidet4d
 # together in DATADIR: a tool linked into BINDIR runs from there, because Python puts the directory of the
 # real script first on its path.
 TOOLS   = bif bifin bifout
-LIB     = bifrender.py bifsixel.py bifin_text.py ttfglyphs.py
+LIB     = bifrender.py bifsixel.py bifin_text.py ttfglyphs.py tonetrace.py
 PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB)
 DOCS    = README.md BIF-SPEC.md HANDOFF.md
-TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifin.py tests/test_parity.py \
+TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifin.py tests/test_tonetrace.py tests/test_parity.py \
           tests/make_testdata.py tests/reference/unascii_v3.py
 
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bifin.py)
@@ -28,8 +28,9 @@ all: lint
 help:
 	@echo "BIDeT 4D $(VERSION).  Targets:"
 	@echo "  lint         - syntax-check the programs, the tests and the shell scripts"
-	@echo "  test-quick   - lint, then the library, renderer and importer tests (about 30 seconds)"
-	@echo "  test, check  - lint, then everything including the parity gate against unascii (about 8 minutes)"
+	@echo "  test-quick   - lint, then the library, renderer, importer and tracer tests (about 1 minute)"
+	@echo "  test, check  - lint, the same, and a smoke subset of the parity gate against unascii (about 3 minutes)"
+	@echo "  test-full    - lint, then everything including the full parity matrix (about 10 minutes)"
 	@echo "  testdata     - regenerate testdata/ (only when the spec or tests/make_testdata.py changed)"
 	@echo "  install      - install bif, bifin and bifout, and the docs, under PREFIX"
 	@echo "  uninstall    - remove them again"
@@ -53,8 +54,12 @@ test-quick: lint
 	$(PYTHON) -W ignore tests/test_bif.py
 	$(PYTHON) -W ignore tests/test_bifout.py
 	$(PYTHON) -W ignore tests/test_bifin.py
+	$(PYTHON) -W ignore tests/test_tonetrace.py
 
 test check: lint
+	PYTHON=$(PYTHON) ./test.sh --quick
+
+test-full: lint
 	PYTHON=$(PYTHON) ./test.sh
 
 testdata:
@@ -102,5 +107,5 @@ dist: lint
 clean:
 	rm -rf __pycache__ tests/__pycache__ tests/reference/__pycache__ dist out bidet4d-*.tar.gz
 
-.PHONY: all help version lint test-quick test check testdata install install-bin install-doc \
+.PHONY: all help version lint test-quick test check test-full testdata install install-bin install-doc \
         uninstall installreq dist clean

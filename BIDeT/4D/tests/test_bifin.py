@@ -308,6 +308,96 @@ class ImportBasics(unittest.TestCase):
         self.assertLess(pic.grid["cell_width"], 40)
 
 
+class ToneVectors(unittest.TestCase):
+    """Tone mode (picture-style art) as traced vector lines."""
+
+    def test_the_tone_layer_is_vector_and_the_raster_is_still_available(self):
+        v = imp(sample("tone80.txt"), mode="tone")
+        r = imp(sample("tone80.txt"), mode="tone", tone_vectors=False)
+        self.assertEqual((layer(v, "tone").kind, layer(r, "tone").kind), ("vector", "raster"))
+        self.assertEqual({L.id for L in v.layers}, {"tone", "cells"})
+        self.assertLess(len(bif.dumps(v)), len(bif.dumps(r)))                  # a few hundred vertices, not a bitmap
+
+    def test_lines_fade_out_with_the_edge(self):
+        L = layer(imp(sample("tone80.txt"), mode="tone"), "tone")
+        vw = L.vwidth
+        self.assertTrue(0.0 < float(vw.min()) < 0.5)                           # the faint ends taper to a hair
+        self.assertLessEqual(float(vw.max()), 1.0)
+        self.assertGreater(float((vw == 1.0).mean()), 0.3)                     # and strong edges are full pen
+        self.assertEqual(L.get("cap"), None)                                   # round caps: the default
+
+    def test_everything_lies_inside_the_canvas(self):
+        for name in ("tone80.txt", "tone70_alt.txt", "tone100_inv.txt", "braille.txt", "chafa_ascii.txt"):
+            pic = imp(sample(name), mode="tone")
+            L = layer(pic, "tone")
+            self.assertGreaterEqual(float(L.xy.min()), -1.0, name)
+            self.assertLessEqual(float(L.xy[:, 0].max()), pic.width + 1.0, name)
+            self.assertLessEqual(float(L.xy[:, 1].max()), pic.height + 1.0, name)
+
+    def test_it_is_a_picture_at_any_size(self):
+        pic = imp(sample("tone80.txt"), mode="tone")
+        a, b = bifrender.render(pic, scale=1), bifrender.render(pic, scale=4)
+        self.assertEqual((b.W, b.H), (a.W * 4, a.H * 4))
+        self.assertAlmostEqual(float(b.alpha.sum()) / float(a.alpha.sum()), 16.0, delta=3.5)       # length x width
+        # sharp: the biggest rendering has pure paper between the lines and solid ink on them
+        self.assertGreater(float((b.alpha > 0.99).sum()), 0.3 * float((b.alpha > 0.5).sum()))
+
+    def test_colour_follows_the_picture(self):
+        pic = imp(sample("dragon_lolcat.ans"), name="dragon_lolcat.ans", mode="tone", color="on")
+        self.assertGreater(len(pic.palette), 8)
+        self.assertGreater(len(set(layer(pic, "tone").stroke.tolist())), 4)
+        self.assertFalse(bifrender.render(pic, scale=1).uniform)
+        mono = imp(sample("dragon_lolcat.ans"), name="dragon_lolcat.ans", mode="tone", color="off")
+        self.assertEqual(len(mono.palette), 2)
+        self.assertTrue(bifrender.render(mono, scale=1).uniform)
+
+    def test_grey_stays_the_ink_colour(self):
+        pic = imp(sample("tone80.txt"), mode="tone", color="on")             # no colour in it: nothing to cut up
+        self.assertEqual(len(pic.palette), 2)
+        L = layer(pic, "tone")
+        self.assertNotIn("stroke", L.arrays)
+
+    def test_every_sample_in_tone_mode(self):
+        for name in SAMPLE_NAMES:
+            pic = imp(sample(name), name=name, mode="tone")
+            self.assertEqual(bif.check(pic)[0], [], name)
+            r = bifrender.render(bif.loads(bif.dumps(pic)), scale=1)
+            self.assertTrue(np.isfinite(r.alpha).all(), name)
+
+    def test_nothing_to_trace_makes_no_layer(self):
+        pic = imp(b"x", mode="tone")
+        self.assertIsNone(layer(pic, "tone"))
+        self.assertEqual(bif.check(pic)[0], [])
+
+    def test_same_input_same_bytes(self):
+        a = bif.dumps(imp(sample("tone80.txt"), mode="tone"))
+        self.assertEqual(a, bif.dumps(imp(sample("tone80.txt"), mode="tone")))
+
+    def test_mix_has_tone_lines_and_strokes(self):
+        art = (u"/\\_/\\\n" + u"@%#*+=-:.  \n" * 6).encode("utf-8")
+        pic = imp(art, mode="mix")
+        self.assertIsNotNone(layer(pic, "strokes"))
+        t = layer(pic, "tone")
+        self.assertTrue(t is None or t.kind == "vector")
+
+    def test_options_reach_the_tracer(self):
+        base = imp(sample("tone80.txt"), mode="tone")
+        faint = imp(sample("tone80.txt"), mode="tone", detail=0.02)            # more edges count
+        none = imp(sample("tone80.txt"), mode="tone", levels=0, detail=5.0)    # almost no edge is strong enough
+        n = lambda p: len(layer(p, "tone").xy) if layer(p, "tone") else 0      # (vertices: fragments join up as more edges count)
+        self.assertGreater(n(faint), n(base))
+        self.assertLess(n(none), n(base))
+        heavy = imp(sample("tone80.txt"), mode="tone", weight=2.0)
+        self.assertAlmostEqual(layer(heavy, "tone").get("width"), 2.0 * layer(base, "tone").get("width"), places=5)
+
+    def test_flag_on_the_command_line(self):
+        rc, blob, e = run("-m", "tone", "--tone-raster", input=sample("tone80.txt"))
+        self.assertEqual(rc, 0, e)
+        self.assertEqual(layer(bif.loads(blob), "tone").kind, "raster")
+        rc, blob, e = run("-m", "tone", input=sample("tone80.txt"))
+        self.assertEqual(layer(bif.loads(blob), "tone").kind, "vector")
+
+
 @unittest.skipIf(unascii is None, "tests/reference/unascii_v3.py not found")
 class ParityWithUnascii(unittest.TestCase):
     """bifin | render at scale 1 against what unascii draws, per sample."""
@@ -321,7 +411,7 @@ class ParityWithUnascii(unittest.TestCase):
         for name in SAMPLE_NAMES:
             data = sample(name)
             ink, rgb = self.v3(name, data)
-            for kw, tol in (({"outlines": False}, 2e-3), ({}, 8e-3)):
+            for kw, tol in (({"outlines": False, "tone_vectors": False}, 2e-3), ({"tone_vectors": False}, 8e-3)):
                 pic = imp(data, name=name, **kw)
                 r = bifrender.render(pic, scale=1)
                 label = "%s %s" % (name, kw)
@@ -338,7 +428,7 @@ class ParityWithUnascii(unittest.TestCase):
         for name in ("cow.txt", "figlet_big.txt", "hello.txt", "toilet_future.txt", "tone80.txt", "blocks_color.ans"):
             data = sample(name)
             ink, rgb = self.v3(name, data)
-            r = bifrender.render(imp(data, name=name, outlines=False), scale=1)
+            r = bifrender.render(imp(data, name=name, outlines=False, tone_vectors=False), scale=1)
             self.assertLess(float(np.abs(r.alpha - ink).max()), 0.3, name)
 
 

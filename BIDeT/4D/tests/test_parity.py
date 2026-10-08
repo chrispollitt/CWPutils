@@ -66,6 +66,15 @@ OPTION_SETS = [
     ("dark", {"dark": True}),
 ]
 
+# PARITY_QUICK=1: a smoke run (every mode, a few samples and option sets: about a quarter of the cases, a
+# couple of minutes) for use while developing; the full matrix is for milestones and numerics-sensitive changes.
+QUICK = bool(os.environ.get("PARITY_QUICK"))
+if QUICK:
+    NAMES = [n for n in NAMES if n in ("cow.txt", "figlet_big.txt", "dragon_lolcat.ans", "tone80.txt", "blocks_color.ans",
+                                       "braille.txt", "ghostbusters.txt")]
+    OPTION_SETS = [s for s in OPTION_SETS if s[0] in ("default", "line", "tone", "mix", "block", "weight2", "mono",
+                                                      "ink-paper", "no-crop", "no-round", "cell8")]
+
 
 def tolerance(mode, outlines, coloured):
     """Allowed relative coverage difference for a result: sum |bifin - v3| / sum v3 coverage, that is, what
@@ -138,7 +147,7 @@ def compare(name, label, kw, outlines):
         ink, rgb = v3.render_grid_color(parse_with(v3, name, data), o3)
     finally:
         v3.draw_strokes = orig
-    o4 = bifin_text.Options(outlines=outlines, **kw)
+    o4 = bifin_text.Options(outlines=outlines, tone_vectors=False, **kw)      # (the vector tone has its own test)
     pic = bifin_text.import_grid(parse_with(bifin_text, name, data), o4)
     r = bifrender.render(pic, scale=1, ss=seen.get("ss"))
     mode = pic.meta["mode"]
@@ -218,6 +227,62 @@ class InProcess(unittest.TestCase):
         self.assertTrue({"line", "tone", "block"} <= modes, modes)
 
 
+TONE_SETS = [("default", {}), ("detail", {"detail": 0.3, "scale": 0.8}), ("levels0", {"levels": 0}), ("levels6", {"levels": 6}),
+             ("weight2", {"weight": 2.0}), ("invert", {"invert": True}), ("smooth0", {"smooth": 0.0}), ("colour", {"color": "on"})]
+if QUICK:
+    TONE_SETS = TONE_SETS[:3] + TONE_SETS[7:]
+_tone = {}
+
+
+def dilated(mask, r=2):
+    from PIL import ImageFilter
+    im = Image.fromarray((mask * 255).astype("uint8")).filter(ImageFilter.MaxFilter(2 * r + 1))
+    return np.asarray(im) > 0
+
+
+def tone_rows():
+    """(precision, recall, ink ratio, name, label) of the traced vector tone lines against v3's raster ones, both
+    uncropped at scale 1: precision = the share of the vector line pixels that have a v3 line pixel within 2 px,
+    recall the other way round.  (A pixel-by-pixel difference says nothing about 1.4 px lines: a line 0.3 px
+    to one side is "25% different" and still the same line.)"""
+    if not _tone:
+        rows = []
+        for name in NAMES:
+            data = read_sample(name)
+            for label, kw in TONE_SETS:
+                kw = dict(kw, mode="tone", crop=False)
+                try:
+                    o3 = v3.Options(**kw)
+                    ink, rgb = v3.render_grid_color(parse_with(v3, name, data), o3)
+                    pic = bifin_text.import_grid(parse_with(bifin_text, name, data), bifin_text.Options(**kw))
+                except ValueError:
+                    continue
+                if pic.meta["mode"] != "tone":
+                    continue
+                V = bifrender.render(pic, scale=1).alpha > 0.3
+                R = ink > 0.3
+                if V.sum() < 150 or R.sum() < 150:
+                    continue          # a few dozen pixels is noise: the library versions move 10 of them (seen: dashes.txt)
+                rows.append(((V & dilated(R)).sum() / float(V.sum()), (R & dilated(V)).sum() / float(R.sum()),
+                             V.sum() / float(R.sum()), name, label))
+        _tone["rows"] = rows
+    return _tone["rows"]
+
+
+class ToneVectors(unittest.TestCase):
+    """Tone mode as traced vectors against v3's raster outlines: the same lines, in the same places."""
+
+    def test_lines_are_where_v3_puts_them(self):
+        rows = tone_rows()
+        self.assertGreater(len(rows), 15 if QUICK else 100)
+        bad = ["%s [%s]: precision %.0f%%, recall %.0f%%, %.2fx the pixels" % (n, l, 100 * p, 100 * r, q)
+               for p, r, q, n, l in rows if p < 0.75 or r < 0.85 or not 0.6 < q < 2.0]
+        self.assertEqual(bad, [], "\n" + "\n".join(bad[:20]))
+        med = lambda i: sorted(r[i] for r in rows)[len(rows) // 2]
+        self.assertGreater(med(0), 0.95, "median precision %.3f" % med(0))
+        self.assertGreater(med(1), 0.98, "median recall %.3f" % med(1))
+
+
 def run(args, tool, data=None):
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
     p = subprocess.Popen([sys.executable, os.path.join(*tool)] + list(args), stdin=subprocess.PIPE,
@@ -236,6 +301,9 @@ class CommandLine(unittest.TestCase):
     SETS = [[], ["-m", "line"], ["-m", "tone"], ["-w", "1.5", "-c", "16"], ["--mono"],
             ["--ink", "#a02020", "--paper", "#fff8e8"], ["--no-crop"], ["--transparent"]]
     FILES = ["cow.txt", "dragon_lolcat.ans", "tone80.txt", "blocks_color.ans", "figlet_big.txt"]
+    if QUICK:
+        SETS = [[], ["-m", "tone"], ["-w", "1.5", "-c", "16"], ["--transparent"]]
+        FILES = ["cow.txt", "tone80.txt", "blocks_color.ans"]
 
     @staticmethod
     def flat(img):
@@ -251,8 +319,10 @@ class CommandLine(unittest.TestCase):
                 rc, out, err = run(["-o", "-"] + opts + [path], V3)
                 self.assertEqual(rc, 0, err)
                 want = Image.open(io.BytesIO(out)).convert("RGBA")
-                # --transparent is bifout's; everything else is bifin's
-                rc, blob, err = run([o for o in opts if o != "--transparent"] + [path], BIFIN)
+                # --transparent is bifout's; everything else is bifin's.  Tone art goes through the raster path
+                # here, the like-for-like comparison; the traced vector lines have their own tests below.
+                tone = name == "tone80.txt" or opts[:2] == ["-m", "tone"]
+                rc, blob, err = run([o for o in opts if o != "--transparent"] + (["--tone-raster"] if tone else []) + [path], BIFIN)
                 self.assertEqual(rc, 0, err)
                 rc, out, err = run(["-", "-o", "-"] + [o for o in opts if o == "--transparent"], BIFOUT, blob)
                 self.assertEqual(rc, 0, err)
@@ -272,6 +342,26 @@ class CommandLine(unittest.TestCase):
                 if diff >= tol or adiff >= tol:
                     bad.append("%s: mean pixel difference %.3f, alpha %.3f (limit %.1f)" % (label, diff, adiff, tol))
         self.assertEqual(bad, [], "\n" + "\n".join(bad))
+
+    def test_png_of_traced_tone_lines(self):
+        """The default (vector) tone path, end to end: about the same size as v3's picture (the lines taper to
+        nothing where v3's faint raster tails still count, so the crop is a few pixels tighter) and a drawing with
+        as much ink; where the lines are is the in-process ToneVectors test."""
+        for name, opts in (("tone80.txt", []), ("tone80.txt", ["--mono"]), ("blocks_color.ans", ["-m", "tone"]),
+                           ("figlet_big.txt", ["-m", "tone"])):
+            path = os.path.join(SAMPLES, name)
+            rc, out, err = run(["-o", "-"] + opts + [path], V3)
+            want = Image.open(io.BytesIO(out)).convert("RGB")
+            rc, blob, err = run(opts + [path], BIFIN)
+            self.assertEqual(rc, 0, err)
+            rc, out, err = run(["-", "-o", "-"], BIFOUT, blob)
+            self.assertEqual(rc, 0, err)
+            got = Image.open(io.BytesIO(out)).convert("RGB")
+            label = "%s %s" % (name, " ".join(opts))
+            self.assertLessEqual(abs(got.size[0] - want.size[0]), 6, label)
+            self.assertLessEqual(abs(got.size[1] - want.size[1]), 6, label)
+            ink = lambda im: float((255.0 - np.asarray(im, np.float32).mean(2)).sum())
+            self.assertTrue(0.6 < ink(got) / ink(want) < 1.8, "%s: %.2fx the ink" % (label, ink(got) / ink(want)))
 
     def test_sixel(self):
         sys.path.insert(0, os.path.join(os.path.dirname(ROOT), "3D", "gfx-conv"))

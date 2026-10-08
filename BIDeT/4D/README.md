@@ -16,17 +16,18 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
 | [`BIF-SPEC.md`](BIF-SPEC.md) | the format |
 | [`bif.py`](bif.py) | reference reader / writer / validator, one file, numpy only; `bif.py info\|check\|chunks FILE` |
 | [`bifin.py`](bifin.py) | **Tool 1**: `bifin art.txt -o art.bif` (all of unascii's options: `-m`, `-c`, `-w`, `--ink`, ...; plus `--no-outlines`, `--no-cells`, `--keep-source`). Input kinds are sniffed; importers are registered in `READERS` (only `text` so far; PNG / SIXEL / SVG say so) |
-| [`bifin_text.py`](bifin_text.py) | the text importer: unascii's reader, classifier and line / tone / block methods (ported by copy, unchanged) plus a new assembly that emits layers: `strokes` and `text` (vector), `text-mask`, `hatch`, `tone`, `picture` (raster), `cells` (hidden grid); SAUCE records read (title, credit, width) |
+| [`bifin_text.py`](bifin_text.py) | the text importer: unascii's reader, classifier and line / tone / block methods (ported by copy, unchanged) plus a new assembly that emits layers: `strokes`, `text` and `tone` (vector), `text-mask`, `hatch`, `picture` (raster), `cells` (hidden grid); SAUCE records read (title, credit, width) |
 | [`ttfglyphs.py`](ttfglyphs.py) | TrueType outlines (glyf, cmap 4 / 12, composites, .ttc) with no dependencies: letters become vectors. CFF / other fonts fall back to a raster `text-mask` |
+| [`tonetrace.py`](tonetrace.py) | marching squares: contour lines of a field as sub-pixel polylines, plus stitching, simplification and bilinear sampling. Tone mode (picture-style art: jp2a, chafa, shaded ASCII) is traced with it, so its outlines are vectors whose width fades with the edge strength (`--tone-raster` for unascii's raster of them) |
 | [`bifout.py`](bifout.py) | **Tool 3**: `bifout x.bif -o x.png [--scale S \| --width PX] [--ink C --paper C]`, `bifout x.bif -s` (SIXEL), pipes both ways. Writers are registered in `WRITERS` |
 | [`bifrender.py`](bifrender.py) | BIF -> pixels: vector layers (strokes, fills with holes, caps / joins, tapers, transforms), raster layers (affine, smooth or nearest), blend modes, `ink` / `paper` role overrides |
 | [`bifsixel.py`](bifsixel.py) | the SIXEL encoder (from v3, with a bug fixed, see below) |
 | [`testdata/`](testdata/) | reference files for any implementation: `good/` (with the expected contents as JSON) and `bad/` (each must be rejected; `manifest.json` says why) |
-| [`tests/`](tests/) | `test_bif.py` (37 tests: the files above, round trips, fuzzing, API, CLI), `test_bifout.py` (47: geometry, rasters, blending, SIXEL decoded back, CLI, parity with v3's `draw_strokes` / `sixel`), `test_bifin.py` (35: outlines vs FreeType, SAUCE, every sample, the cells layer equals the art, modes and options, hostile input, parity with unascii per sample, CLI), `test_parity.py` (5: **the M3 gate**, see Milestones), `reference/unascii_v3.py` (the frozen v3 it compares with), `make_testdata.py` |
+| [`tests/`](tests/) | `test_bif.py` (37 tests: the files above, round trips, fuzzing, API, CLI), `test_bifout.py` (47: geometry, rasters, blending, SIXEL decoded back, CLI, parity with v3's `draw_strokes` / `sixel`), `test_bifin.py` (47: outlines vs FreeType, SAUCE, every sample, the cells layer equals the art, modes and options, hostile input, tone as vector lines, parity with unascii per sample, CLI), `test_tonetrace.py` (14: marching squares: every traced point is on the level, loops, saddles, borders, speed), `test_parity.py` (**the M3 gate**, see Milestones; also the vector tone lines), `reference/unascii_v3.py` (the frozen v3 it compares with), `make_testdata.py` |
 | [`samples/`](samples/) | the art the tests use (cowsay, figlet, toilet, jp2a, chafa output; nothing third-party) |
 | [`HANDOFF.md`](HANDOFF.md) | state, decisions, gaps and working notes for whoever continues |
-| [`test.sh`](test.sh) | runs all the tests (about 8 minutes); the first three suites are verified on three stacks: Python 3.11 / numpy 2.2 / Pillow 11, Python 3.8 / numpy 1.17 / Pillow 7, and Cygwin's Python 3.12 / numpy 2.5 / Pillow 12; the parity gate on the first two (not 3.7 / 1.16 / 5.4) |
-| [`Makefile`](Makefile) | `make help`: `lint`, `test-quick` (about 30 s), `test` (everything), `testdata`, `install` / `uninstall` (`bif`, `bifin`, `bifout` into `PREFIX/bin`, modules in `share/BIDeT4D`, docs; `DESTDIR` supported), `installreq`, `dist`, `clean` |
+| [`test.sh`](test.sh) | runs the tests: everything (about 10 minutes), or `--quick` (a smoke subset of the parity gate, about 3 minutes); verified on Python 3.11 / numpy 2.2 / Pillow 11 and Python 3.8 / numpy 1.17 / Pillow 7, the fast suites also on Cygwin's Python 3.12 / numpy 2.5 / Pillow 12 (not on 3.7 / 1.16 / 5.4) |
+| [`Makefile`](Makefile) | `make help`: `lint`, `test-quick` (about 1 min), `test` (plus a parity smoke run, about 3 min), `test-full` (everything), `testdata`, `install` / `uninstall` (`bif`, `bifin`, `bifout` into `PREFIX/bin`, modules in `share/BIDeT4D`, docs; `DESTDIR` supported), `installreq`, `dist`, `clean` |
 | [`requirements.txt`](requirements.txt) | numpy, Pillow (no libsixel: SIXEL is written here) |
 
 Found while porting (v3 is untouched; both are fixed in the copies here):
@@ -74,7 +75,7 @@ Importers, operations and exporters are registered modules, so adding a format i
 
 | tool | job | what it takes from v3 |
 | --- | --- | --- |
-| `bifin` | any input -> BIF | `unascii`: terminal emulator (`_Term`), `classify`, `word_cells`, line / tone / block methods. Line mode emits vector paths (join / corner flags not yet); tone and block emit rasters (traced tone contours and a dot-resolution block picture are planned); `cells` is kept. `bidet3d`: text + font -> shape. `gfx-conv/sixeldec.py`: SIXEL -> raster. New: PNG/JPEG trace, SVG. |
+| `bifin` | any input -> BIF | `unascii`: terminal emulator (`_Term`), `classify`, `word_cells`, line / tone / block methods. Line and tone modes emit vector paths (join / corner flags not yet); block emits a raster (a dot-resolution picture is planned); `cells` is kept. `bidet3d`: text + font -> shape. `gfx-conv/sixeldec.py`: SIXEL -> raster. New: PNG/JPEG trace, SVG. |
 | `bifop` | BIF -> BIF | `bidet3d` warps (arc, squeeze, wave), pen weight, `legible()` re-theming, `spline_smooth` as an operation on vector layers, crop, merge, flatten; extrusion / materials as an operation that adds a rendered raster or frames. |
 | `bifout` | BIF -> any output | `unascii`: `draw_strokes`, `to_image`, the SIXEL encoder. `gfx-conv`: kitty, iTerm2, ANSI, Tektronix (native from vectors, no re-trace). New: SVG, PDF/HPGL maybe. |
 
@@ -90,14 +91,20 @@ the `shape` layer of a BIF instead of the lossy `mask()` call.
    are ported and emit BIF; letters are vector outlines (raster fallback). At scale 1 the result is
    unascii's picture: tone and block exactly, line exactly with `--no-outlines` (to float32 rounding),
    and with outline letters 0.2% of pixels differ (the font's outline against FreeType's hinted
-   rendering). **Left for later:** (a) tone mode is still a raster of the outlines drawn at the nominal
-   resolution, not traced vectors; (b) hatching is a raster; (c) the block picture is a raster at the
+   rendering). **Left for later:** (a) ~~tone mode is a raster~~ **done after M3: tone is traced to vector
+   lines** (`tonetrace.py`; see below); (b) hatching is a raster; (c) the block picture is a raster at the
    nominal resolution (smooth upscaling), not at dot resolution with `nearest`.
 4. **M3** (done) the parity gate, `tests/test_parity.py`: 28 option sets x every sample (1232 cases) in process
    against a frozen copy of v3, plus the command line (PNG and SIXEL) end to end. Block mode is exact, tone
    within 0.6% of the ink, line art within 2% (8% when coloured), vector letters within 20%; the limits and
    their causes are in `tolerance()` and `HANDOFF.md`. **Changed from the plan:** v3 does not become a wrapper
    over 4D: 3D is legacy and stays as it is.
+   **Tone as vectors** (after M3, `tonetrace.py`): the traced lines are compared with v3's raster ones by
+   position, since a pixel difference says nothing about 1.4 px lines: median 98.7% of the traced pixels lie
+   within 2 px of a v3 line pixel (precision) and 100% the other way (recall); no case below 82% / 90%.
+   The files are 3-5x smaller than the raster ones, and the lines are sharp and smooth at any `bifout
+   --scale`. The three colour channels' outlines of one edge are merged into one line (v3's raster unions
+   them into a slightly bold one). The exact comparison with v3 (tone within 0.6%) still runs, on `--tone-raster`.
 5. **M4** `bifop` (shape layer in, frames out; the idea of integrating with bidet3d is dropped, 3D is legacy).
 6. **M5** more importers / exporters, animation.
 
