@@ -20,4 +20,5 @@ done
 "$PY" -W ignore tests/test_bifin.py || exit 1
 "$PY" -W ignore tests/test_tonetrace.py || exit 1
 "$PY" -W ignore tests/test_bifop.py || exit 1
+"$PY" -W ignore tests/test_bidet.py || exit 1
 exec "$PY" -W ignore tests/test_parity.py

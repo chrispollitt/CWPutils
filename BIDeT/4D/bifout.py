@@ -73,7 +73,8 @@ def _color(s):
         sys.exit("bifout: bad colour '%s'" % s)
 
 
-def main(argv=None):
+def build_parser():
+    """bifout's command line (also used by bidet to read a preset's bifout flags)."""
     ap = argparse.ArgumentParser(prog="bifout", description="Draw a BIF as a PNG or SIXEL picture.")
     ap.add_argument("file", nargs="?", default="-", help="a .bif file (default: standard input)")
     ap.add_argument("-o", "--output", metavar="FILE", help="write here ('-' = standard output)")
@@ -95,6 +96,18 @@ def main(argv=None):
     ap.add_argument("-t", "--truncated", action="store_true", help="draw what arrived of a file that ends early")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("-V", "--version", action="version", version="bifout " + VERSION)
+    return ap
+
+
+def render_options(a):
+    """The keyword arguments of convert() (and of bifrender.render) from parsed arguments."""
+    return dict(frame=a.frame, transparent=a.transparent, scale=a.scale, width=a.width, height=a.height, ss=a.ss,
+                ink=_color(a.ink) if a.ink else None, paper=_color(a.paper) if a.paper else None,
+                max_pixels=a.max_pixels, layers=set(a.layer) if a.layer else None)
+
+
+def main(argv=None):
+    ap = build_parser()
     a = ap.parse_args(argv)
 
     if a.file == "-" and sys.stdin.isatty():
@@ -109,10 +122,7 @@ def main(argv=None):
         else:
             pic = bif.load(a.file, allow_truncated=a.truncated)
         buf = io.BytesIO()
-        r = convert(pic, fmt, buf, frame=a.frame, transparent=a.transparent, scale=a.scale, width=a.width,
-                    height=a.height, ss=a.ss, ink=_color(a.ink) if a.ink else None,
-                    paper=_color(a.paper) if a.paper else None, max_pixels=a.max_pixels,
-                    layers=set(a.layer) if a.layer else None)
+        r = convert(pic, fmt, buf, **render_options(a))
     except (bif.BifError, IOError) as e:
         sys.exit("bifout: %s" % e)
     for n in r.notes:

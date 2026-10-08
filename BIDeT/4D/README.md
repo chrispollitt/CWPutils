@@ -8,9 +8,36 @@ what unascii draws (the parity gate); Tool 2 (`bifop`) has its first operations.
 it gets no new features or fixes. 4D does not depend on it: the parity tests use a frozen copy of unascii
 (`tests/reference/`) and 4D's own `samples/`; only an optional SIXEL decoder test looks in `3D/gfx-conv`.
 
-    bifin cow.txt | bifout -s                     # the whole pipeline, SIXEL on the terminal
-    bifin art.ans -o art.bif && bifout art.bif -o art.png --scale 3 --ink "#00ff66" --paper "#101820"
-    bifin figlet.txt | bifop wave:amplitude=0.1 pen:1.5 crop:margin=8 | bifout -o wordart.png --scale 2
+## Two ways to use it
+
+1. **Pipe the tools** (power users): `in | op | out` with every flag of each tool.
+
+       bifin cow.txt | bifout -s                     # the whole pipeline, SIXEL on the terminal
+       bifin art.ans -o art.bif && bifout art.bif -o art.png --scale 3 --ink "#00ff66" --paper "#101820"
+       bifin figlet.txt | bifop wave:amplitude=0.1 pen:1.5 crop:margin=8 | bifout -o wordart.png --scale 2
+
+2. **`bidet`** (everyone else, and the replacement for bidet3d): one command, a few options, named presets,
+   and it works out the rest (text or file or pipe, SIXEL or PNG, the size, a dark terminal).
+
+       bidet "Hello, World!"                          # text, on the terminal
+       bidet cow.txt -P arc -P matrix                 # art, arched, green on black
+       cowsay moo | bidet -P bold -o moo.png
+       bidet --list-presets
+       bidet -n cow.txt -P arc -P matrix              # prints the pipeline it would run: a way in to mode 1
+
+   `bidet` is sugar over the pipeline, not a second implementation: the picture it draws is byte for byte what the
+   `bifin | bifop | bifout` pipeline it prints draws (a test checks that), and presets are recipes of those tools'
+   flags in [`presets.ini`](presets.ini), which anyone can extend in `~/.config/bidet/presets.ini`. At present it
+   draws text and art in the shapes and colours BIF has; bidet3d's gradient, texture and 3D styles come with
+   the string-and-font importer, paint kinds and the extrusion step. The presets are a tour of what 4D does,
+   each drawn on an input that suits it (`make gallery` redraws this):
+
+   ![every bidet preset on a sample](gallery/gallery.png)
+
+   Warps and weights (`arc`, `squeeze`, `wave`, `up`, `italic`, `banner`, `bold`, `thin`), colours (`matrix`,
+   `amber`, `blueprint`, `neon`, `chalk`, `stamp`, ...), transforms (`tilt`, `mirror`, `huge`: six times life size
+   and still sharp), and the picture-art tracers: `sketch`, `trace` and `contour` turn shaded ASCII into vector
+   outlines and contour lines, and `pixels` keeps block art exact.
 
 | file | what |
 | --- | --- |
@@ -20,12 +47,14 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
 | [`bifin_text.py`](bifin_text.py) | the text importer: unascii's reader, classifier and line / tone / block methods (ported by copy, unchanged) plus a new assembly that emits layers: `strokes`, `text` and `tone` (vector), `text-mask`, `hatch`, `picture` (raster), `cells` (hidden grid); SAUCE records read (title, credit, width) |
 | [`ttfglyphs.py`](ttfglyphs.py) | TrueType outlines (glyf, cmap 4 / 12, composites, .ttc) with no dependencies: letters become vectors. CFF / other fonts fall back to a raster `text-mask` |
 | [`tonetrace.py`](tonetrace.py) | marching squares: contour lines of a field as sub-pixel polylines, plus stitching, simplification and bilinear sampling. Tone mode (picture-style art: jp2a, chafa, shaded ASCII) is traced with it, so its outlines are vectors whose width fades with the edge strength (`--tone-raster` for unascii's raster of them) |
-| [`bifop.py`](bifop.py) | **Tool 2**: `bifop OP [OP ...]` reads a BIF (stdin or `-i`), writes the changed BIF (stdout or `-o`). Operations: `pen` (line thickness), `theme` / `recolor` (colours by role or number), `opacity`, `blend`, `crop`, `scale`, `rotate`, `flip`, `keep` / `drop` / `hide` / `show` (layers), `frame`, `meta`, `simplify`, and the WordArt warps `wave`, `arc`, `squeeze` (on vector layers). `bifop --list` describes them; they are registered with `@op`. It does what BIF-SPEC.md asks of a manipulator: passes on everything it does not know, keeps the credit and licence, appends to `meta.history`. |
+| [`bidet.py`](bidet.py), [`presets.ini`](presets.ini) | the simple front end (see above): input and output are detected (a file name is a file, anything else is text; SIXEL on a terminal, else PNG, or by the `-o` extension, `.bif` too), the size fits the terminal's pixels (or `-w`), light-on-dark follows `COLORFGBG` or `--dark`; `-P` can be repeated; `--bifin` / `--bifop` / `--bifout` pass extra flags to a stage; text is drawn as lettering (`-m line`) and not left to the art classifier |
+| [`gallery.py`](gallery.py), [`gallery/`](gallery/) | draws every preset on a sample as one contact sheet (`make gallery`): a tour of 4D, and a quick visual check that no change to a tool broke a preset |
+| [`bifop.py`](bifop.py) | **Tool 2**: `bifop OP [OP ...]` reads a BIF (stdin or `-i`), writes the changed BIF (stdout or `-o`). Operations: `pen` (line thickness), `theme` / `recolor` (colours by role or number), `opacity`, `blend`, `crop`, `scale`, `rotate`, `flip`, `skew`, `keep` / `drop` / `hide` / `show` (layers), `frame`, `meta`, `simplify`, and the WordArt warps `wave`, `arc`, `squeeze` (on vector layers). `bifop --list` describes them; they are registered with `@op`. It does what BIF-SPEC.md asks of a manipulator: passes on everything it does not know, keeps the credit and licence, appends to `meta.history`. |
 | [`bifout.py`](bifout.py) | **Tool 3**: `bifout x.bif -o x.png [--scale S \| --width PX] [--ink C --paper C]`, `bifout x.bif -s` (SIXEL), pipes both ways. Writers are registered in `WRITERS` |
 | [`bifrender.py`](bifrender.py) | BIF -> pixels: vector layers (strokes, fills with holes, caps / joins, tapers, transforms), raster layers (affine, smooth or nearest), blend modes, `ink` / `paper` role overrides |
 | [`bifsixel.py`](bifsixel.py) | the SIXEL encoder (from v3, with a bug fixed, see below) |
 | [`testdata/`](testdata/) | reference files for any implementation: `good/` (with the expected contents as JSON) and `bad/` (each must be rejected; `manifest.json` says why) |
-| [`tests/`](tests/) | `test_bif.py` (37 tests: the files above, round trips, fuzzing, API, CLI), `test_bifout.py` (47: geometry, rasters, blending, SIXEL decoded back, CLI, parity with v3's `draw_strokes` / `sixel`), `test_bifin.py` (47: outlines vs FreeType, SAUCE, every sample, the cells layer equals the art, modes and options, hostile input, tone as vector lines, parity with unascii per sample, CLI), `test_tonetrace.py` (14: marching squares: every traced point is on the level, loops, saddles, borders, speed), `test_bifop.py` (44: the manipulator contract, each operation against what it must do to the drawing, the warps against their formulas, CLI), `test_parity.py` (**the M3 gate**, see Milestones; also the vector tone lines), `reference/unascii_v3.py` (the frozen v3 it compares with), `make_testdata.py` |
+| [`tests/`](tests/) | `test_bif.py` (37 tests: the files above, round trips, fuzzing, API, CLI), `test_bifout.py` (47: geometry, rasters, blending, SIXEL decoded back, CLI, parity with v3's `draw_strokes` / `sixel`), `test_bifin.py` (47: outlines vs FreeType, SAUCE, every sample, the cells layer equals the art, modes and options, hostile input, tone as vector lines, parity with unascii per sample, CLI), `test_tonetrace.py` (14: marching squares: every traced point is on the level, loops, saddles, borders, speed), `test_bifop.py` (45: the manipulator contract, each operation against what it must do to the drawing, the warps against their formulas, CLI), `test_bidet.py` (33: presets and user files, input / output / size detection, the printed pipeline, **bidet's picture equals the pipeline's byte for byte**, every preset on its own sample, CLI), `test_parity.py` (**the M3 gate**, see Milestones; also the vector tone lines), `reference/unascii_v3.py` (the frozen v3 it compares with), `make_testdata.py` |
 | [`samples/`](samples/) | the art the tests use (cowsay, figlet, toilet, jp2a, chafa output; nothing third-party) |
 | [`HANDOFF.md`](HANDOFF.md) | state, decisions, gaps and working notes for whoever continues |
 | [`test.sh`](test.sh) | runs the tests: everything (about 10 minutes), or `--quick` (a smoke subset of the parity gate, about 3 minutes); verified on Python 3.11 / numpy 2.2 / Pillow 11 and Python 3.8 / numpy 1.17 / Pillow 7, the fast suites also on Cygwin's Python 3.12 / numpy 2.5 / Pillow 12 (not on 3.7 / 1.16 / 5.4) |

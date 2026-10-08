@@ -62,7 +62,8 @@ def _color(s):
         sys.exit("bifin: bad colour '%s'" % s)
 
 
-def main(argv=None):
+def build_parser():
+    """bifin's command line (also used by bidet to read a preset's bifin flags)."""
     ap = argparse.ArgumentParser(prog="bifin", description="Turn terminal art into a BIF.")
     ap.add_argument("file", nargs="?", default="-", help="art file (default: standard input)")
     ap.add_argument("-o", "--output", metavar="FILE", help="write the BIF here (default: standard output)")
@@ -109,6 +110,26 @@ def main(argv=None):
     ap.add_argument("--keep-source", action="store_true", help="store the input itself in the file (srce chunk)")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("-V", "--version", action="version", version="bifin " + VERSION)
+    return ap
+
+
+def options_of(a):
+    """The importer's options (bifin_text.Options fields) from parsed arguments."""
+    options = dict(mode=a.mode, cell_w=a.cell, aspect=a.aspect, weight=a.weight, join=a.join * 1.0 if a.join > 0 else 0.0,
+                   round_lines=not a.no_round, spline=a.spline, shade=a.shade, hatch=a.hatch, text_bold=a.text_bold,
+                   smooth=a.smooth, detail=a.detail, scale=a.scale, levels=a.levels, dark=a.dark, invert=a.invert,
+                   font=a.font, rows=a.rows, color=a.color, cols=a.cols, crop=not a.no_crop, verbose=a.verbose,
+                   outlines=not a.no_outlines, tone_vectors=not a.tone_raster, cells=not a.no_cells, keep_source=a.keep_source,
+                   name=None if a.file == "-" else a.file, encoding=a.encoding)
+    if a.ink:
+        options["ink"] = _color(a.ink)
+    if a.paper:
+        options["paper"] = _color(a.paper)
+    return options
+
+
+def main(argv=None):
+    ap = build_parser()
     a = ap.parse_args(argv)
 
     if a.file == "-":
@@ -123,16 +144,7 @@ def main(argv=None):
             sys.exit("bifin: %s" % e)
     if not a.output and sys.stdout.isatty():
         ap.error("will not write a BIF to a terminal: use -o FILE, or pipe it into bifout")
-    options = dict(mode=a.mode, cell_w=a.cell, aspect=a.aspect, weight=a.weight, join=a.join * 1.0 if a.join > 0 else 0.0,
-                   round_lines=not a.no_round, spline=a.spline, shade=a.shade, hatch=a.hatch, text_bold=a.text_bold,
-                   smooth=a.smooth, detail=a.detail, scale=a.scale, levels=a.levels, dark=a.dark, invert=a.invert,
-                   font=a.font, rows=a.rows, color=a.color, cols=a.cols, crop=not a.no_crop, verbose=a.verbose,
-                   outlines=not a.no_outlines, tone_vectors=not a.tone_raster, cells=not a.no_cells, keep_source=a.keep_source,
-                   name=None if a.file == "-" else a.file, encoding=a.encoding)
-    if a.ink:
-        options["ink"] = _color(a.ink)
-    if a.paper:
-        options["paper"] = _color(a.paper)
+    options = options_of(a)
     try:
         pic = convert(data, a.kind, **options)
         blob = bif.dumps(pic)

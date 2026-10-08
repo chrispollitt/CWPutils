@@ -13,15 +13,15 @@ DOCDIR  = $(DESTDIR)$(PREFIX)/share/doc/bidet4d
 # The tools (linked into BINDIR without the .py) and the modules they import.  All of them are installed
 # together in DATADIR: a tool linked into BINDIR runs from there, because Python puts the directory of the
 # real script first on its path.
-TOOLS   = bif bifin bifop bifout
+TOOLS   = bif bifin bifop bifout bidet
 LIB     = bifrender.py bifsixel.py bifin_text.py ttfglyphs.py tonetrace.py
-PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB)
+PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB) gallery.py
 DOCS    = README.md BIF-SPEC.md HANDOFF.md
-TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifin.py tests/test_tonetrace.py tests/test_bifop.py tests/test_parity.py \
+TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifin.py tests/test_tonetrace.py tests/test_bifop.py tests/test_bidet.py tests/test_parity.py \
           tests/make_testdata.py tests/reference/unascii_v3.py
 
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bifin.py)
-DISTFILES = $(PYFILES) Makefile requirements.txt test.sh .gitignore $(DOCS)
+DISTFILES = $(PYFILES) presets.ini Makefile requirements.txt test.sh .gitignore $(DOCS)
 
 all: lint
 
@@ -32,6 +32,7 @@ help:
 	@echo "  test, check  - lint, the same, and a smoke subset of the parity gate against unascii (about 3 minutes)"
 	@echo "  test-full    - lint, then everything including the full parity matrix (about 10 minutes)"
 	@echo "  testdata     - regenerate testdata/ (only when the spec or tests/make_testdata.py changed)"
+	@echo "  gallery      - redraw gallery/gallery.png: every bidet preset on a sample (a tour, and a visual check)"
 	@echo "  install      - install bif, bifin and bifout, and the docs, under PREFIX"
 	@echo "  uninstall    - remove them again"
 	@echo "  installreq   - install the required OS packages (Debian/Ubuntu, as root)"
@@ -56,6 +57,7 @@ test-quick: lint
 	$(PYTHON) -W ignore tests/test_bifin.py
 	$(PYTHON) -W ignore tests/test_tonetrace.py
 	$(PYTHON) -W ignore tests/test_bifop.py
+	$(PYTHON) -W ignore tests/test_bidet.py
 
 test check: lint
 	PYTHON=$(PYTHON) ./test.sh --quick
@@ -66,13 +68,16 @@ test-full: lint
 testdata:
 	$(PYTHON) tests/make_testdata.py
 
+gallery:
+	$(PYTHON) gallery.py
+
 # Run as root (or set PREFIX and DESTDIR)
 install: install-bin install-doc
 
 install-bin:
 	$(INSTALL) -d $(DATADIR) $(BINDIR)
 	$(INSTALL) -m 755 $(addsuffix .py,$(TOOLS)) $(DATADIR)
-	$(INSTALL) -m 644 $(LIB) $(DATADIR)
+	$(INSTALL) -m 644 $(LIB) presets.ini $(DATADIR)
 	for t in $(TOOLS); do ln -sf ../share/BIDeT4D/$$t.py $(BINDIR)/$$t; done
 
 install-doc:
@@ -101,6 +106,8 @@ dist: lint
 	cp tests/reference/*.py dist/bidet4d-$(VERSION)/tests/reference
 	cp -R testdata/good testdata/bad dist/bidet4d-$(VERSION)/testdata
 	cp samples/* dist/bidet4d-$(VERSION)/samples
+	mkdir -p dist/bidet4d-$(VERSION)/gallery
+	cp gallery/gallery.png dist/bidet4d-$(VERSION)/gallery
 	tar -C dist -czf bidet4d-$(VERSION).tar.gz bidet4d-$(VERSION)
 	rm -rf dist
 	@echo "made bidet4d-$(VERSION).tar.gz"
@@ -108,5 +115,5 @@ dist: lint
 clean:
 	rm -rf __pycache__ tests/__pycache__ tests/reference/__pycache__ dist out bidet4d-*.tar.gz
 
-.PHONY: all help version lint test-quick test check test-full testdata install install-bin install-doc \
+.PHONY: all help version lint test-quick test check test-full testdata gallery install install-bin install-doc \
         uninstall installreq dist clean

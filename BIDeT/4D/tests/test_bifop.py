@@ -308,6 +308,33 @@ class Geometry(unittest.TestCase):
         with self.assertRaises(bif.BifError):
             bifop.apply(odd, ["rotate:10"])
 
+    def test_skew(self):
+        line = ink_pic(w=100, h=50, paths=[[(0, 40), (100, 40)], [(50, 0), (50, 50)]], closed=[0, 0])
+        up = bifop.apply(line, ["skew:y=-15"])                                        # the baseline rises to the right
+        t = math.tan(math.radians(15))
+        self.assertAlmostEqual(up.width, 100.0, places=6)
+        self.assertAlmostEqual(up.height, 50 + 100 * t, places=6)
+        r = draw(up).alpha
+        ys, xs = np.nonzero(r[:, :20] > 0.5)                                          # near the left end of the baseline
+        ys2, xs2 = np.nonzero(r[:, -20:] > 0.5)
+        self.assertGreater(float(ys.mean()), float(ys2.mean()) + 20)                  # lower on the left, higher on the right
+        lean = bifop.apply(line, ["skew:x=20"])                                       # verticals lean to the right
+        self.assertAlmostEqual(lean.width, 100 + 50 * math.tan(math.radians(20)), places=6)
+        r = draw(lean).alpha
+        top = np.nonzero(r[2] > 0.5)[0]
+        bottom = np.nonzero(r[-3] > 0.5)[0]
+        self.assertGreater(float(top.mean()), float(bottom.mean()) + 10)              # the top of the vertical is further right
+        self.assertIsNone(bifop.apply(sample("cow.txt"), ["skew:x=10"]).grid)
+        for bad in ("skew:x=90", "skew:y=-89.5"):
+            with self.assertRaises(bif.BifError):
+                bifop.apply(line, [bad])
+        both = bifop.apply(line, ["skew:x=10,y=5"])                                   # everything stays inside the canvas
+        e = bifop.extent(both)
+        self.assertGreaterEqual(e[0], -1.0)
+        self.assertGreaterEqual(e[1], -1.0)
+        self.assertLessEqual(e[2], both.width + 1.0)
+        self.assertLessEqual(e[3], both.height + 1.0)
+
     def test_composition_of_transforms(self):
         pic = sample("cow.txt")
         a = bifop.apply(pic, ["flip:h", "flip:h"])

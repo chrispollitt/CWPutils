@@ -26,9 +26,32 @@ Three tools around one file format, `.bif`. Milestones M0-M3 are done; M4 (`bifo
 
 | M4 (started) | `bifop.py` (Tool 2): registry of operations (`@op(name, params, doc)`; first parameter may be given bare; ids joined with `+`), `apply()`/`clone()`, CLI (`-i`, `-o`, `--list`). Ops: pen, theme, recolor, opacity, blend, crop, scale, rotate, flip, keep/drop/hide/show, frame, meta, simplify, wave/arc/squeeze. Design: ops never write into arrays (they share the input's), transforms are composed into the layers' `transform` (non-destructive), `cells` layers sit on the grid so they are not transformed, and anything that breaks the grid (rotate, flip, warps) drops `grid` and the `cells` layer; warps bake the transform into the vertices (densify first so strokes bend) and skip rasters with a warning |
 
-Not started: other importers (PNG/JPEG trace, SIXEL, SVG, font+string) and exporters (kitty, iTerm2, SVG, ANSI,
+| M5 (started) | `bidet.py` + `presets.ini` (+ `gallery.py`, `gallery/gallery.png`): the casual front end, stage 1 = the 2D parts. See "The two modes" below. |
+
+Not started: other importers (PNG/JPEG trace, SIXEL, SVG, **font+string**) and exporters (kitty, iTerm2, SVG, ANSI,
 Tektronix, animation). `bifop` still lacks: an extrude / 3D step, `smooth` (needs `vflag` from `bifin`), `merge` of
 several BIFs, raster warps, `rasterize`, `bold`.
+
+## The two modes (user's requirement) and the plan for bidet
+
+1. **Piping** (power users): `bifin | bifop | bifout` with every flag of every tool.
+2. **`bidet`** (casual users; the replacement for bidet3d): one command, few options, presets, auto-detection.
+   **Rule: it must stay sugar over mode 1**, never a second implementation. It builds the same three stages
+   and runs them in-process (`bifin.build_parser/options_of`, `bifop.apply`, `bifout.build_parser/render_options/
+   convert`); `bidet -n` prints the pipeline; `test_bidet.py::SugarOverThePipe` checks that bidet's bytes equal
+   the real tools' bytes for several inputs/presets. Presets are recipes (`presets.ini`; user file
+   `~/.config/bidet/presets.ini`, `$BIDET_PRESETS`); `-P` is repeatable and combines in order. User chose
+   (2026-10-07): name `bidet`; recipes in a data file; stage it as 2D first, 3D later; **the presets need not copy
+   bidet3d's: they are a showcase of what 4D can do** (and `gallery.py` draws them all on suitable samples).
+   Assumptions made: a file name is a file, anything else is text, text is forced to `-m line` (bifin's classifier
+   takes plain words for picture art and traces bars), SIXEL on a tty else PNG (or by -o extension, `.bif` too),
+   width = 95% of the terminal's pixel width (TIOCGWINSZ, else 8 px/column, 320..2400) or 1000 px for text / scale
+   2 for art when writing a file, dark/light from `COLORFGBG` or `--dark/--light` (a preset's own colours win).
+   **Stages still to do for a full bidet3d replacement:** (2) `bifin` importer for a string + font (proportional
+   fonts by name: impact, times...; sizes, spacing, wrap) so text is not monospace outlines; (3) paint kinds in BIF
+   (gradient / texture / tile fills; a spec change) and presets that use them; (4) `bifop extrude` (depth, bevel,
+   side colours, perspective views, spin frames) and 3D presets; (5) real terminal queries (DA1 for SIXEL support,
+   OSC 11 for the background, cell size) instead of the window-size/env guesses.
 
 ## Decisions the user made (do not re-litigate)
 
@@ -46,7 +69,7 @@ several BIFs, raster warps, `rasterize`, `bold`.
 ## Tests
 
 ```
-make test-quick    # ~1 min: test_bif (37), test_bifout (47), test_bifin (47), test_tonetrace (14), test_bifop (44)
+make test-quick    # ~1.5 min: test_bif (37), test_bifout (47), test_bifin (47), test_tonetrace (14), test_bifop (45), test_bidet (33)
 make test          # ~3 min: that plus a smoke subset of the parity gate (PARITY_QUICK=1: every mode, 7 samples)
 make test-full     # ~10 min: everything, the full parity matrix (1232 cases)
 python tests/test_parity.py --report     # the whole parity table and its distribution

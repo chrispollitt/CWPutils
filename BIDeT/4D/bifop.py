@@ -492,6 +492,24 @@ def op_flip(pic, notes, axis):
     drop_grid(pic)
 
 
+@op("skew", [("x", _float, 0.0, "degrees to lean the verticals to the right (italic); negative to the left"),
+             ("y", _float, 0.0, "degrees to tilt the baseline downwards to the right; negative: rising")],
+    "Shear the picture; the canvas grows to hold it. Forgets the character grid.")
+def op_skew(pic, notes, x, y):
+    if pic.unit_aspect != 1.0:
+        raise bif.BifError("skew: the units are not square (unit_aspect %s); scale first" % pic.unit_aspect)
+    if abs(x) >= 89.0 or abs(y) >= 89.0:
+        raise bif.BifError("skew: the angles must be within 89 degrees")
+    tx, ty = -math.tan(math.radians(x)), math.tan(math.radians(y))      # (y is down: the top moves right for x > 0)
+    W, H = pic.width, pic.height
+    xs = [px + tx * py for px, py in ((0, 0), (W, 0), (W, H), (0, H))]
+    ys = [ty * px + py for px, py in ((0, 0), (W, 0), (W, H), (0, H))]
+    x0, y0 = min(xs), min(ys)
+    post_transform(pic, (1.0, ty, tx, 1.0, -x0, -y0))              # x' = x + tx y,  y' = y + ty x, then to the new corner
+    pic.width, pic.height = max(xs) - x0, max(ys) - y0
+    drop_grid(pic)
+
+
 # ---------------------------------------------------------------------------------------------
 # Vector shapes: simplifying and warping
 # ---------------------------------------------------------------------------------------------
