@@ -25,7 +25,9 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
 | [`tests/`](tests/) | `test_bif.py` (37 tests: the files above, round trips, fuzzing, API, CLI), `test_bifout.py` (47: geometry, rasters, blending, SIXEL decoded back, CLI, parity with v3's `draw_strokes` / `sixel`), `test_bifin.py` (35: outlines vs FreeType, SAUCE, every sample, the cells layer equals the art, modes and options, hostile input, parity with unascii per sample, CLI), `test_parity.py` (5: **the M3 gate**, see Milestones), `reference/unascii_v3.py` (the frozen v3 it compares with), `make_testdata.py` |
 | [`samples/`](samples/) | the art the tests use (cowsay, figlet, toilet, jp2a, chafa output; nothing third-party) |
 | [`HANDOFF.md`](HANDOFF.md) | state, decisions, gaps and working notes for whoever continues |
-| [`test.sh`](test.sh) | runs all the tests (about 8 minutes); verified on Python 3.11 / numpy 2.2 / Pillow 11 and Python 3.8 / numpy 1.17 / Pillow 7 (not 3.7 / 1.16 / 5.4) |
+| [`test.sh`](test.sh) | runs all the tests (about 8 minutes); the first three suites are verified on three stacks: Python 3.11 / numpy 2.2 / Pillow 11, Python 3.8 / numpy 1.17 / Pillow 7, and Cygwin's Python 3.12 / numpy 2.5 / Pillow 12; the parity gate on the first two (not 3.7 / 1.16 / 5.4) |
+| [`Makefile`](Makefile) | `make help`: `lint`, `test-quick` (about 30 s), `test` (everything), `testdata`, `install` / `uninstall` (`bif`, `bifin`, `bifout` into `PREFIX/bin`, modules in `share/BIDeT4D`, docs; `DESTDIR` supported), `installreq`, `dist`, `clean` |
+| [`requirements.txt`](requirements.txt) | numpy, Pillow (no libsixel: SIXEL is written here) |
 
 Found while porting (v3 is untouched; both are fixed in the copies here):
 

@@ -1,0 +1,4 @@
+# What bif, bifin and bifout need (the oldest versions the code is written for; the tests have run on
+# Python 3.8 / numpy 1.17 / Pillow 7.0 and on Python 3.11 / numpy 2.2 / Pillow 11).
+numpy>=1.16
+Pillow>=5.4

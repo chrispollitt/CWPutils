@@ -34,8 +34,10 @@ Not started: Tool 2 (`bifop`), other importers (PNG/JPEG trace, SIXEL, SVG, font
   conversion. Their last edits were two approved bug fixes (commit `1c0ceb5`) and the move into `3D/`
   (commit `1e60761`). 4D must not depend on them (it does not; only an optional SIXEL decoder test looks in
   `3D/gfx-conv/sixeldec.py`).
-- **Eventually (user-confirmed TODO):** update the top-level `BIDeT/README.md` (still presents 3D as the
-  current tool) and add a `Makefile` to 4D (install the modules, test, lint, dist; model it on `3D/Makefile`).
+- The 4D `Makefile` and `requirements.txt`, and the top-level `BIDeT/README.md` (now: 4D current, 3D legacy
+  but still the only 3D-WordArt maker, v1/v2 obsolete), are done (verified: `make lint / test-quick / install /
+  uninstall / dist` in Cygwin, the installed symlinked tools run, the README's example commands work).
+  Possible later: man pages (`bifin.1`, `bifout.1`; 3D has `bidet3d.1`), a `make install` check on a real Linux.
 
 ## Tests
 
@@ -44,7 +46,8 @@ Not started: Tool 2 (`bifop`), other importers (PNG/JPEG trace, SIXEL, SVG, font
 python tests/test_parity.py --report     # the whole parity table (1232 cases) and its distribution
 ```
 All four suites pass on Windows Python 3.11 / numpy 2.2 / Pillow 11 and on WSL `Ubuntu-20.04` Python 3.8 /
-numpy 1.17 / Pillow 7. Python 3.7 / Pillow 5.4 / numpy 1.16 (the stated minimum) is **untested**. To run
+numpy 1.17 / Pillow 7; the first three (119 tests, `make test-quick`) also on the user's Cygwin Python 3.12 /
+numpy 2.5 / Pillow 12 (the parity gate was not run there). Python 3.7 / Pillow 5.4 / numpy 1.16 (the stated minimum) is **untested**. To run
 the gate in WSL from the Bash tool use PowerShell (`wsl -d Ubuntu-20.04 -- bash -c "cd /mnt/d/... && python3
 tests/test_parity.py"`): Git Bash rewrites `/mnt/...` paths. If a limit must be widened again, do it with a
 measured number and a stated reason in `tolerance()`; do not hide a difference.
