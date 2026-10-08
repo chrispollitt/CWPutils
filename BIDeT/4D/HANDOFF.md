@@ -28,7 +28,11 @@ Three tools around one file format, `.bif`. Milestones M0-M3 are done; M4 (`bifo
 
 | M5 (started) | `bidet.py` + `presets.ini` (+ `gallery.py`, `gallery/gallery.png`): the casual front end, stage 1 = the 2D parts. See "The two modes" below. |
 
-Not started: other importers (PNG/JPEG trace, SIXEL, SVG, **font+string**) and exporters (kitty, iTerm2, SVG, ANSI,
+| M5 stage 2 | the **lettering importer**: `bifin -f lettering` (`bifin_lettering.py`: proportional layout from the font's own hmtx advances and legacy `kern`, `--size --spacing --line-height --align --wrap --bold --italic --margin`, one filled vector layer `text` with a `stem`; a missing bold / italic is faked: outline stroke / 12 deg shear), `fonts.py` (font lookup by family, file, comma list or generic name `sans serif mono impact script comic times arial courier georgia`, each with fallbacks so a recipe works anywhere; JSON cache of the catalogue in `$BIDET_CACHE` / `~/.cache/bidet/fonts.json`), `ttfglyphs` metrics / advance / kerning / names, `bifin --face` (lettering-only font, so a preset can ask for one without breaking art; `--font` is the art's monospace font), `--list-fonts`, `bidet -F`, `bifop pen` embolden of lettering via the `stem` layer key (new, in BIF-SPEC 7.1). `tests/test_lettering.py` (39) uses a synthetic font written by `tests/ttfbuild.py`: no installed font needed |
+
+| M5 stage 5 (part) | **terminal queries** (`bifterm.py`; bifout `-b auto`, `--force`, `--no-query`; user request 2026-10-07, after the old bidet's `test-sixel.sh` and bidet3d's `query_terminal`): DA1 first and alone (a terminal without SIXEL is asked nothing else), then OSC 11 + CSI 16 t with a second DA1 as end mark. Like v1 (and unlike 3D) it asks whenever SIXEL goes to stdout, also into a pipe, and **silence counts as "no SIXEL"** (refused unless `--force`, `LSIX_FORCE_SIXEL_SUPPORT`, `BIDET_NO_QUERY`); no `/dev/tty` / not POSIX = not asked = go on. `-b auto`: terminal's colour as the page, else transparent; ink swapped for light / dark grey if it would not show (luminance gap < 0.4; unknown terminal = dark unless `COLORFGBG` says light). bidet adds `--background auto` on a terminal unless a preset / `--dark` / `--light` / `--ink` / `--paper` / the user's own bifout flag chose colours (a themed preset keeps its page). Plain-text input (stdin or file) that looks like prose is lettering (`looks_like_prose`; `--art` / `-t` override), and an empty picture is an error, not a blank page. **Untested in a real conhost** (a fake terminal on a pty in `tests/test_bifterm.py` does all the flows; the user reported conhost as the case where only v1 detected correctly). Not yet: bidet sizing from the CSI 16 t cell size when TIOCGWINSZ has no pixels (`bifterm.query(want_cell=True)` is there) |
+
+Not started: other importers (PNG/JPEG trace, SIXEL, SVG) and exporters (kitty, iTerm2, SVG, ANSI,
 Tektronix, animation). `bifop` still lacks: an extrude / 3D step, `smooth` (needs `vflag` from `bifin`), `merge` of
 several BIFs, raster warps, `rasterize`, `bold`.
 
@@ -43,12 +47,14 @@ several BIFs, raster warps, `rasterize`, `bold`.
    `~/.config/bidet/presets.ini`, `$BIDET_PRESETS`); `-P` is repeatable and combines in order. User chose
    (2026-10-07): name `bidet`; recipes in a data file; stage it as 2D first, 3D later; **the presets need not copy
    bidet3d's: they are a showcase of what 4D can do** (and `gallery.py` draws them all on suitable samples).
-   Assumptions made: a file name is a file, anything else is text, text is forced to `-m line` (bifin's classifier
-   takes plain words for picture art and traces bars), SIXEL on a tty else PNG (or by -o extension, `.bif` too),
+   Assumptions made: a file name is a file, anything else is text, text is set with `-f lettering` (bifin's
+   classifier takes plain words for picture art and traces bars), SIXEL on a tty else PNG (or by -o extension, `.bif` too),
    width = 95% of the terminal's pixel width (TIOCGWINSZ, else 8 px/column, 320..2400) or 1000 px for text / scale
    2 for art when writing a file, dark/light from `COLORFGBG` or `--dark/--light` (a preset's own colours win).
-   **Stages still to do for a full bidet3d replacement:** (2) `bifin` importer for a string + font (proportional
-   fonts by name: impact, times...; sizes, spacing, wrap) so text is not monospace outlines; (3) paint kinds in BIF
+   **Stage 2 (font text) is done** (see M5 stage 2 above; presets banner / stamp / monument / wave / sunset / chalk ... use
+   `--face`). Known limits: GPOS-only kerning is not read (fonts without a `kern` table are laid out unkerned), no
+   ligatures / complex scripts / right-to-left, CFF (.otf) fonts are not seen, `pen` cannot thin letters,
+   synthetic bold is a round-joined outline. **Stages still to do for a full bidet3d replacement:** (3) paint kinds in BIF
    (gradient / texture / tile fills; a spec change) and presets that use them; (4) `bifop extrude` (depth, bevel,
    side colours, perspective views, spin frames) and 3D presets; (5) real terminal queries (DA1 for SIXEL support,
    OSC 11 for the background, cell size) instead of the window-size/env guesses.

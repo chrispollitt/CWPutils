@@ -19,8 +19,10 @@ import sys
 import bif
 import bifrender
 import bifsixel
+import bifterm
 
 VERSION = "0.1"
+LIGHT_INK, DARK_INK = (235, 235, 235), (25, 25, 25)         # what the ink becomes where it would not show
 
 
 # ---------------------------------------------------------------------------------------------
@@ -90,6 +92,12 @@ def build_parser():
     ap.add_argument("--paper", metavar="COLOR", help="the page colour (default: the picture's, else white, "
                     "or black for light art)")
     ap.add_argument("--transparent", action="store_true", help="leave the page transparent (PNG alpha / SIXEL unpainted)")
+    ap.add_argument("-b", "--background", metavar="auto|transparent|COLOR",
+                    help="the page: a colour (as --paper), transparent, or auto: for SIXEL on a terminal, the terminal's own "
+                         "background colour (asked with OSC 11), or transparent if it will not say, and the ink made light or dark "
+                         "to show on it; anywhere else the picture's own page (default: the picture's)")
+    ap.add_argument("--force", action="store_true", help="send SIXEL even if the terminal does not say it has it")
+    ap.add_argument("--no-query", action="store_true", help="do not ask the terminal anything (also BIDET_NO_QUERY=1)")
     ap.add_argument("--layer", action="append", metavar="ID", help="draw only this layer id (repeatable)")
     ap.add_argument("--max-pixels", type=float, default=bifrender.DEFAULT_MAX_PIXELS, metavar="N",
                     help="largest picture to draw; bigger is drawn smaller (default %d)" % bifrender.DEFAULT_MAX_PIXELS)
@@ -101,9 +109,51 @@ def build_parser():
 
 def render_options(a):
     """The keyword arguments of convert() (and of bifrender.render) from parsed arguments."""
-    return dict(frame=a.frame, transparent=a.transparent, scale=a.scale, width=a.width, height=a.height, ss=a.ss,
-                ink=_color(a.ink) if a.ink else None, paper=_color(a.paper) if a.paper else None,
+    bg = (a.background or "").strip().lower()
+    paper = _color(a.paper) if a.paper else None
+    if bg not in ("", "auto", "transparent"):
+        paper = _color(a.background)
+    return dict(frame=a.frame, transparent=a.transparent or bg == "transparent", scale=a.scale, width=a.width, height=a.height,
+                ss=a.ss, ink=_color(a.ink) if a.ink else None, paper=paper,
                 max_pixels=a.max_pixels, layers=set(a.layer) if a.layer else None)
+
+
+def to_terminal(a, fmt, out_is_tty=True):
+    """Is the picture SIXEL for standard output (not `-o FILE`)?  Then it is meant for the terminal, whether or not
+    standard output is one right now (it may be a pipe to `less -R` or `cut`): the terminal is asked, like the
+    old bidet's test-sixel did.  Callers that only ask on a real tty pass out_is_tty."""
+    return fmt == "sixel" and out_is_tty and (not a.output or a.output == "-")
+
+
+def ask_terminal(a, fmt, out_is_tty=True, env=None):
+    """What the terminal says (bifterm.Reply), asking only if SIXEL is going to it; NOTHING otherwise."""
+    if not to_terminal(a, fmt, out_is_tty) or a.no_query:
+        return bifterm.NOTHING
+    return bifterm.query(want_bg=(a.background or "").lower() == "auto", want_cell=False, env=env, debug=a.verbose)
+
+
+def terminal_options(pic, a, opts, reply, env=None):
+    """The render options for a picture that goes to a terminal that said `reply`: refuses SIXEL a terminal says it has
+    not (unless --force), and settles `--background auto`: the terminal's colour for the page, or transparent if it
+    would not say; the ink becomes light or dark if the page would swallow it."""
+    env = os.environ if env is None else env
+    if reply.asked and reply.sixel is not True and not (a.force or env.get("LSIX_FORCE_SIXEL_SUPPORT")):
+        raise bif.BifError("your terminal does not report having SIXEL graphics support%s.  Try mintty, xterm -ti vt340, "
+                           "mlterm, Windows Terminal or WezTerm; or --force to send it anyway, or -o FILE.png"
+                           % ("" if reply.sixel is False else " (it did not answer)"))
+    if (a.background or "").lower() != "auto":
+        return opts
+    opts = dict(opts)
+    if reply.bg:
+        opts["paper"], opts["transparent"] = tuple(reply.bg), False
+        page = reply.bg
+    else:
+        opts["transparent"] = True                              # the terminal's own colour shows through
+        page = (255, 255, 255) if bifterm.guess_dark(env) is False else (0, 0, 0)       # dark unless it says light
+    inks = [e["rgb"] for e in pic.palette if e.get("role") == "ink"]
+    if inks and not opts.get("ink") and abs(bifterm.luminance(inks[0]) - bifterm.luminance(page)) < 0.4:
+        opts["ink"] = LIGHT_INK if bifterm.luminance(page) < 0.5 else DARK_INK
+    return opts
 
 
 def main(argv=None):
@@ -122,7 +172,10 @@ def main(argv=None):
         else:
             pic = bif.load(a.file, allow_truncated=a.truncated)
         buf = io.BytesIO()
-        r = convert(pic, fmt, buf, **render_options(a))
+        opts = render_options(a)
+        if to_terminal(a, fmt):
+            opts = terminal_options(pic, a, opts, ask_terminal(a, fmt))
+        r = convert(pic, fmt, buf, **opts)
     except (bif.BifError, IOError) as e:
         sys.exit("bifout: %s" % e)
     for n in r.notes:

@@ -3,19 +3,24 @@
 
     bifin cow.txt -o cow.bif              ASCII / ANSI / Unicode art, UTF-8 or DOS (CP437), SAUCE read
     cowsay hi | bifin | bifout -s         through a pipe, to SIXEL on the terminal
+    echo Hello | bifin -f lettering --font impact --size 120 | bifout -s      a string set in a font
 
 The same readings as unascii (-m line | tone | mix | ansi-block ...), but the result is vectors and
 rasters, not pixels: strokes and letters stay sharp at any `bifout --scale`, the colours are a palette
 a manipulator can change, and the character grid is kept in the file (hidden `cells` layer).
-Importers are registered in READERS (name -> function(data, options) -> bif.Picture); only `text` exists so far.
+`-f lettering` is the other importer: not art but a string typeset in a proportional font (bifin --list-fonts).
+Importers are registered in READERS (name -> function(data, options) -> bif.Picture).
 """
 from __future__ import print_function
 
 import argparse
+import os
 import sys
 
 import bif
+import bifin_lettering
 import bifin_text
+import fonts
 
 VERSION = "0.1"
 
@@ -38,10 +43,22 @@ def sniff(data):
 
 
 def read_text(data, **options):
+    options.pop("lettering", None)                                  # (the other importer's options)
     return bifin_text.import_text(data, **options)
 
 
-READERS = {"text": read_text}
+def read_lettering(data, **options):
+    """A string set in a font (the options are bifin's: `lettering` holds this importer's, ink / paper / name are shared)."""
+    kw = dict(options.get("lettering") or {})
+    if options.get("ink"):
+        kw["ink"] = options["ink"]
+    if options.get("paper"):
+        kw["paper"] = options["paper"]
+    kw["name"] = options.get("name")
+    return bifin_lettering.lettering(data.decode("utf-8", "replace"), **kw)
+
+
+READERS = {"text": read_text, "lettering": read_lettering}
 
 
 def convert(data, kind=None, **options):
@@ -99,7 +116,21 @@ def build_parser():
     ap.add_argument("--invert", action="store_true", help="tone: outline the negative")
     ap.add_argument("--ink", default=None, help="the ink colour in the palette (default black; light grey for colour block art)")
     ap.add_argument("--paper", default=None, help="the page colour in the palette (default white; black for colour block art)")
-    ap.add_argument("--font", help="monospace TrueType font file (default: look for DejaVu Sans Mono, Consolas, ...)")
+    ap.add_argument("--font", help="art: the monospace TrueType font, a file or a name (default: DejaVu Sans Mono, Consolas, ...); "
+                    "-f lettering: the same as --face")
+    ap.add_argument("--face", help="-f lettering: the font to set the text in, a file, a family (impact, 'Times New Roman'), a "
+                    "generic (sans, serif, mono, script...) or several joined with commas (default sans).  Art ignores it, "
+                    "so a recipe can ask for a face without breaking the art it is used on")
+    lt = ap.add_argument_group("lettering (-f lettering): a string set in a font")
+    lt.add_argument("--size", type=float, default=100.0, metavar="PX", help="font size, the units of the picture (default 100)")
+    lt.add_argument("--spacing", type=float, default=0.0, metavar="EM", help="extra space between letters, in ems (default 0)")
+    lt.add_argument("--line-height", type=float, default=None, metavar="EM", help="distance between lines, in ems (default: the font's)")
+    lt.add_argument("--align", choices=["left", "center", "right"], default="left", help="alignment of several lines (default left)")
+    lt.add_argument("--wrap", type=float, default=0.0, metavar="PX", help="break lines at spaces to fit this width (default: never)")
+    lt.add_argument("--bold", action="store_true", help="a bold face (faked with an outline if the family has none)")
+    lt.add_argument("--italic", action="store_true", help="an italic face (faked with a slant if the family has none)")
+    lt.add_argument("--margin", type=float, default=0.15, metavar="EM", help="space round the letters, in ems (default 0.15)")
+    ap.add_argument("--list-fonts", action="store_true", help="list the font families found and exit")
     ap.add_argument("--no-outlines", action="store_true", help="letters as a raster layer, as unascii draws them, not vector outlines")
     ap.add_argument("--tone-raster", action="store_true", help="tone: the outlines as a raster layer, as unascii draws them, not traced vector lines")
     ap.add_argument("--encoding", help="input encoding (default: UTF-8, else CP437)")
@@ -114,13 +145,21 @@ def build_parser():
 
 
 def options_of(a):
-    """The importer's options (bifin_text.Options fields) from parsed arguments."""
+    """The importer's options (bifin_text.Options fields, and `lettering` for the other importer) from parsed arguments."""
+    art_font = a.font
+    if art_font and a.kind != "lettering" and not os.path.isfile(art_font):          # a name will do for the art's font too
+        try:
+            art_font = fonts.find(art_font)
+        except fonts.FontNotFound as e:
+            raise bif.BifError(str(e))
     options = dict(mode=a.mode, cell_w=a.cell, aspect=a.aspect, weight=a.weight, join=a.join * 1.0 if a.join > 0 else 0.0,
                    round_lines=not a.no_round, spline=a.spline, shade=a.shade, hatch=a.hatch, text_bold=a.text_bold,
                    smooth=a.smooth, detail=a.detail, scale=a.scale, levels=a.levels, dark=a.dark, invert=a.invert,
-                   font=a.font, rows=a.rows, color=a.color, cols=a.cols, crop=not a.no_crop, verbose=a.verbose,
+                   font=art_font, rows=a.rows, color=a.color, cols=a.cols, crop=not a.no_crop, verbose=a.verbose,
                    outlines=not a.no_outlines, tone_vectors=not a.tone_raster, cells=not a.no_cells, keep_source=a.keep_source,
-                   name=None if a.file == "-" else a.file, encoding=a.encoding)
+                   name=None if a.file == "-" else a.file, encoding=a.encoding,
+                   lettering=dict(font=a.face or a.font, size=a.size, spacing=a.spacing, line_height=a.line_height, align=a.align,
+                                  wrap=a.wrap, bold=a.bold, italic=a.italic, margin=a.margin))
     if a.ink:
         options["ink"] = _color(a.ink)
     if a.paper:
@@ -131,6 +170,10 @@ def options_of(a):
 def main(argv=None):
     ap = build_parser()
     a = ap.parse_args(argv)
+    if a.list_fonts:
+        fams = fonts.families()
+        print("\n".join(fams) if fams else "no TrueType fonts found")
+        return
 
     if a.file == "-":
         if sys.stdin.isatty():
@@ -144,8 +187,8 @@ def main(argv=None):
             sys.exit("bifin: %s" % e)
     if not a.output and sys.stdout.isatty():
         ap.error("will not write a BIF to a terminal: use -o FILE, or pipe it into bifout")
-    options = options_of(a)
     try:
+        options = options_of(a)
         pic = convert(data, a.kind, **options)
         blob = bif.dumps(pic)
     except (bif.BifError, ValueError) as e:

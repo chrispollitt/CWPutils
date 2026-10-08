@@ -16,7 +16,9 @@ What it works out for you:
   * the input: a file name is read as a file, anything else is the text itself; a BIF is drawn as it is
   * the output: SIXEL on a terminal, else PNG; with -o the format follows the file name (.png, .six, .bif)
   * the size: as wide as the terminal's pixels (or --width); for a file, text 1000 px wide and art twice life size
-  * dark terminals: with COLORFGBG saying the background is dark (or --dark), light lines on dark paper
+  * the terminal: it is asked whether it has SIXEL and what its background colour is (OSC 11); the page takes that
+    colour, or is transparent if it will not say, and the lines are light or dark to show on it (--dark / --light,
+    --ink / --paper, or a preset's colours, take over)
 
 Python 3.7+, numpy 1.16+, Pillow 5.4+.
 """
@@ -33,6 +35,7 @@ import bif
 import bifin
 import bifop
 import bifout
+import bifterm
 
 try:
     import configparser
@@ -159,15 +162,7 @@ def fit_width(pixels=None, columns=None):
 
 def dark_terminal(env=None):
     """True / False from COLORFGBG ('15;0': foreground;background as ANSI numbers), or None if it does not say."""
-    env = os.environ if env is None else env
-    v = env.get("COLORFGBG", "")
-    if ";" not in v:
-        return None
-    try:
-        bg = int(v.split(";")[-1])
-    except ValueError:
-        return None
-    return bg in (0, 1, 2, 3, 4, 5, 6, 8)
+    return bifterm.guess_dark(env)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -180,6 +175,7 @@ class Plan(object):
         self.source = None            # a file name, or None for text / stdin
         self.literal = None           # the text, if the input is text given on the command line
         self.stdin = False
+        self.lettering = False        # the input is words to set in a font (given as text, or found to read as prose), not art
         self.is_bif = False
         self.bifin = []
         self.ops = []
@@ -217,6 +213,31 @@ class Plan(object):
         return head + " | ".join(parts)
 
 
+PROSE_PUNCTUATION = " .,;:!?'\"()-&%$"
+
+
+def looks_like_prose(data):
+    """Is this a few words (a title, a sentence), not art?  bifin's classifier takes a word for picture art and
+    draws nothing, so bidet sets such input as lettering.  Art is made of | _ / \\ + = * ~ and the like, which prose
+    does not use; shaded picture art is dense, a sentence has spaces."""
+    if not isinstance(data, bytes) or not data.strip() or len(data) > 2000:
+        return False
+    try:
+        text = data.decode("utf-8").strip("\r\n")
+    except UnicodeDecodeError:
+        return False
+    lines = text.replace("\r\n", "\n").split("\n")
+    if len(lines) > 12 or not all(c.isalnum() or c in PROSE_PUNCTUATION or c == "\n" for c in text.replace("\r", "")):
+        return False
+    body = text.replace("\n", "")
+    if sum(c.isalnum() for c in body) * 2 < len(body.strip()):                   # ".,,::;;" is a texture, not words
+        return False
+    tokens = text.split()
+    if max(len(t) for t in tokens) > 30:
+        return False
+    return len(body) < 12 or len(tokens) > 1 and sum(c == " " for c in body) * 20 >= len(body)
+
+
 def format_for(path):
     ext = os.path.splitext(path or "")[1].lower()
     if ext in (".six", ".sixel"):
@@ -226,8 +247,9 @@ def format_for(path):
     return "png"
 
 
-def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=None, pixels=None):
-    """Turn parsed command-line arguments into a Plan (no input is read, nothing is drawn)."""
+def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=None, pixels=None, data=None):
+    """Turn parsed command-line arguments into a Plan (nothing is drawn).  `data`: the bytes of a standard input
+    already read, so that a few plain words can be told from art; a named file is looked into here."""
     env = os.environ if env is None else env
     stdout_tty = sys.stdout.isatty() if stdout_tty is None else stdout_tty
     stdin_tty = sys.stdin.isatty() if stdin_tty is None else stdin_tty
@@ -239,14 +261,24 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
         plan.stdin = True
     elif len(words) == 1 and not args.text and os.path.isfile(words[0]):
         plan.source = words[0]
-        plan.is_bif = open(plan.source, "rb").read(8) == bif.MAGIC
+        with open(plan.source, "rb") as f:
+            data = f.read(2001)
+        plan.is_bif = data[:8] == bif.MAGIC
     elif len(words) == 1 and words[0] == "-" and not args.text:
         plan.stdin = True
     else:
         plan.literal = " ".join(words)
-    # the recipe: presets in the order asked for, then what was asked on the command line
+    # a literal is words to set in a font; so is a file or standard input of plain words, or when asked with -t
+    # (the art classifier takes words for picture art and draws nothing); --art or an importer flag says otherwise
+    user_in = shlex.split(args.bifin or "") + [f for p in (presets.get(n) for n in args.preset or []) if p for f in p.bifin]
+    art_flags = any(f in ("-f", "--from", "-m", "--mode") or f.startswith("--from=") or f.startswith("--mode=") for f in user_in)
     if plan.literal is not None:
-        plan.bifin = ["-m", "line"]       # text is lettering: bifin's classifier would take it for picture-style art
+        plan.lettering = True
+    elif not plan.is_bif and not args.art and not art_flags:
+        plan.lettering = args.text or (data is not None and looks_like_prose(data))
+    # the recipe: presets in the order asked for, then what was asked on the command line
+    if plan.lettering:
+        plan.bifin = ["-f", "lettering"]  # set in a font, not drawn as art
     chosen = []
     for name in args.preset or []:
         if name not in presets:
@@ -256,17 +288,11 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
         plan.bifin += p.bifin
         plan.ops += p.ops
         plan.bifout += p.bifout
+    if args.font:
+        plan.bifin += ["--face" if plan.lettering else "--font", args.font]                 # (the lettering's, or the art's)
     plan.bifin += shlex.split(args.bifin or "")
     plan.ops += shlex.split(args.bifop or "")
     plan.bifout += shlex.split(args.bifout or "")
-    # colours: what is asked for, else dark or light as the terminal is; a preset's own colours come later and win
-    dark = True if args.dark else (False if args.light else None)
-    if dark is None and stdout_tty and not args.output:
-        dark = dark_terminal(env)
-    if args.ink or args.paper:                                            # asked for: last, so it wins
-        plan.ops.append("theme:" + ",".join(k + "=" + v for k, v in (("ink", args.ink), ("paper", args.paper)) if v))
-    elif dark is not None and not any(o.startswith("theme") for o in plan.ops):
-        plan.ops.insert(0, DARK_THEME if dark else LIGHT_THEME)           # worked out: only if no preset chose colours
     # where the picture goes
     plan.output = args.output if args.output and args.output != "-" else None
     if args.output and args.output != "-":
@@ -277,6 +303,19 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
         plan.fmt = "sixel"
     else:
         plan.fmt = "png"
+    # colours: what is asked for (--ink / --paper, last, so it wins; --dark / --light).  Else, on a terminal, bifout's
+    # `-b auto`: the terminal's own background as the page (or transparent if it will not say) and ink that shows on
+    # it.  A preset that chose colours keeps its own page.
+    themed = any(o.startswith("theme") for o in plan.ops)
+    dark = True if args.dark else (False if args.light else None)
+    if args.ink or args.paper:
+        plan.ops.append("theme:" + ",".join(k + "=" + v for k, v in (("ink", args.ink), ("paper", args.paper)) if v))
+    elif dark is not None and not themed:
+        plan.ops.insert(0, DARK_THEME if dark else LIGHT_THEME)
+    elif plan.fmt == "sixel" and not plan.output and not themed:
+        own = _parse_flags(bifout.build_parser(), plan.bifout, "bifout flags")
+        if not (own.background or own.paper or own.transparent):
+            plan.bifout += ["--background", "auto"]
     if plan.fmt == "bif" and plan.is_bif and not plan.ops:
         raise bif.BifError("nothing to do: the input is a BIF and no preset or operation was asked for")
     # the size: asked for, else fitted to the terminal (SIXEL) or twice life size (a file)
@@ -288,7 +327,7 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
             plan.bifout += ["--width", str(fit_width(pixels if pixels is not None else terminal_pixels(),
                                                      columns if columns is not None else terminal_columns()))]
         elif plan.fmt != "bif":                                           # a file: text fills 1000 px, art is drawn twice life size
-            plan.bifout += ["--width", "1000"] if plan.literal is not None else ["--scale", "2"]
+            plan.bifout += ["--width", "1000"] if plan.lettering else ["--scale", "2"]
     return plan
 
 
@@ -313,13 +352,19 @@ def run(plan, data, notes=None):
         a = _parse_flags(bifin.build_parser(), plan.bifin, "bifin flags")
         a.file = plan.source or "-"
         pic = bifin.convert(data, a.kind, **bifin.options_of(a))
+    if not any(L.kind in ("vector", "raster") and L.get("visible", True) for L in pic.layers):
+        raise bif.BifError("nothing to draw: the input was read as %s and has no lines (a few words? try -t; art? try --art or "
+                           "--bifin='-m line')" % pic.meta.get("mode", "art"))
     if plan.ops:
         pic = bifop.apply(pic, plan.ops, notes)
     if plan.fmt == "bif":
         return bif.dumps(pic)
     a = _parse_flags(bifout.build_parser(), plan.bifout, "bifout flags")
     buf = io.BytesIO()
-    r = bifout.convert(pic, plan.fmt, buf, **bifout.render_options(a))
+    opts = bifout.render_options(a)
+    if not plan.output and bifout.to_terminal(a, plan.fmt):                              # SIXEL for the terminal: ask it, as bifout does
+        opts = bifout.terminal_options(pic, a, opts, bifout.ask_terminal(a, plan.fmt))
+    r = bifout.convert(pic, plan.fmt, buf, **opts)
     notes.lines.extend(r.notes)
     return buf.getvalue()
 
@@ -336,11 +381,16 @@ def build_parser():
     ap.add_argument("-o", "--output", metavar="FILE", help="write the picture here (.png, .six, .bif); '-' = standard output")
     ap.add_argument("-w", "--width", type=int, metavar="PX", help="draw this many pixels wide (default: the terminal's width, "
                     "or, for a file, 1000 for text and twice life size for art)")
+    ap.add_argument("-F", "--font", metavar="NAME", help="the font for text (a family, impact, serif, mono, script, ... or a .ttf file; "
+                    "default sans)")
+    ap.add_argument("--list-fonts", action="store_true", help="list the fonts found and exit")
     ap.add_argument("--ink", metavar="COLOR", help="colour of the lines")
     ap.add_argument("--paper", metavar="COLOR", help="colour of the page")
     ap.add_argument("--dark", action="store_true", help="draw for a dark background (light lines on black)")
     ap.add_argument("--light", action="store_true", help="draw for a light background (dark lines on white)")
-    ap.add_argument("-t", "--text", action="store_true", help="the arguments are text, even if one names a file")
+    ap.add_argument("-t", "--text", action="store_true", help="the input is text to set in a font, even if it names a file "
+                    "or is read from a pipe")
+    ap.add_argument("--art", action="store_true", help="the input is terminal art, even if it looks like a few words")
     ap.add_argument("-n", "--show-pipeline", action="store_true", help="print the bifin | bifop | bifout pipeline and do not run it")
     ap.add_argument("--bifin", metavar="FLAGS", help="extra flags for bifin, as one quoted string (a single flag: --bifin=--mono)")
     ap.add_argument("--bifop", metavar="OPS", help="extra operations for bifop, as one quoted string")
@@ -353,6 +403,10 @@ def build_parser():
 def main(argv=None):
     ap = build_parser()
     args = ap.parse_args(argv)
+    if args.list_fonts:
+        import fonts
+        print("\n".join(fonts.families()) or "no TrueType fonts found")
+        return 0
     try:
         presets = load_presets()
         if args.list_presets:
@@ -363,13 +417,18 @@ def main(argv=None):
         if args.dark and args.light:
             raise bif.BifError("--dark and --light together")
         plan = make_plan(args, presets)
+        data = None
+        if plan.stdin:                                                    # read it now: words are told from art by looking
+            data = read_input(plan)
+            plan = make_plan(args, presets, data=data)
         if args.show_pipeline:
             print(plan.shell())
             return 0
         if plan.fmt != "bif" and not plan.output and sys.stdout.isatty() and plan.fmt != "sixel":
             raise bif.BifError("will not write a %s to a terminal" % plan.fmt)
         notes = bifop.Notes()
-        data = read_input(plan)
+        if data is None:
+            data = read_input(plan)
         blob = run(plan, data, notes)
     except (bif.BifError, ValueError, IOError) as e:
         sys.exit("bidet: %s" % e)

@@ -169,7 +169,9 @@ programs do), with straight (not premultiplied) alpha.
 
 Strokes and fills made of polylines. Extra `LAYR` keys: `width` (default stroke width, canvas
 units, default 1), `stroke` (default stroke paint, default 0), `fill` (default fill paint or `null`),
-`cap` (`round` default, `butt`, `square`), `join` (`round` default, `miter`, `bevel`), `miter_limit` (4).
+`cap` (`round` default, `butt`, `square`), `join` (`round` default, `miter`, `bevel`), `miter_limit` (4),
+`stem` (optional, canvas units: the width of a typical stem of the filled shapes, such as letters, which have no
+stroke of their own; information for manipulators, which add outline of a multiple of it to embolden. Drawing ignores it).
 
 Paths are stored flat, in one array of vertices and one of offsets (CSR layout), so a thousand paths
 are still three or four arrays:

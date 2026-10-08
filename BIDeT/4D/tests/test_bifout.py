@@ -14,6 +14,8 @@ import unittest
 import numpy as np
 from PIL import Image
 
+# the tests must not ask the terminal they happen to run in (bifterm.py): it may not have SIXEL
+os.environ.setdefault("BIDET_NO_QUERY", "1")
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)

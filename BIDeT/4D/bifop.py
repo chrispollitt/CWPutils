@@ -221,16 +221,23 @@ def scale_of(m):
 # ---------------------------------------------------------------------------------------------
 @op("pen", [("factor", _float, REQUIRED, "multiply the stroke width by this"),
             ("layer", _ids, None, "only these layer ids"), ("frame", _int, None, "only this frame")],
-    "Thicker or thinner lines: scales the stroke width of vector layers (letters drawn as filled outlines have none).")
+    "Thicker or thinner lines: scales the stroke width of vector layers.  Letters (filled outlines with a `stem`) "
+    "get bolder: an outline of (factor - 1) stems is added; they cannot be made thinner than the font drew them.")
 def op_pen(pic, notes, factor, layer, frame):
     if factor < 0:
         raise bif.BifError("pen: the factor must not be negative")
     found = layers(pic, layer, ("vector",), frame)
     _need_layers(found, layer, "pen")
     for L in found:
+        stem = float(L.get("stem", 0) or 0)
+        extra = max(0.0, factor - 1.0) * stem                  # filled letters: the weight is added round the outline
+        if stem and factor < 1.0:
+            notes.warn("pen: layer '%s' is lettering, which cannot be drawn thinner than the font made it" % (L.id or "?"))
         L.props["width"] = float(L.get("width", 1.0)) * factor
         if "width" in L.arrays:
-            L.arrays["width"] = (L.arrays["width"].astype(np.float64) * factor).astype("<f4")
+            L.arrays["width"] = (L.arrays["width"].astype(np.float64) * factor + extra).astype("<f4")
+        elif extra:
+            L.arrays["width"] = np.full(len(L.arrays["start"]) - 1, L.props["width"] + extra, "<f4")
 
 
 @op("theme", [("ink", _color, None, "the line colour"), ("paper", _color, None, "the page colour"),
@@ -600,6 +607,8 @@ def _warp_layer(pic, L, fn, step):
     _rebuild(L, paths, vw if has_w else None, vf if has_f else None)
     L.props.pop("transform", None)                                  # baked in; the pen keeps its size
     L.props["width"] = float(L.get("width", 1.0)) * k
+    if "stem" in L.props:
+        L.props["stem"] = float(L.props["stem"]) * k
     if "width" in L.arrays:
         L.arrays["width"] = (L.arrays["width"].astype(np.float64) * k).astype("<f4")
 

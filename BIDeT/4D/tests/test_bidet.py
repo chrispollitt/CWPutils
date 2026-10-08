@@ -13,6 +13,8 @@ import unittest
 import numpy as np
 from PIL import Image
 
+# the tests must not ask the terminal they happen to run in (bifterm.py): it may not have SIXEL
+os.environ.setdefault("BIDET_NO_QUERY", "1")
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
@@ -128,17 +130,65 @@ class Input(unittest.TestCase):
         p = plan("-t", sample("cow.txt"))                                   # --text: it is text, though it names a file
         self.assertEqual((p.source, p.literal), (None, sample("cow.txt")))
 
-    def test_text_is_drawn_as_lettering_not_as_picture_art(self):
+    def test_text_is_set_in_a_font_not_traced_as_picture_art(self):
         # bifin's classifier takes plain words for picture-style art and traces the density: four vertical bars
         for words in (["Hi there"], ["Hello,", "World!"], ["BIDeT"]):
             p = plan(*(words + ["-o", "x.bif"]))
-            self.assertEqual(p.bifin[:2], ["-m", "line"])
+            self.assertEqual(p.bifin[:2], ["-f", "lettering"])
             pic = bif.loads(bidet.run(p, (" ".join(words) + "\n").encode("utf-8")))
-            self.assertEqual(pic.meta["mode"], "line", words)
+            self.assertEqual(pic.meta["mode"], "lettering", words)
             self.assertIn("text", [L.id for L in pic.layers], words)                # letters, as font outlines
         self.assertEqual(plan(sample("cow.txt")).bifin, [])                         # a file is left to the classifier
-        p = plan("Hi", "--bifin", "-m tone")                                        # and what the user asks for wins
-        self.assertEqual(p.bifin, ["-m", "line", "-m", "tone"])
+        p = plan("Hi", "-F", "serif", "--bifin=--bold")                          # and what the user asks for wins, last
+        self.assertEqual(p.bifin, ["-f", "lettering", "--face", "serif", "--bold"])
+        self.assertIn("--face serif", p.shell())
+        self.assertEqual(plan(sample("cow.txt"), "-F", "mono").bifin, ["--font", "mono"])       # for art: its monospace font
+
+    def test_words_on_standard_input_or_in_a_file_are_lettering_too(self):
+        # `echo test | bidet` drew a blank page: the art classifier took the word for picture art
+        for data in (b"test\n", b"Hello, World!\n", b"Two lines\nof words\n", b"Sale - 50% off!\n", "Café über\n".encode("utf-8")):
+            self.assertTrue(bidet.looks_like_prose(data), data)
+            p = bidet.make_plan(args("-o", "x.png"), PRESETS, stdout_tty=False, stdin_tty=False, data=data)
+            self.assertTrue(p.stdin and p.lettering, data)
+            self.assertEqual(p.bifin[:2], ["-f", "lettering"])
+            self.assertEqual(p.bifout[-2:], ["--width", "1000"])
+            p = bidet.make_plan(args("-o", "x.bif"), PRESETS, stdout_tty=False, stdin_tty=False, data=data)
+            pic = bif.loads(bidet.run(p, data))                                              # and draws something
+            self.assertEqual(pic.meta["mode"], "lettering")
+        p = plan(tmp("Hello there\n", "w.txt"))
+        self.assertTrue(p.lettering)
+        self.assertEqual(p.bifin[:2], ["-f", "lettering"])
+
+    def test_art_is_not_taken_for_words(self):
+        for name in ("cow.txt", "figlet_big.txt", "tone80.txt", "blocks_color.ans", "dragon_lolcat.ans"):
+            with open(sample(name), "rb") as f:
+                self.assertFalse(bidet.looks_like_prose(f.read()), name)
+        for data in (b"", b"\n", b" /\\\n/__\\\n", b".,,::;;..,,\n", b"|||||\n", b"a" * 40 + b"\n", b"\xff\xfe", b"+--+\n|  |\n+--+\n",
+                     b"line\n" * 20):
+            self.assertFalse(bidet.looks_like_prose(data), data)
+        self.assertFalse(plan(sample("cow.txt")).lettering)
+        self.assertFalse(bidet.make_plan(args(), PRESETS, stdout_tty=False, stdin_tty=False, data=b"/\\\n").lettering)
+
+    def test_the_user_can_say_which(self):
+        words = b"test\n"
+        mk = lambda *a: bidet.make_plan(args(*a), PRESETS, stdout_tty=False, stdin_tty=False, data=words)
+        self.assertFalse(mk("--art").lettering)                                              # art, though it looks like words
+        self.assertFalse(mk("--bifin=-m line").lettering)                                    # an importer flag: the user knows
+        self.assertFalse(mk("-P", "sketch").lettering)                                       # a preset that reads picture art
+        self.assertTrue(mk("-t").lettering)
+        self.assertTrue(bidet.make_plan(args("-t"), PRESETS, stdout_tty=False, stdin_tty=False, data=b"/\\ | _\n").lettering)
+
+    def test_a_picture_with_nothing_in_it_is_an_error_not_a_blank_page(self):
+        p = plan("--art", "-o", "x.png")
+        p.stdin, p.literal, p.lettering = True, None, False
+        with self.assertRaises(bif.BifError) as cm:
+            bidet.run(p, b"test\n")
+        self.assertIn("nothing to draw", str(cm.exception))
+
+    def test_a_missing_font_is_an_error_not_a_crash(self):
+        p = plan("Hi", "-F", "no-such-font-anywhere", "-o", "x.png")
+        with self.assertRaises(bif.BifError):
+            bidet.run(p, b"Hi\n")
 
     def test_standard_input(self):
         self.assertTrue(plan().stdin)
@@ -168,7 +218,8 @@ class Recipe(unittest.TestCase):
     def test_presets_combine_in_order(self):
         p = plan("-P", "arc", "-P", "matrix", "-P", "mono", sample("cow.txt"))
         self.assertEqual(p.ops, PRESETS["arc"].ops + PRESETS["matrix"].ops)
-        self.assertEqual(p.bifin, ["--mono"])
+        self.assertEqual(p.bifin, PRESETS["arc"].bifin + PRESETS["matrix"].bifin + PRESETS["mono"].bifin)
+        self.assertEqual(p.bifin[-1], "--mono")
         p = plan("-P", "matrix", "-P", "amber", sample("cow.txt"))
         self.assertEqual(p.ops, PRESETS["matrix"].ops + PRESETS["amber"].ops)      # the later theme is applied last: it wins
 
@@ -185,13 +236,20 @@ class Recipe(unittest.TestCase):
         self.assertEqual(plan("--dark", sample("cow.txt")).ops, [bidet.DARK_THEME])
         self.assertEqual(plan("--light", sample("cow.txt")).ops, [bidet.LIGHT_THEME])
         self.assertEqual(plan("--dark", "-P", "matrix", sample("cow.txt")).ops, PRESETS["matrix"].ops)   # a preset chose colours
-        # worked out from the terminal: only when drawing on it, and only if it says
-        dark = {"COLORFGBG": "15;0"}
-        self.assertEqual(plan(sample("cow.txt"), stdout_tty=True, env=dark).ops, [bidet.DARK_THEME])
-        self.assertEqual(plan(sample("cow.txt"), stdout_tty=True, env={"COLORFGBG": "0;15"}).ops, [bidet.LIGHT_THEME])
-        self.assertEqual(plan(sample("cow.txt"), stdout_tty=True, env={}).ops, [])
-        self.assertEqual(plan(sample("cow.txt"), "-o", "a.png", stdout_tty=True, env=dark).ops, [])    # a file: not the terminal's
-        self.assertEqual(plan(sample("cow.txt"), env=dark).ops, [])
+        # on the terminal: bifout asks it (SIXEL support, background colour) and fits the page and the ink to it
+        p = plan(sample("cow.txt"), stdout_tty=True)
+        self.assertEqual(p.ops, [])
+        self.assertEqual(p.bifout[:2], ["--background", "auto"])
+        self.assertIn("--background auto", p.shell())
+        self.assertEqual(plan(sample("cow.txt"), "-o", "a.png", stdout_tty=True).ops, [])         # a file: not the terminal's colours
+        self.assertNotIn("--background", plan(sample("cow.txt"), "-o", "a.png", stdout_tty=True).bifout)
+        self.assertNotIn("--background", plan(sample("cow.txt")).bifout)                          # a pipe: the picture's own page
+        self.assertNotIn("--background", plan(sample("cow.txt"), "-P", "matrix", stdout_tty=True).bifout)   # a preset chose colours
+        self.assertNotIn("--background", plan(sample("cow.txt"), "--dark", stdout_tty=True).bifout)
+        self.assertNotIn("--background", plan(sample("cow.txt"), "--ink", "red", stdout_tty=True).bifout)
+        for own in ("--background=#102030", "--paper=white", "--transparent"):                   # the user's own word wins
+            p = plan(sample("cow.txt"), "--bifout=" + own, stdout_tty=True)
+            self.assertNotIn("auto", p.bifout, own)
 
     def test_terminal_helpers(self):
         self.assertIs(bidet.dark_terminal({"COLORFGBG": "15;0"}), True)
@@ -222,22 +280,25 @@ class Output(unittest.TestCase):
         self.assertEqual(plan("Hello", "-o", "a.png").bifout, ["--width", "1000"])                  # and text 1000 px wide
         self.assertEqual(plan(sample("cow.txt"), "-w", "640", "-o", "a.png").bifout, ["--width", "640"])
         p = plan(sample("cow.txt"), stdout_tty=True, pixels=(1000, 700))
-        self.assertEqual(p.bifout, ["--width", "950"])                                            # the terminal's width
+        self.assertEqual(p.bifout, ["--background", "auto", "--width", "950"])                    # the terminal's width and colour
         p = plan(sample("cow.txt"), stdout_tty=True, columns=100)
-        self.assertEqual(p.bifout, ["--width", "800"])
+        self.assertEqual(p.bifout, ["--background", "auto", "--width", "800"])
         p = plan(sample("cow.txt"), "-P", "plain", "--bifout", "--scale 3", stdout_tty=True)      # asked for: no automatic size
-        self.assertEqual(p.bifout, ["--scale", "3"])
+        self.assertEqual(p.bifout, ["--scale", "3", "--background", "auto"])
         self.assertEqual(plan(sample("cow.txt"), "-w", "500", "--bifout", "--scale 3", "-o", "a.png").bifout[-2:], ["--width", "500"])
         self.assertEqual(plan(sample("cow.txt"), "-o", "a.bif").bifout, [])                        # a BIF has no size
 
     def test_the_pipeline_text(self):
         p = plan(sample("cow.txt"), "-P", "arc", "-o", "a.png")
-        self.assertEqual(p.shell(), "bifin %s | bifop arc:bend=0.4 crop:margin=10 | bifout --scale 2 -o a.png" % shlex.quote(sample("cow.txt")))
+        p = plan(sample("cow.txt"), "-P", "arc", "--bifin=", "-o", "a.png")
+        flags = " ".join(shlex.quote(f) for f in PRESETS["arc"].bifin)
+        self.assertEqual(p.shell(), "bifin %s%s | bifop arc:bend=0.4 crop:margin=10 | bifout --scale 2 -o a.png"
+                         % (flags + " " if flags else "", shlex.quote(sample("cow.txt"))))
         p = plan("it's a \"test\"", "-P", "bold", "-o", "a.png")
         self.assertTrue(p.shell().startswith("printf '%s\\n' "))
         self.assertEqual(shlex.split(p.shell().split(" | ")[0])[2], "it's a \"test\"")           # quoted so a shell gives it back
         self.assertEqual(plan(sample("cow.txt"), stdout_tty=True, pixels=(800, 600)).shell(),
-                         "bifin %s | bifout --width 760 -s" % shlex.quote(sample("cow.txt")))
+                         "bifin %s | bifout --background auto --width 760 -s" % shlex.quote(sample("cow.txt")))
         self.assertEqual(plan(stdin_tty=False).shell(), "bifin | bifout --scale 2 -o -")
         self.assertEqual(plan(sample("cow.txt"), "-o", "a.six").shell(), "bifin %s | bifout --scale 2 -o a.six" % shlex.quote(sample("cow.txt")))
         self.assertEqual(plan(sample("cow.txt"), "-o", "a.bif").shell(), "bifin %s -o a.bif" % shlex.quote(sample("cow.txt")))

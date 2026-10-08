@@ -132,6 +132,61 @@ class TrueType(object):
         g = _u16(d, ranges + 2 * lo + ro + 2 * (cp - start))
         return (g + delta) & 0xFFFF if g else 0
 
+    # -- metrics: how wide, how tall, how close ----------------------------------------------
+    def metrics(self):
+        """{"ascent", "descent", "line_gap"} in font units (descent positive, below the baseline), from the hhea
+        table, else from the font's bounding box."""
+        if "hhea" in self.tables:
+            o = self.tables["hhea"][0]
+            try:
+                asc, desc, gap = _i16(self.data, o + 4), _i16(self.data, o + 6), _i16(self.data, o + 8)
+                if asc - desc > 0:
+                    return {"ascent": asc, "descent": -desc, "line_gap": max(0, gap)}
+            except struct.error:
+                pass
+        h = self.tables["head"][0]
+        return {"ascent": _i16(self.data, h + 42), "descent": -_i16(self.data, h + 38), "line_gap": 0}
+
+    def advance(self, gid):
+        """Horizontal advance of a glyph in font units (hmtx; glyphs past the last full record share its advance)."""
+        if "hmtx" not in self.tables or "hhea" not in self.tables:
+            return self.units_per_em // 2
+        if not hasattr(self, "_nhm"):
+            self._nhm = max(1, _u16(self.data, self.tables["hhea"][0] + 34))
+        o = self.tables["hmtx"][0]
+        try:
+            return _u16(self.data, o + 4 * min(gid, self._nhm - 1))
+        except struct.error:
+            return self.units_per_em // 2
+
+    def kerning(self):
+        """{(left glyph, right glyph): adjustment in font units} from the legacy `kern` table (horizontal, format 0).
+        Fonts that only have GPOS kerning give an empty dict: they are laid out without it."""
+        if hasattr(self, "_kern"):
+            return self._kern
+        pairs = {}
+        if "kern" in self.tables:
+            d, o = self.data, self.tables["kern"][0]
+            try:
+                version, n = _u16(d, o), _u16(d, o + 2)
+                p = o + 4
+                for _ in range(n if version == 0 else 0):
+                    length, coverage = _u16(d, p + 2), _u16(d, p + 4)
+                    if coverage >> 8 == 0 and coverage & 1 and not coverage & 4:        # format 0, horizontal, not cross-stream
+                        count = _u16(d, p + 6)
+                        for i in range(count):
+                            left, right, val = struct.unpack_from(">HHh", d, p + 14 + 6 * i)
+                            pairs[(left, right)] = val
+                    p += max(length, 6)
+            except struct.error:
+                pass
+        self._kern = pairs
+        return pairs
+
+    def names(self):
+        """{"family", "style", "full", "bold", "italic"} from the name and head tables."""
+        return _names_of(self.data, self.tables)
+
     # -- glyphs ------------------------------------------------------------------------------
     def _glyph_span(self, gid):
         if not 0 <= gid < self.num_glyphs:
@@ -238,6 +293,90 @@ class TrueType(object):
             c = [p for p in c if len(p) >= 3]
             self._cache[key] = c
         return c
+
+
+def _decode_name(raw, platform):
+    try:
+        return raw.decode("utf-16-be") if platform in (0, 3) else raw.decode("mac-roman")
+    except (UnicodeDecodeError, LookupError):
+        return raw.decode("latin-1")
+
+
+def _names_of(d, tables, base=0):
+    """Family and style names of a font whose tables are in `d` (the whole file or enough of it: offsets are
+    relative to `base`)."""
+    out = {"family": "", "style": "", "full": "", "bold": False, "italic": False}
+    if "name" in tables:
+        o = tables["name"][0] - base
+        try:
+            count, sto = _u16(d, o + 2), _u16(d, o + 4)
+            best = {}
+            for i in range(count):
+                plat, enc, lang, nid, length, off = struct.unpack_from(">HHHHHH", d, o + 6 + 12 * i)
+                if nid not in (1, 2, 4, 16, 17):
+                    continue
+                rank = 2 if (plat == 3 and lang == 0x409) else (1 if plat in (0, 3) else 0)      # English first
+                text = _decode_name(d[o + sto + off:o + sto + off + length], plat).strip("\x00 ")
+                if text and rank >= best.get(nid, (-1, ""))[0]:
+                    best[nid] = (rank, text)
+            fam = best.get(16) or best.get(1)
+            sty = best.get(17) or best.get(2)
+            out["family"], out["style"] = fam[1] if fam else "", sty[1] if sty else ""
+            out["full"] = best.get(4, (0, ""))[1]
+        except struct.error:
+            pass
+    if "head" in tables:
+        try:
+            mac = _u16(d, tables["head"][0] - base + 44)
+            out["bold"], out["italic"] = bool(mac & 1), bool(mac & 2)
+        except struct.error:
+            pass
+    low = out["style"].lower() + " " + out["full"].lower()
+    out["bold"] = out["bold"] or "bold" in low or "black" in low or "heavy" in low
+    out["italic"] = out["italic"] or "italic" in low or "oblique" in low
+    return out
+
+
+def read_names(path, index=0):
+    """names() of a font file without reading all of it (only the table directory and the small tables), or None
+    if it is not a TrueType-outline font.  What a font catalogue needs: a system can have hundreds of fonts."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(12)
+            base = 0
+            if head[:4] == b"ttcf":
+                f.seek(12 + 4 * index)
+                base = struct.unpack(">I", f.read(4))[0]
+                f.seek(base)
+                head = f.read(12)
+            if head[:4] not in (b"\x00\x01\x00\x00", b"true"):
+                return None
+            n = struct.unpack(">H", head[4:6])[0]
+            if n > 200:
+                return None
+            f.seek(base + 12)
+            raw = f.read(16 * n)
+            tables = {}
+            for i in range(n):
+                tag, _crc, off, length = struct.unpack_from(">4sIII", raw, 16 * i)
+                tables[tag.decode("latin1")] = (off, length)
+            if "glyf" not in tables:
+                return None
+            small = {}
+            for tag in ("name", "head"):
+                if tag in tables and tables[tag][1] < 1 << 20:
+                    f.seek(tables[tag][0])
+                    small[tag] = f.read(tables[tag][1])
+        # present the two small tables as one buffer, with tables at the offsets _names_of expects
+        buf, tabs, pos = b"", {}, 0
+        for tag in ("name", "head"):
+            if tag in small:
+                tabs[tag] = (pos, len(small[tag]))
+                buf += small[tag]
+                pos += len(small[tag])
+        return _names_of(buf, tabs)
+    except (IOError, OSError, struct.error):
+        return None
 
 
 def _quad(p0, c, p1, tol, out):

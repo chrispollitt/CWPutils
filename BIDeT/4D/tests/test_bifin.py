@@ -13,6 +13,8 @@ import unittest
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+# the tests must not ask the terminal they happen to run in (bifterm.py): it may not have SIXEL
+os.environ.setdefault("BIDET_NO_QUERY", "1")
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
@@ -487,7 +489,8 @@ class Cli(unittest.TestCase):
         self.assertEqual(len(e.strip().splitlines()), 1)
         rc, o, e = run("--font", os.path.join(self.dir, "nofont.ttf"), "-o", os.path.join(self.dir, "f.bif"), input=b"/\\")
         self.assertEqual(rc, 1)
-        self.assertIn(b"not found", e)
+        self.assertIn(b"no font", e)
+        self.assertNotIn(b"Traceback", e)
 
     def test_sniff(self):
         self.assertEqual(bifin.sniff(bif.MAGIC + b"x"), "bif")
