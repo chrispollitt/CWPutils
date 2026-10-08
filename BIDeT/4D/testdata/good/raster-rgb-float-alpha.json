@@ -1,0 +1,55 @@
+{
+ "animation": null,
+ "background": null,
+ "bif": "1.0",
+ "canvas": [
+  40,
+  32,
+  1.0
+ ],
+ "frames": [
+  {
+   "layers": [
+    {
+     "arrays": {
+      "alpha": {
+       "dtype": "<f4",
+       "sha256": "d0352de452e34908499153ebd170480cecc2ba649986d740a21aaf57861aadf5",
+       "shape": [
+        32,
+        40
+       ]
+      },
+      "rgb": {
+       "dtype": "|u1",
+       "sha256": "0f441031517197be7dceee301eb17339b7d6f7915e4d07d2727fb010ae531115",
+       "shape": [
+        32,
+        40,
+        3
+       ]
+      }
+     },
+     "props": {
+      "blend": "multiply",
+      "kind": "raster",
+      "opacity": 0.75,
+      "transform": [
+       0.5,
+       0,
+       0,
+       0.5,
+       4,
+       4
+      ]
+     }
+    }
+   ],
+   "props": {}
+  }
+ ],
+ "grid": null,
+ "meta": {},
+ "palette": [],
+ "source": null
+}

@@ -1,0 +1,133 @@
+{
+ "animation": null,
+ "background": 1,
+ "bif": "1.0",
+ "canvas": [
+  100,
+  50,
+  2.0
+ ],
+ "frames": [
+  {
+   "layers": [
+    {
+     "arrays": {
+      "fill": {
+       "dtype": "<i2",
+       "sha256": "3287af14debf3f8a563357c14e61dc15f360e75535b767c71cbecea2a0d54b56",
+       "shape": [
+        4
+       ]
+      },
+      "flags": {
+       "dtype": "|u1",
+       "sha256": "a0454a24dd4bc418448ca19320519ea3fe544fa1a910868b62ca210614f119f8",
+       "shape": [
+        4
+       ]
+      },
+      "group": {
+       "dtype": "<i4",
+       "sha256": "787979ee6a78d79a5c6cf1f3ede7cb1d40a6ae9e410062d0b57f848ca083edd6",
+       "shape": [
+        4
+       ]
+      },
+      "start": {
+       "dtype": "<u4",
+       "sha256": "8ec321e7540b1b398611660fb95b6eb30a3bc3ef74453f288487215eb890e19d",
+       "shape": [
+        5
+       ]
+      },
+      "stroke": {
+       "dtype": "<i2",
+       "sha256": "c2bd8c3a7a8bb472d123f3011c58433831117178d29310723bd748306700a561",
+       "shape": [
+        4
+       ]
+      },
+      "vflag": {
+       "dtype": "|u1",
+       "sha256": "29e2853bb6f39931c10404b1bddc66c7347424139cb2966f3d7cedf586295406",
+       "shape": [
+        12
+       ]
+      },
+      "vwidth": {
+       "dtype": "<f4",
+       "sha256": "c9fb4bd5aa7738a0e0cdb2b974e36d1c8883c6e1e2ea52cdeda107e2ea821ec9",
+       "shape": [
+        12
+       ]
+      },
+      "width": {
+       "dtype": "<f4",
+       "sha256": "1d11f8446d5595ff56364fc138b2c36d0e9471b6febb161ee8fa1150696f6611",
+       "shape": [
+        4
+       ]
+      },
+      "xy": {
+       "dtype": "<f4",
+       "sha256": "aef4b7bbd1d671c6a39b4bb7a3341b990233cbd0b9485993346b68bbe54e3e33",
+       "shape": [
+        12,
+        2
+       ]
+      }
+     },
+     "props": {
+      "cap": "butt",
+      "fill": null,
+      "id": "shapes",
+      "join": "miter",
+      "kind": "vector",
+      "miter_limit": 3,
+      "width": 2
+     }
+    }
+   ],
+   "props": {}
+  }
+ ],
+ "grid": {
+  "cell_height": 10,
+  "cell_width": 10,
+  "cols": 10,
+  "rows": 5,
+  "x": 0,
+  "y": 0
+ },
+ "meta": {
+  "credit": "nobody",
+  "polarity": "dark-on-light",
+  "title": "vector, every optional array"
+ },
+ "palette": [
+  {
+   "rgb": [
+    0,
+    0,
+    0
+   ],
+   "role": "ink"
+  },
+  {
+   "rgb": [
+    255,
+    255,
+    255
+   ],
+   "role": "paper"
+  },
+  {
+   "rgb": [
+    200,
+    40,
+    40
+   ]
+  }
+ ],
+ "source": null
+}

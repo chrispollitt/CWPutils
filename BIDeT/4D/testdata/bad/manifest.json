@@ -1,0 +1,382 @@
+{
+ "array-twice": {
+  "error": "twice",
+  "usable_if_truncated_accepted": false,
+  "why": "the same array twice in a layer"
+ },
+ "arry-before-layr": {
+  "error": "before any LAYR",
+  "usable_if_truncated_accepted": false,
+  "why": "ARRY before LAYR"
+ },
+ "arry-header-overruns": {
+  "error": "header",
+  "usable_if_truncated_accepted": false,
+  "why": "header length longer than the chunk"
+ },
+ "arry-no-name": {
+  "error": "name",
+  "usable_if_truncated_accepted": false,
+  "why": "array without a name"
+ },
+ "arry-too-short": {
+  "error": "short",
+  "usable_if_truncated_accepted": false,
+  "why": "two-byte ARRY"
+ },
+ "background-oob": {
+  "error": "background",
+  "usable_if_truncated_accepted": false,
+  "why": "background outside the palette"
+ },
+ "bad-chunk-type": {
+  "error": "chunk type",
+  "usable_if_truncated_accepted": false,
+  "why": "chunk type with a digit"
+ },
+ "bad-crc": {
+  "error": "CRC",
+  "usable_if_truncated_accepted": false,
+  "why": "one flipped bit in the HEAD payload"
+ },
+ "bad-magic": {
+  "error": "magic",
+  "usable_if_truncated_accepted": false,
+  "why": "a PNG's magic number"
+ },
+ "bend-not-empty": {
+  "error": "BEND",
+  "usable_if_truncated_accepted": false,
+  "why": "BEND with a payload"
+ },
+ "canvas-zero": {
+  "error": "canvas",
+  "usable_if_truncated_accepted": false,
+  "why": "zero width"
+ },
+ "cells-fg-shape": {
+  "error": "fg",
+  "usable_if_truncated_accepted": false,
+  "why": "fg is RGB, not RGBA"
+ },
+ "codec-unknown": {
+  "error": "codec",
+  "usable_if_truncated_accepted": false,
+  "why": "unknown codec"
+ },
+ "data-after-bend": {
+  "error": "after BEND",
+  "usable_if_truncated_accepted": false,
+  "why": "a chunk after BEND"
+ },
+ "data-short": {
+  "error": "bytes",
+  "usable_if_truncated_accepted": false,
+  "why": "fewer bytes than the shape needs"
+ },
+ "dtype-bogus": {
+  "error": "dtype",
+  "usable_if_truncated_accepted": false,
+  "why": "nonsense dtype"
+ },
+ "dtype-f8": {
+  "error": "dtype",
+  "usable_if_truncated_accepted": false,
+  "why": "float64 is not allowed"
+ },
+ "empty": {
+  "error": "magic",
+  "usable_if_truncated_accepted": false,
+  "why": "zero bytes"
+ },
+ "frame-duration": {
+  "error": "duration",
+  "usable_if_truncated_accepted": false,
+  "why": "negative duration"
+ },
+ "garbage-after-bend": {
+  "error": "after BEND",
+  "usable_if_truncated_accepted": false,
+  "why": "three stray bytes after BEND"
+ },
+ "grid-bad": {
+  "error": "grid",
+  "usable_if_truncated_accepted": false,
+  "why": "grid with zero columns"
+ },
+ "height-no-z": {
+  "error": "z",
+  "usable_if_truncated_accepted": false,
+  "why": "height layer without z"
+ },
+ "huge-chunk-length": {
+  "error": "too big",
+  "usable_if_truncated_accepted": false,
+  "why": "claims a 4 GB payload"
+ },
+ "json-bad-utf8": {
+  "error": "UTF-8",
+  "usable_if_truncated_accepted": false,
+  "why": "invalid UTF-8"
+ },
+ "json-bom": {
+  "error": "byte order",
+  "usable_if_truncated_accepted": false,
+  "why": "byte order mark"
+ },
+ "json-garbage": {
+  "error": "JSON",
+  "usable_if_truncated_accepted": false,
+  "why": "invalid JSON"
+ },
+ "json-huge-number": {
+  "error": "JSON",
+  "usable_if_truncated_accepted": false,
+  "why": "number that overflows to infinity"
+ },
+ "json-nan": {
+  "error": "JSON",
+  "usable_if_truncated_accepted": false,
+  "why": "NaN literal"
+ },
+ "json-not-object": {
+  "error": "object",
+  "usable_if_truncated_accepted": false,
+  "why": "HEAD is an array"
+ },
+ "layer-id-twice": {
+  "error": "duplicate id",
+  "usable_if_truncated_accepted": false,
+  "why": "two layers called v"
+ },
+ "layer-no-kind": {
+  "error": "kind",
+  "usable_if_truncated_accepted": false,
+  "why": "LAYR without kind"
+ },
+ "layr-before-fram": {
+  "error": "before any FRAM",
+  "usable_if_truncated_accepted": false,
+  "why": "LAYR before FRAM"
+ },
+ "magic-lf-only": {
+  "error": "magic",
+  "usable_if_truncated_accepted": false,
+  "why": "newlines converted by a text-mode transfer"
+ },
+ "magic-only": {
+  "error": "empty|HEAD",
+  "usable_if_truncated_accepted": false,
+  "why": "magic and nothing else"
+ },
+ "missing-bend": {
+  "error": "BEND",
+  "usable_if_truncated_accepted": true,
+  "why": "ends cleanly between chunks but without BEND"
+ },
+ "no-canvas": {
+  "error": "canvas",
+  "usable_if_truncated_accepted": false,
+  "why": "HEAD without a canvas"
+ },
+ "no-frames": {
+  "error": "frame",
+  "usable_if_truncated_accepted": false,
+  "why": "no FRAM at all"
+ },
+ "no-head": {
+  "error": "HEAD",
+  "usable_if_truncated_accepted": false,
+  "why": "first chunk is not HEAD"
+ },
+ "opacity-range": {
+  "error": "opacity",
+  "usable_if_truncated_accepted": false,
+  "why": "opacity 2"
+ },
+ "palette-bad-rgb": {
+  "error": "palette",
+  "usable_if_truncated_accepted": false,
+  "why": "colour component 300"
+ },
+ "palette-not-list": {
+  "error": "palette",
+  "usable_if_truncated_accepted": false,
+  "why": "palette is a string"
+ },
+ "raster-alpha-range": {
+  "error": "alpha",
+  "usable_if_truncated_accepted": false,
+  "why": "float alpha 1.5"
+ },
+ "raster-bounds": {
+  "error": "bounds",
+  "usable_if_truncated_accepted": false,
+  "why": "zero-width bounds"
+ },
+ "raster-empty": {
+  "error": "alpha or rgb",
+  "usable_if_truncated_accepted": false,
+  "why": "raster with no arrays"
+ },
+ "raster-paint-oob": {
+  "error": "paint",
+  "usable_if_truncated_accepted": false,
+  "why": "paint 3 in a one-colour palette"
+ },
+ "raster-rgb-4": {
+  "error": "rgb",
+  "usable_if_truncated_accepted": false,
+  "why": "rgb with four channels"
+ },
+ "raster-size-mismatch": {
+  "error": "differ",
+  "usable_if_truncated_accepted": false,
+  "why": "alpha and rgb differ in size"
+ },
+ "raster-zero-pixels": {
+  "error": "pixel",
+  "usable_if_truncated_accepted": false,
+  "why": "no pixels"
+ },
+ "second-head": {
+  "error": "second HEAD",
+  "usable_if_truncated_accepted": false,
+  "why": "two HEAD chunks"
+ },
+ "shape-float": {
+  "error": "shape",
+  "usable_if_truncated_accepted": false,
+  "why": "non-integer dimension"
+ },
+ "shape-huge": {
+  "error": "too big",
+  "usable_if_truncated_accepted": false,
+  "why": "shape far beyond the limit"
+ },
+ "shape-ndim5": {
+  "error": "shape",
+  "usable_if_truncated_accepted": false,
+  "why": "five dimensions"
+ },
+ "shape-negative": {
+  "error": "shape",
+  "usable_if_truncated_accepted": false,
+  "why": "negative dimension"
+ },
+ "transform-length": {
+  "error": "transform",
+  "usable_if_truncated_accepted": false,
+  "why": "four-number transform"
+ },
+ "truncated-in-chunk": {
+  "error": "truncat",
+  "usable_if_truncated_accepted": true,
+  "why": "ends inside a chunk"
+ },
+ "truncated-in-header": {
+  "error": "truncat",
+  "usable_if_truncated_accepted": false,
+  "why": "ends inside the first chunk header"
+ },
+ "unknown-critical": {
+  "error": "critical",
+  "usable_if_truncated_accepted": false,
+  "why": "unknown chunk with an upper-case first letter"
+ },
+ "vector-fill-no-palette": {
+  "error": "palette",
+  "usable_if_truncated_accepted": false,
+  "why": "default fill but no palette"
+ },
+ "vector-flags-dtype": {
+  "error": "flags",
+  "usable_if_truncated_accepted": false,
+  "why": "flags as 32-bit"
+ },
+ "vector-group-split": {
+  "error": "adjacent",
+  "usable_if_truncated_accepted": false,
+  "why": "group 0 is split by group 1"
+ },
+ "vector-nan-vertex": {
+  "error": "NaN",
+  "usable_if_truncated_accepted": false,
+  "why": "NaN vertex"
+ },
+ "vector-no-palette": {
+  "error": "palette",
+  "usable_if_truncated_accepted": false,
+  "why": "stroked paths but no palette"
+ },
+ "vector-no-xy": {
+  "error": "xy",
+  "usable_if_truncated_accepted": false,
+  "why": "missing xy"
+ },
+ "vector-paint-oob": {
+  "error": "palette",
+  "usable_if_truncated_accepted": false,
+  "why": "stroke paint 5 in a one-colour palette"
+ },
+ "vector-start-begin": {
+  "error": "begin at 0",
+  "usable_if_truncated_accepted": false,
+  "why": "first offset is not 0"
+ },
+ "vector-start-decreasing": {
+  "error": "decrease",
+  "usable_if_truncated_accepted": false,
+  "why": "offsets go backwards"
+ },
+ "vector-start-end": {
+  "error": "begin at 0",
+  "usable_if_truncated_accepted": false,
+  "why": "last offset is not N"
+ },
+ "vector-vflag-length": {
+  "error": "vflag",
+  "usable_if_truncated_accepted": false,
+  "why": "vflag longer than the vertices"
+ },
+ "vector-width-length": {
+  "error": "width",
+  "usable_if_truncated_accepted": false,
+  "why": "two widths for one path"
+ },
+ "vector-xy-3d": {
+  "error": "xy",
+  "usable_if_truncated_accepted": false,
+  "why": "(N, 3) vertices"
+ },
+ "version-2": {
+  "error": "version",
+  "usable_if_truncated_accepted": false,
+  "why": "major version 2"
+ },
+ "version-string": {
+  "error": "version",
+  "usable_if_truncated_accepted": false,
+  "why": "version is not major.minor"
+ },
+ "zlib-bomb": {
+  "error": "zlib",
+  "usable_if_truncated_accepted": false,
+  "why": "10 declared bytes, 1 MB of zeros inside"
+ },
+ "zlib-garbage": {
+  "error": "zlib",
+  "usable_if_truncated_accepted": false,
+  "why": "not a zlib stream"
+ },
+ "zlib-short": {
+  "error": "zlib",
+  "usable_if_truncated_accepted": false,
+  "why": "expands to fewer bytes than declared"
+ },
+ "zlib-trailing": {
+  "error": "zlib",
+  "usable_if_truncated_accepted": false,
+  "why": "bytes after the zlib stream"
+ }
+}

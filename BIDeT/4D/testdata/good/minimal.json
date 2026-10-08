@@ -1,0 +1,20 @@
+{
+ "animation": null,
+ "background": null,
+ "bif": "1.0",
+ "canvas": [
+  24,
+  24,
+  1.0
+ ],
+ "frames": [
+  {
+   "layers": [],
+   "props": {}
+  }
+ ],
+ "grid": null,
+ "meta": {},
+ "palette": [],
+ "source": null
+}

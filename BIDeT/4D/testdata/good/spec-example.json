@@ -1,0 +1,54 @@
+{
+ "animation": null,
+ "background": null,
+ "bif": "1.0",
+ "canvas": [
+  24,
+  24,
+  1.0
+ ],
+ "frames": [
+  {
+   "layers": [
+    {
+     "arrays": {
+      "start": {
+       "dtype": "<u4",
+       "sha256": "98cc75a8e9bd50b5d61c48e0680a84ac2cbe46ba0ef2e8bb0190f94590b4b3f4",
+       "shape": [
+        3
+       ]
+      },
+      "xy": {
+       "dtype": "<f4",
+       "sha256": "7b39e80f6fc9b35c3d58fbbb846277632de0b69b9d21ddbf6eb826bc932275a7",
+       "shape": [
+        4,
+        2
+       ]
+      }
+     },
+     "props": {
+      "id": "strokes",
+      "kind": "vector",
+      "width": 2
+     }
+    }
+   ],
+   "props": {}
+  }
+ ],
+ "grid": null,
+ "meta": {},
+ "palette": [
+  {
+   "rgb": [
+    0,
+    0,
+    0
+   ],
+   "role": "ink"
+  }
+ ],
+ "source": null
+}

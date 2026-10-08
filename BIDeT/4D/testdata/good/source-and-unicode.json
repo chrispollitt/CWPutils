@@ -1,0 +1,58 @@
+{
+ "animation": null,
+ "background": null,
+ "bif": "1.0",
+ "canvas": [
+  30,
+  30,
+  1.0
+ ],
+ "frames": [
+  {
+   "layers": [
+    {
+     "arrays": {
+      "start": {
+       "dtype": "<u4",
+       "sha256": "2fcd151b8295e8b3bf8ec64ede173523417960a8db6cbc569de9a25a458f9135",
+       "shape": [
+        2
+       ]
+      },
+      "xy": {
+       "dtype": "<f4",
+       "sha256": "d25b949c65312b91424a3cabd3065dfe18bc73e7cd8893229e9494cd75c16d92",
+       "shape": [
+        2,
+        2
+       ]
+      }
+     },
+     "props": {
+      "kind": "vector"
+     }
+    }
+   ],
+   "props": {}
+  }
+ ],
+ "grid": null,
+ "meta": {
+  "credit": "J. Doe",
+  "title": "café 中文 🐮"
+ },
+ "palette": [
+  {
+   "rgb": [
+    0,
+    0,
+    0
+   ],
+   "role": "ink"
+  }
+ ],
+ "source": [
+  "cow.txt",
+  "f957928a29eb89df02a2daa8b6189cfaa9893f0eabcf434efba57452f9fd3618"
+ ]
+}

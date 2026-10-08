@@ -1,0 +1,69 @@
+{
+ "animation": null,
+ "background": null,
+ "bif": "1.0",
+ "canvas": [
+  40,
+  40,
+  1.0
+ ],
+ "frames": [
+  {
+   "layers": [
+    {
+     "arrays": {
+      "attr": {
+       "dtype": "|u1",
+       "sha256": "7d538c913a79ee3ca450253a0063f9432ddc41b8071afe8111cd076b9aab4d58",
+       "shape": [
+        2,
+        4
+       ]
+      },
+      "bg": {
+       "dtype": "|u1",
+       "sha256": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925",
+       "shape": [
+        2,
+        4,
+        4
+       ]
+      },
+      "cp": {
+       "dtype": "<u4",
+       "sha256": "141639ddd6baa82341279f98409a3b8b8e8f3899d7625d44e31266b9a39e37df",
+       "shape": [
+        2,
+        4
+       ]
+      },
+      "fg": {
+       "dtype": "|u1",
+       "sha256": "1deaf37f2eeaffac629b634a6eb108d91e7936dbd0a02653488fd03be250f4aa",
+       "shape": [
+        2,
+        4,
+        4
+       ]
+      }
+     },
+     "props": {
+      "kind": "cells",
+      "role": "source",
+      "visible": false
+     }
+    }
+   ],
+   "props": {}
+  }
+ ],
+ "grid": {
+  "cell_height": 20,
+  "cell_width": 10,
+  "cols": 4,
+  "rows": 2
+ },
+ "meta": {},
+ "palette": [],
+ "source": null
+}

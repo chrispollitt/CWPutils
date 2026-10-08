@@ -1,0 +1,46 @@
+{
+ "animation": null,
+ "background": null,
+ "bif": "1.0",
+ "canvas": [
+  16,
+  16,
+  1.0
+ ],
+ "frames": [
+  {
+   "layers": [
+    {
+     "arrays": {
+      "alpha": {
+       "dtype": "|u1",
+       "sha256": "22173cd9c44c3750197526cde00d2caa064c337728e1510fbf9b295d921ef22a",
+       "shape": [
+        16,
+        16
+       ]
+      },
+      "z": {
+       "dtype": "<f4",
+       "sha256": "ed2ee043beb1dc1f1f292ef6a842fa4afd27073712b2b64dc31e2525952c8de2",
+       "shape": [
+        16,
+        16
+       ]
+      }
+     },
+     "props": {
+      "id": "relief",
+      "kind": "height",
+      "role": "shape"
+     }
+    }
+   ],
+   "props": {}
+  }
+ ],
+ "grid": null,
+ "meta": {},
+ "palette": [],
+ "source": null
+}

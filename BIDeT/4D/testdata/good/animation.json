@@ -1,0 +1,160 @@
+{
+ "animation": {
+  "loop": 0
+ },
+ "background": null,
+ "bif": "1.0",
+ "canvas": [
+  20,
+  20,
+  1.0
+ ],
+ "frames": [
+  {
+   "layers": [
+    {
+     "arrays": {
+      "start": {
+       "dtype": "<u4",
+       "sha256": "2fcd151b8295e8b3bf8ec64ede173523417960a8db6cbc569de9a25a458f9135",
+       "shape": [
+        2
+       ]
+      },
+      "xy": {
+       "dtype": "<f4",
+       "sha256": "b68729efb8a6848dbec3ba92950126585a6ddb0658f4fc9cf6b341ba159e7973",
+       "shape": [
+        2,
+        2
+       ]
+      }
+     },
+     "props": {
+      "id": "line",
+      "kind": "vector",
+      "stroke": 0,
+      "width": 1
+     }
+    }
+   ],
+   "props": {
+    "duration": 100
+   }
+  },
+  {
+   "layers": [
+    {
+     "arrays": {
+      "start": {
+       "dtype": "<u4",
+       "sha256": "2fcd151b8295e8b3bf8ec64ede173523417960a8db6cbc569de9a25a458f9135",
+       "shape": [
+        2
+       ]
+      },
+      "xy": {
+       "dtype": "<f4",
+       "sha256": "efbb9ba71ca23752463b7c913cec1b12cf07f2eb5e33d14c9c89d14a02bf6b5e",
+       "shape": [
+        2,
+        2
+       ]
+      }
+     },
+     "props": {
+      "id": "line",
+      "kind": "vector",
+      "stroke": 1,
+      "width": 2
+     }
+    },
+    {
+     "arrays": {
+      "alpha": {
+       "dtype": "|u1",
+       "sha256": "ad95131bc0b799c0b1af477fb14fcf26a6a9f76079e48bf090acb7e8367bfd0e",
+       "shape": [
+        2,
+        2
+       ]
+      }
+     },
+     "props": {
+      "bounds": [
+       0,
+       0,
+       20,
+       20
+      ],
+      "kind": "raster",
+      "paint": 1
+     }
+    }
+   ],
+   "props": {
+    "duration": 150
+   }
+  },
+  {
+   "layers": [
+    {
+     "arrays": {
+      "start": {
+       "dtype": "<u4",
+       "sha256": "2fcd151b8295e8b3bf8ec64ede173523417960a8db6cbc569de9a25a458f9135",
+       "shape": [
+        2
+       ]
+      },
+      "xy": {
+       "dtype": "<f4",
+       "sha256": "68a63fb04a70a8204f5d0d0a3db0d30bf756a1d48d44c2a9ca11077134fd2fb1",
+       "shape": [
+        2,
+        2
+       ]
+      }
+     },
+     "props": {
+      "id": "line",
+      "kind": "vector",
+      "stroke": 2,
+      "width": 3
+     }
+    }
+   ],
+   "props": {
+    "duration": 200
+   }
+  }
+ ],
+ "grid": null,
+ "meta": {},
+ "palette": [
+  {
+   "rgb": [
+    0,
+    0,
+    0
+   ],
+   "role": "ink"
+  },
+  {
+   "rgb": [
+    255,
+    255,
+    255
+   ],
+   "role": "paper"
+  },
+  {
+   "rgb": [
+    200,
+    40,
+    40
+   ]
+  }
+ ],
+ "source": null
+}

@@ -1,0 +1,105 @@
+{
+ "animation": null,
+ "background": null,
+ "bif": "1.0",
+ "canvas": [
+  30,
+  30,
+  1.0
+ ],
+ "frames": [
+  {
+   "layers": [
+    {
+     "arrays": {
+      "hint": {
+       "dtype": "<f4",
+       "sha256": "75664b4da1c08de9e8fad52303cc458b3e420edde6591e58761e138cc5e3f163",
+       "shape": [
+        3
+       ]
+      },
+      "start": {
+       "dtype": "<u4",
+       "sha256": "2fcd151b8295e8b3bf8ec64ede173523417960a8db6cbc569de9a25a458f9135",
+       "shape": [
+        2
+       ]
+      },
+      "xy": {
+       "dtype": "<f4",
+       "sha256": "a72a8b79dde9266e738859de694ca335070ac02af394a595c14f9add98f4464c",
+       "shape": [
+        2,
+        2
+       ]
+      }
+     },
+     "props": {
+      "blend": "dissolve",
+      "cap": "triangle",
+      "id": "v",
+      "kind": "vector",
+      "x-extra": true
+     }
+    },
+    {
+     "arrays": {
+      "depth": {
+       "dtype": "<f4",
+       "sha256": "f6bb1294da2f78cd935b01c7656280df5eaa0439e9d97bc03775825a41a508e4",
+       "shape": [
+        2,
+        2
+       ]
+      }
+     },
+     "props": {
+      "id": "h",
+      "kind": "hologram"
+     }
+    }
+   ],
+   "props": {
+    "x-note": "unknown FRAM key"
+   }
+  }
+ ],
+ "grid": null,
+ "meta": {
+  "title": "future-proof",
+  "x-vendor": {
+   "hint": [
+    1,
+    2,
+    3
+   ]
+  }
+ },
+ "palette": [
+  {
+   "rgb": [
+    0,
+    0,
+    0
+   ],
+   "role": "ink"
+  },
+  {
+   "rgb": [
+    255,
+    255,
+    255
+   ],
+   "role": "paper"
+  },
+  {
+   "rgb": [
+    200,
+    40,
+    40
+   ]
+  }
+ ],
+ "source": null
+}
