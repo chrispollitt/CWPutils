@@ -16,6 +16,7 @@ from __future__ import print_function
 import argparse
 import io
 import itertools
+import math
 import os
 import sys
 
@@ -56,59 +57,70 @@ GIF_SAMPLES = 12                                            # frames looked at t
 GIF_SAMPLE_PIXELS = 1500000                                 # ... and how much of them
 
 
-def _padded(pal):
-    pal = list(pal)[:768]
-    return pal + [0] * (768 - len(pal))
+def _padded(pal, size=256):
+    """pal as a flat list of exactly size*3 numbers: cut, or filled up with copies of the last colour (so that an
+    index the quantizer picks from the unused tail is still the right colour)."""
+    pal = list(pal)[:size * 3]
+    if not pal:
+        pal = [0, 0, 0]
+    while len(pal) < size * 3:
+        pal += pal[-3:]
+    return pal
 
 
 class GifPalette(object):
-    """The colours of one GIF, made from some of its Renderings, and the conversion of any Rendering to indices."""
+    """The colours of one animation (at most `size`), made from some of its Renderings; and the conversion of any
+    Rendering to indices into them.  Used for GIF (size 256, `transparent`: the last index is "no colour") and for SIXEL."""
 
-    def __init__(self, samples, transparent=False):
+    def __init__(self, samples, transparent=False, size=256):
         from PIL import Image
-        self.transparent = transparent
+        self.transparent, self.size, self.trans = transparent, size, size - 1
         inks = set(tuple(int(v) for v in r.color_u8()) if r.uniform else None for r in samples)
         if len(inks) == 1 and None not in inks:
             self.ink = inks.pop()
             self.paper = tuple(int(round(v)) for v in samples[0].paper)
-            self.levels = 254 if transparent else 255
+            self.levels = size - 2 if transparent else size - 1
             ramp = [[int(round(p + (i_ - p) * k / float(self.levels))) for p, i_ in zip(self.paper, self.ink)]
                     for k in range(self.levels + 1)]
             self.pimg = Image.new("P", (1, 1))
-            self.pimg.putpalette(_padded(v for c in ramp for v in c))
+            self.pimg.putpalette(_padded((v for c in ramp for v in c), size))
         else:
             self.ink = None
             step = max(1, int(np.ceil(np.sqrt(len(samples) * samples[0].W * samples[0].H / float(GIF_SAMPLE_PIXELS)))))
             mont = np.concatenate([r.flatten()[::step, ::step] for r in samples], axis=0)
-            q = Image.fromarray(np.ascontiguousarray(mont), "RGB").quantize(colors=255 if transparent else 256, method=0)
-            q.putpalette(_padded(q.getpalette()))
+            q = Image.fromarray(np.ascontiguousarray(mont), "RGB").quantize(colors=size - 1 if transparent else size, method=0)
+            q.putpalette(_padded(q.getpalette(), size))
             self.pimg = q
 
-    @property
-    def palette(self):
-        return _padded(self.pimg.getpalette())
+    def rgb(self):
+        """The palette as a list of `size` (r, g, b)."""
+        p = _padded(self.pimg.getpalette(), self.size)
+        return [tuple(p[i:i + 3]) for i in range(0, self.size * 3, 3)]
 
-    def image(self, r):
-        """A Rendering as a mode-P Image using this palette."""
+    def indices(self, r):
+        """A Rendering as a uint8 (H, W) array of indices into this palette."""
         from PIL import Image
         alpha = np.clip(r.alpha, 0.0, 1.0)
         if self.ink is not None and r.uniform and tuple(int(v) for v in r.color_u8()) == self.ink:
             if self.transparent:
-                idx = np.where(alpha >= 0.5, self.levels, GIF_TRANSPARENT).astype(np.uint8)
-            else:
-                idx = np.rint(alpha * self.levels).astype(np.uint8)
-            im = Image.frombytes("P", (r.W, r.H), idx.tobytes())
-        else:                                               # a colour the sample did not have: the nearest in the palette
-            rgb = Image.fromarray(np.ascontiguousarray(r.flatten()), "RGB")
-            try:
-                im = rgb.quantize(palette=self.pimg, dither=0)
-            except TypeError:                               # (Pillow before 7 cannot turn dithering off)
-                im = rgb.quantize(palette=self.pimg)
-            if self.transparent:
-                idx = np.array(im)
-                idx[alpha < 0.5] = GIF_TRANSPARENT
-                im = Image.frombytes("P", (r.W, r.H), idx.tobytes())
-        im.putpalette(self.palette)
+                return np.where(alpha >= 0.5, self.levels, self.trans).astype(np.uint8)
+            return np.rint(alpha * self.levels).astype(np.uint8)
+        rgb = Image.fromarray(np.ascontiguousarray(r.flatten()), "RGB")      # a colour the sample did not have: the nearest
+        try:
+            im = rgb.quantize(palette=self.pimg, dither=0)
+        except TypeError:                                                    # (Pillow before 7 cannot turn dithering off)
+            im = rgb.quantize(palette=self.pimg)
+        idx = np.minimum(np.array(im), self.size - 1).astype(np.uint8)
+        if self.transparent:
+            idx[alpha < 0.5] = self.trans
+        return idx
+
+    def image(self, r):
+        """A Rendering as a mode-P Image using this palette."""
+        from PIL import Image
+        idx = self.indices(r)
+        im = Image.frombytes("P", (r.W, r.H), idx.tobytes())
+        im.putpalette(_padded(self.pimg.getpalette(), self.size))
         return im
 
 
@@ -164,41 +176,183 @@ def format_for(name, out_is_tty):
     return "sixel" if out_is_tty else "png"
 
 
-def convert(pic, fmt, fp, frame=None, transparent=False, speed=1.0, loop=None, **render_opts):
+def schedule(pic, fps=None, speed=1.0):
+    """[[frame index, milliseconds]] for playing the picture `speed` times as fast, with at most `fps` frames a second
+    (the frame showing at each tick of that clock: equal neighbours merge, the total time is kept)."""
+    if speed <= 0:
+        raise bif.BifError("--speed must be positive")
+    ms = [(f.duration if f.duration is not None else 100) / float(speed) for f in pic.frames]
+    if not fps:
+        return [[i, d] for i, d in enumerate(ms)]
+    if fps <= 0:
+        raise bif.BifError("--fps must be positive")
+    ends, t = [], 0.0
+    for d in ms:
+        t += d
+        ends.append(t)
+    out, i = [], 0
+    for k in range(max(1, int(round(t * fps / 1000.0)))):
+        while i < len(ends) - 1 and ends[i] <= k * 1000.0 / fps:
+            i += 1
+        d = int(round((k + 1) * 1000.0 / fps)) - int(round(k * 1000.0 / fps))
+        if out and out[-1][0] == i:
+            out[-1][1] += d
+        else:
+            out.append([i, d])
+    return out
+
+
+def draw_all(pic, indexes, render_opts):
+    """Draw the frames `indexes` of a picture alike: the page colour is settled by the first, which also fixes the size.
+    Returns (first Rendering, an iterator of all of them one at a time, some of them for choosing a palette)."""
+    first = bifrender.render(pic, frame=indexes[0], **render_opts)
+    opts = dict(render_opts, paper=first.paper)
+    n = len(indexes)
+    k = min(n, GIF_SAMPLES)
+    picks = [0] if k < 2 else sorted(set(int(round(j * (n - 1) / float(k - 1))) for j in range(k)))
+    drawn = dict((p_, first if p_ == 0 else bifrender.render(pic, frame=indexes[p_], **opts)) for p_ in picks)
+    samples = [drawn[p_] for p_ in picks]
+
+    def frames():
+        for p_ in range(n):
+            yield drawn.pop(p_) if p_ in drawn else bifrender.render(pic, frame=indexes[p_], **opts)
+    return first, frames(), samples
+
+
+def convert(pic, fmt, fp, frame=None, transparent=False, speed=1.0, loop=None, fps=None, **render_opts):
     """Render a Picture and write it to `fp` as `fmt`.  Returns the Rendering (of the first frame drawn).
     frame: which frame to draw; None = frame 0, or all of them if the format can move (GIF) and the picture has several.
-    speed: times the frames go by faster; loop: how often an animation plays (0 = forever; None = as the picture says)."""
+    speed: times the frames go by faster; loop: how often an animation plays (0 = forever; None = as the picture says);
+    fps: at most this many frames a second."""
     if fmt not in WRITERS:
         raise bif.BifError("unknown output format %r (have: %s)" % (fmt, ", ".join(sorted(WRITERS))))
     if fmt in ANIMATED and frame is None and len(pic.frames) > 1:
-        return convert_animation(pic, fmt, fp, transparent, speed, loop, **render_opts)
+        return convert_animation(pic, fmt, fp, transparent, speed, loop, fps, **render_opts)
     r = bifrender.render(pic, frame=frame or 0, **render_opts)
     if frame is None and len(pic.frames) > 1:
-        r.notes.append("the picture has %d frames and %s holds one: drew frame 0 (--frame N for another, -o FILE.gif for all)"
-                       % (len(pic.frames), fmt.upper()))
+        r.notes.append("the picture has %d frames and %s holds one: drew frame 0 (--frame N for another, -o FILE.gif for all%s)"
+                       % (len(pic.frames), fmt.upper(), "; on a terminal it is played" if fmt == "sixel" else ""))
     WRITERS[fmt][0](r, fp, transparent)
     return r
 
 
-def convert_animation(pic, fmt, fp, transparent=False, speed=1.0, loop=None, **render_opts):
-    """Every frame of a Picture, drawn alike (the page colour is settled by the first frame, which also fixes the size)."""
-    if speed <= 0:
-        raise bif.BifError("--speed must be positive")
-    n = len(pic.frames)
-    first = bifrender.render(pic, frame=0, **render_opts)
-    opts = dict(render_opts, paper=first.paper)
-    k = min(n, GIF_SAMPLES)
-    picks = sorted(set(int(round(j * (n - 1) / float(k - 1))) for j in range(k)))
-    drawn = dict((i, first if i == 0 else bifrender.render(pic, frame=i, **opts)) for i in picks)
-    samples = [drawn[i] for i in picks]
-
-    def frames():
-        for i in range(n):
-            yield drawn.pop(i) if i in drawn else bifrender.render(pic, frame=i, **opts)
+def convert_animation(pic, fmt, fp, transparent=False, speed=1.0, loop=None, fps=None, **render_opts):
+    """Every frame of a Picture, written as one animation."""
+    sched = schedule(pic, fps, speed)
+    first, frames, samples = draw_all(pic, [i for i, _ in sched], render_opts)
     if loop is None:
         loop = int((pic.animation or {}).get("loop", 1))
-    ANIMATED[fmt](frames(), [f.duration if f.duration is not None else 100 for f in pic.frames], fp, transparent,
-                  loop, speed, samples=samples)
+    ANIMATED[fmt](frames, [d for _, d in sched], fp, transparent, loop, 1.0, samples=samples)
+    return first
+
+
+# ---------------------------------------------------------------------------------------------
+# Playing an animation on the terminal (SIXEL): drawn and encoded once, then replayed on a steady clock
+# ---------------------------------------------------------------------------------------------
+def parse_cell(text):
+    """'8x16' -> (8, 16)."""
+    try:
+        w, h = (int(v) for v in text.lower().split("x"))
+        if w > 0 and h > 0:
+            return w, h
+    except ValueError:
+        pass
+    raise bif.BifError("--cell is WIDTHxHEIGHT in pixels, like 8x16")
+
+
+def cell_size(opt=None, reply=None, fd=1, env=None):
+    """(width, height) of a character cell in pixels: --cell, else what the terminal said (CSI 16 t), else the window size's
+    pixels over its characters, else 10 x 20."""
+    env = os.environ if env is None else env
+    if opt:
+        return parse_cell(opt)
+    if reply is not None and reply.cell:
+        return tuple(reply.cell)
+    if env.get("BIDET_CELL"):
+        return parse_cell(env["BIDET_CELL"])
+    try:
+        import fcntl
+        import struct
+        import termios
+        rows, cols, xp, yp = struct.unpack("HHHH", fcntl.ioctl(fd, termios.TIOCGWINSZ, b"\0" * 8))
+        if xp and yp and rows and cols:
+            return max(1, xp // cols), max(1, yp // rows)
+    except Exception:
+        pass
+    return 10, 20
+
+
+def sixel_frames(renders, samples, transparent=False):
+    """SIXEL bytes of each Rendering, all on one palette (colours do not shimmer between frames; the page is exact).
+    transparent: the page is left unpainted (palette index 0)."""
+    pal = GifPalette(samples, False, size=254)
+    colours = [tuple(int(v) for v in samples[0].paper)] + pal.rgb()
+    for r in renders:
+        idx = pal.indices(r).astype(np.int32) + 1
+        if transparent:
+            idx[np.clip(r.alpha, 0.0, 1.0) < 0.02] = 0
+        yield bifsixel._sixel_stream(np.minimum(idx, 254).astype(np.uint8), colours, transparent)
+
+
+def play_sixel(sixels, delays_ms, rows, cols, out, loops=0, transparent=False, clock=None, sleep=None):
+    """Replay encoded SIXEL frames on `out` until Ctrl-C (loops = 0) or that many times.  A terminal that cannot keep up
+    skips frames, it does not slow the motion down.  Returns how many frames it sent."""
+    import bisect
+    import time
+    clock = clock or time.monotonic
+    sleep = sleep or time.sleep
+    ends, t = [], 0.0
+    for d in delays_ms:
+        t += d
+        ends.append(t)
+    total = ends[-1]
+    clear = b""
+    if transparent:                                     # unpainted pixels would show the frame before: erase the picture area first
+        clear = b"\x1b8" + (b"\x1b[%dX\x1b[B" % cols) * (rows - 1)
+    out.write(b"\n" * rows + b"\x1b[%dA" % rows + b"\x1b7\x1b[?25l")
+    start, last, sent = clock(), -1, 0
+    try:
+        while True:
+            now = (clock() - start) * 1000.0
+            if loops and now >= total * loops:
+                break
+            pos = now % total
+            k = min(bisect.bisect_right(ends, pos), len(sixels) - 1)
+            if k == last:
+                sleep(max(0.001, (ends[k] - pos) / 1000.0))
+                continue
+            last = k
+            out.write(b"\x1b[?2026h\x1b8" + clear + b"\x1b8" + sixels[k] + b"\x1b[?2026l")        # (2026: no tearing)
+            out.flush()
+            sent += 1
+    except KeyboardInterrupt:
+        pass
+    finally:
+        out.write(b"\x1b[?2026l\x1b8" + b"\x1b[%dB" % rows + b"\x1b[?25h\n")
+        out.flush()
+    return sent
+
+
+def play(pic, out, cell, frame=None, transparent=False, speed=1.0, loop=None, fps=None, progress=None, clock=None, sleep=None,
+         **render_opts):
+    """Draw every frame of an animated Picture, encode them as SIXEL on one palette, and play them on `out` (a terminal).
+    cell: (width, height) of a character cell in pixels.  loop: 0 = until Ctrl-C (default: as the picture says).
+    Returns the Rendering of the first frame."""
+    sched = schedule(pic, fps, speed)
+    first, frames, samples = draw_all(pic, [i for i, _ in sched], render_opts)
+    sixels = []
+    try:
+        for n, six in enumerate(sixel_frames(frames, samples, transparent)):
+            sixels.append(six)
+            if progress:
+                progress(n + 1, len(sched))
+    except KeyboardInterrupt:
+        return first
+    if loop is None:
+        loop = int((pic.animation or {}).get("loop", 1))
+    rows = int(math.ceil(first.H / float(cell[1]))) + 1
+    cols = int(math.ceil(first.W / float(cell[0]))) + 1
+    play_sixel(sixels, [d for _, d in sched], rows, cols, out, loop, transparent, clock, sleep)
     return first
 
 
@@ -221,6 +375,10 @@ def build_parser():
     ap.add_argument("--frame", type=int, default=None, metavar="N",
                     help="draw only this frame of an animation (default: all of them for GIF, else frame 0)")
     ap.add_argument("--speed", type=float, default=1.0, metavar="F", help="animation: play this many times faster (default 1)")
+    ap.add_argument("--fps", type=float, default=None, metavar="N",
+                    help="animation: at most this many frames a second (default: the picture's own; fewer = quicker to draw, smaller)")
+    ap.add_argument("--cell", metavar="WxH", help="animation on a terminal: the size of a character cell in pixels, if the "
+                    "terminal does not say (default: asked, else the window's, else 10x20; also BIDET_CELL)")
     ap.add_argument("--loop", type=int, default=None, metavar="N",
                     help="animation: how often it plays, 0 = forever (default: as the picture says)")
     ap.add_argument("--scale", type=float, metavar="S", help="pixels per canvas unit (default 1)")
@@ -252,7 +410,7 @@ def render_options(a):
     paper = _color(a.paper) if a.paper else None
     if bg not in ("", "auto", "transparent"):
         paper = _color(a.background)
-    return dict(frame=a.frame, speed=a.speed, loop=a.loop, transparent=a.transparent or bg == "transparent", scale=a.scale, width=a.width, height=a.height,
+    return dict(frame=a.frame, speed=a.speed, loop=a.loop, fps=a.fps, transparent=a.transparent or bg == "transparent", scale=a.scale, width=a.width, height=a.height,
                 ss=a.ss, ink=_color(a.ink) if a.ink else None, paper=paper,
                 max_pixels=a.max_pixels, layers=set(a.layer) if a.layer else None)
 
@@ -264,11 +422,23 @@ def to_terminal(a, fmt, out_is_tty=True):
     return fmt == "sixel" and out_is_tty and (not a.output or a.output == "-")
 
 
-def ask_terminal(a, fmt, out_is_tty=True, env=None):
-    """What the terminal says (bifterm.Reply), asking only if SIXEL is going to it; NOTHING otherwise."""
+def ask_terminal(a, fmt, out_is_tty=True, env=None, want_cell=False):
+    """What the terminal says (bifterm.Reply), asking only if SIXEL is going to it; NOTHING otherwise.  want_cell: also how
+    big a character cell is (an animation needs it to know how many lines it takes)."""
     if not to_terminal(a, fmt, out_is_tty) or a.no_query:
         return bifterm.NOTHING
-    return bifterm.query(want_bg=(a.background or "").lower() == "auto", want_cell=False, env=env, debug=a.verbose)
+    return bifterm.query(want_bg=(a.background or "").lower() == "auto", want_cell=want_cell, env=env, debug=a.verbose)
+
+
+def plays(pic, a, fmt, out_tty=True):
+    """Is this an animation that goes to the terminal as SIXEL, to be played?  (Not with --frame, not into a file or a pipe.)"""
+    return len(pic.frames) > 1 and a.frame is None and to_terminal(a, fmt, out_tty)
+
+
+def progress_on_stderr(done, total):
+    if sys.stderr.isatty():
+        sys.stderr.write("\rbifout: drawing frame %d of %d" % (done, total) + ("\n" if done == total else ""))
+        sys.stderr.flush()
 
 
 def terminal_options(pic, a, opts, reply, env=None):
@@ -312,8 +482,15 @@ def main(argv=None):
             pic = bif.load(a.file, allow_truncated=a.truncated)
         buf = io.BytesIO()
         opts = render_options(a)
+        animated = plays(pic, a, fmt, out_tty)
         if to_terminal(a, fmt):
-            opts = terminal_options(pic, a, opts, ask_terminal(a, fmt))
+            reply = ask_terminal(a, fmt, want_cell=animated)
+            opts = terminal_options(pic, a, opts, reply)
+        if animated:                                             # play it: there is no file to write
+            r = play(pic, sys.stdout.buffer, cell_size(a.cell, reply), progress=progress_on_stderr, **opts)
+            for n in r.notes:
+                sys.stderr.write("bifout: %s\n" % n)
+            return
         r = convert(pic, fmt, buf, **opts)
     except (bif.BifError, IOError) as e:
         sys.exit("bifout: %s" % e)

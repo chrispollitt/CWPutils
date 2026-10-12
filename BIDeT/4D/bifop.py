@@ -723,5 +723,11 @@ def main(argv=None):
     return 0
 
 
+# the operations that live in their own modules register themselves here (as this module, also when it runs as a script)
+sys.modules.setdefault("bifop", sys.modules[__name__])
+import bifop_3d                                                          # noqa: E402,F401  extrude spin sway popout motion
+import bifop_join                                                        # noqa: E402,F401  join overlay
+
+
 if __name__ == "__main__":
     sys.exit(main())

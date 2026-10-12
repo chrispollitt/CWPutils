@@ -249,6 +249,39 @@ def format_for(path):
     return "png"
 
 
+def motion_op(args):
+    """The bifop operation for --3d / --spin / --sway / --pop (and what goes with them), or None.  They are the animations of
+    bidet3d, and the new one: the picture flat on the screen, popping out of it."""
+    if not (args.spin or args.sway is not None or args.pop or args.solid):
+        return None
+    kw = []
+    if args.material:
+        kw.append("material=%s" % args.material)
+    if args.depth is not None:
+        kw.append("depth=%g" % args.depth)
+    if args.view:
+        kw.append("view=%s" % args.view.replace(",", "+"))
+    if args.fps:
+        kw.append("fps=%g" % args.fps)
+    moves = []
+    if args.pop:
+        moves.append("pop")
+    if args.spin or args.sway is not None:
+        if args.pop:
+            moves.append("hold")
+        moves.append("spin" if args.spin else "sway")
+    if not moves:
+        return "extrude" + (":" + ",".join(kw) if kw else "")
+    if args.turns is not None and "spin" in moves:
+        kw.append("turns=%g" % args.turns)
+    if args.sway is not None and "sway" in moves:
+        kw.append("degrees=%g" % args.sway)
+    if len(moves) == 1:
+        name = {"pop": "popout", "spin": "spin", "sway": "sway"}[moves[0]]
+        return name + (":" + ",".join(kw) if kw else "")
+    return "motion:" + ",".join(["path=" + "+".join(moves)] + kw)
+
+
 def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=None, pixels=None, data=None):
     """Turn parsed command-line arguments into a Plan (nothing is drawn).  `data`: the bytes of a standard input
     already read, so that a few plain words can be told from art; a named file is looked into here."""
@@ -294,6 +327,9 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
         plan.bifin += ["--face" if plan.lettering else "--font", args.font]                 # (the lettering's, or the art's)
     plan.bifin += shlex.split(args.bifin or "")
     plan.ops += shlex.split(args.bifop or "")
+    mo = motion_op(args)
+    if mo:
+        plan.ops.append(mo)
     plan.bifout += shlex.split(args.bifout or "")
     # where the picture goes
     plan.output = args.output if args.output and args.output != "-" else None
@@ -329,7 +365,10 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
             plan.bifout += ["--width", str(fit_width(pixels if pixels is not None else terminal_pixels(),
                                                      columns if columns is not None else terminal_columns()))]
         elif plan.fmt != "bif":                                           # a file: text fills 1000 px, art is drawn twice life size
-            plan.bifout += ["--width", "1000"] if plan.lettering else ["--scale", "1" if plan.fmt == "gif" else "2"]
+            if plan.fmt == "gif":                                         # (a GIF is a lot of pictures: smaller)
+                plan.bifout += ["--width", "640"] if plan.lettering else ["--scale", "1"]
+            else:
+                plan.bifout += ["--width", "1000"] if plan.lettering else ["--scale", "2"]
     return plan
 
 
@@ -365,7 +404,13 @@ def run(plan, data, notes=None):
     buf = io.BytesIO()
     opts = bifout.render_options(a)
     if not plan.output and bifout.to_terminal(a, plan.fmt):                              # SIXEL for the terminal: ask it, as bifout does
-        opts = bifout.terminal_options(pic, a, opts, bifout.ask_terminal(a, plan.fmt))
+        animated = bifout.plays(pic, a, plan.fmt, sys.stdout.isatty())
+        reply = bifout.ask_terminal(a, plan.fmt, want_cell=animated)
+        opts = bifout.terminal_options(pic, a, opts, reply)
+        if animated:                                                                      # play it (there is nothing to write)
+            r = bifout.play(pic, sys.stdout.buffer, bifout.cell_size(a.cell, reply), progress=bifout.progress_on_stderr, **opts)
+            notes.lines.extend(r.notes)
+            return b""
     r = bifout.convert(pic, plan.fmt, buf, **opts)
     notes.lines.extend(r.notes)
     return buf.getvalue()
@@ -394,6 +439,23 @@ def build_parser():
     ap.add_argument("-t", "--text", action="store_true", help="the input is text to set in a font, even if it names a file "
                     "or is read from a pipe")
     ap.add_argument("--art", action="store_true", help="the input is terminal art, even if it looks like a few words")
+    an = ap.add_argument_group("3D and animation (bifop's extrude, spin, sway, popout and motion; see `bifop --list`)")
+    an.add_argument("--3d", dest="solid", action="store_true", help="extrude it: a still, lit, with a shadow on the screen")
+    an.add_argument("--spin", action="store_true", help="turn it about the vertical axis: an animation (GIF, or played on a SIXEL terminal)")
+    an.add_argument("--sway", nargs="?", type=float, const=25.0, default=None, metavar="DEG",
+                    help="swing it this far each side and back (default 25)")
+    an.add_argument("--pop", action="store_true",
+                    help="2D to 3D: it starts flat on the screen and pops out of it (then --spin or --sway to go on)")
+    an.add_argument("--material", metavar="NAME", help="the 3D face: rainbow chrome gold superhero sunset aqua blues purple slate "
+                    "lime cornflower, or #rrggbb (default: the picture's colours)")
+    an.add_argument("--depth", type=float, metavar="F", help="extrusion depth, as a fraction of the picture's shorter side (default 0.22)")
+    an.add_argument("--view", metavar="YAW,PITCH,ROLL", help="the camera angles in degrees (default -20,8,0)")
+    an.add_argument("--turns", type=float, metavar="N", help="--spin: how many turns (default 1)")
+    an.add_argument("--fps", type=float, metavar="N", help="frames a second of an animation (default 15)")
+    an.add_argument("--time-machine", action="store_true",
+                    help="your text through banner (1983), FIGlet, TOIlet, BIDeT (2020), then popping out of the screen: "
+                         "an animation (-o FILE.gif, or played on a SIXEL terminal); --stage-time SEC for each era")
+    an.add_argument("--stage-time", type=float, default=3.0, metavar="SEC", help="--time-machine: seconds for each era (default 3)")
     ap.add_argument("-n", "--show-pipeline", action="store_true", help="print the bifin | bifop | bifout pipeline and do not run it")
     ap.add_argument("--bifin", metavar="FLAGS", help="extra flags for bifin, as one quoted string (a single flag: --bifin=--mono)")
     ap.add_argument("--bifop", metavar="OPS", help="extra operations for bifop, as one quoted string")
@@ -401,6 +463,40 @@ def build_parser():
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("-V", "--version", action="version", version="bidet " + VERSION)
     return ap
+
+
+def time_machine(args):
+    """--time-machine: build the show (timemachine.py) and write or play it."""
+    import timemachine
+    text = " ".join(args.input) if args.input else "BIDeT"
+    cfg = timemachine.Settings(stage_time=args.stage_time, material=args.material or timemachine.Settings.material,
+                               face=args.font or timemachine.Settings.face, turns=args.turns or timemachine.Settings.turns,
+                               fps=args.fps or timemachine.Settings.fps)
+    if args.depth is not None:
+        cfg.depth = args.depth
+    if args.view:
+        cfg.view = args.view.replace(",", "+")
+    if args.show_pipeline:
+        print(timemachine.script(text, cfg, args.output or "time-machine.gif"))
+        return 0
+    tty = sys.stdout.isatty()
+    if not args.output and not tty:
+        raise bif.BifError("the time machine is an animation: write it with -o FILE.gif, or run it on a SIXEL terminal")
+    pic = timemachine.build(text, cfg, say=(lambda m: sys.stderr.write("bidet: %s\n" % m)) if (args.verbose or tty) else None)
+    if args.output and args.output != "-":
+        fmt = format_for(args.output)
+        if fmt == "bif":
+            bif.save(pic, args.output)
+        else:
+            with open(args.output, "wb") as f:
+                bifout.convert(pic, fmt, f, width=args.width)
+        return 0
+    a = bifout.build_parser().parse_args(["-s"])
+    reply = bifout.ask_terminal(a, "sixel", want_cell=True)
+    opts = bifout.terminal_options(pic, a, bifout.render_options(a), reply)
+    opts["width"] = args.width or fit_width(terminal_pixels(), terminal_columns())
+    bifout.play(pic, sys.stdout.buffer, bifout.cell_size(None, reply), progress=bifout.progress_on_stderr, **opts)
+    return 0
 
 
 def main(argv=None):
@@ -411,6 +507,8 @@ def main(argv=None):
         print("\n".join(fonts.families()) or "no TrueType fonts found")
         return 0
     try:
+        if args.time_machine:
+            return time_machine(args)
         presets = load_presets()
         if args.list_presets:
             width = max(len(n) for n in presets) if presets else 0

@@ -14,10 +14,10 @@ DOCDIR  = $(DESTDIR)$(PREFIX)/share/doc/bidet4d
 # together in DATADIR: a tool linked into BINDIR runs from there, because Python puts the directory of the
 # real script first on its path.
 TOOLS   = bif bifin bifop bifout bidet
-LIB     = bifrender.py bifsixel.py bifterm.py bifin_text.py bifin_lettering.py bifin_vt.py fonts.py ttfglyphs.py tonetrace.py
+LIB     = bifrender.py bifsixel.py bifterm.py bifin_text.py bifin_lettering.py bifin_vt.py bifop_3d.py bifop_join.py bif3d.py timemachine.py fonts.py ttfglyphs.py tonetrace.py
 PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB) gallery.py
 DOCS    = README.md BIF-SPEC.md HANDOFF.md
-TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifterm.py tests/test_bifin.py tests/test_lettering.py tests/test_tonetrace.py tests/test_bifop.py tests/test_bidet.py tests/test_anim.py \
+TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifterm.py tests/test_bifin.py tests/test_lettering.py tests/test_tonetrace.py tests/test_bifop.py tests/test_bidet.py tests/test_anim.py tests/test_3d.py \
           tests/test_parity.py tests/ttfbuild.py tests/make_testdata.py tests/reference/unascii_v3.py
 
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bifin.py)
@@ -33,6 +33,7 @@ help:
 	@echo "  test-full    - lint, then everything including the full parity matrix (about 10 minutes)"
 	@echo "  testdata     - regenerate testdata/ (only when the spec or tests/make_testdata.py changed)"
 	@echo "  gallery      - redraw gallery/gallery.png: every bidet preset on a sample (a tour, and a visual check)"
+	@echo "  time-machine - redraw gallery/time-machine.gif: banner, FIGlet, TOIlet, BIDeT, then it pops out of the screen"
 	@echo "  install      - install bif, bifin and bifout, and the docs, under PREFIX"
 	@echo "  uninstall    - remove them again"
 	@echo "  installreq   - install the required OS packages (Debian/Ubuntu, as root)"
@@ -61,6 +62,7 @@ test-quick: lint
 	$(PYTHON) -W ignore tests/test_bifop.py
 	$(PYTHON) -W ignore tests/test_bidet.py
 	$(PYTHON) -W ignore tests/test_anim.py
+	$(PYTHON) -W ignore tests/test_3d.py
 
 test check: lint
 	PYTHON=$(PYTHON) ./test.sh --quick
@@ -73,6 +75,9 @@ testdata:
 
 gallery:
 	$(PYTHON) gallery.py
+
+time-machine:
+	$(PYTHON) timemachine.py BIDeT -o gallery/time-machine.gif
 
 # Run as root (or set PREFIX and DESTDIR)
 install: install-bin install-doc
@@ -118,5 +123,5 @@ dist: lint
 clean:
 	rm -rf __pycache__ tests/__pycache__ tests/reference/__pycache__ dist out bidet4d-*.tar.gz
 
-.PHONY: all help version lint test-quick test check test-full testdata gallery install install-bin install-doc \
+.PHONY: all help version lint test-quick test check test-full testdata gallery time-machine install install-bin install-doc \
         uninstall installreq dist clean
