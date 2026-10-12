@@ -3,18 +3,23 @@
 
     bifout x.bif -o x.png                 PNG
     bifout x.bif -s                       SIXEL to the terminal (also the default on a terminal)
+    bifout x.bif -o x.gif                 an animation (a BIF with several frames) as an animated GIF
     unascii-or-whatever | bifout -o -     BIF from a pipe, PNG to a pipe
 
 The picture is drawn at `--scale` pixels per canvas unit (or fitted into `--width` / `--height`), so
 line art is as sharp as you ask for.  See BIF-SPEC.md for what a BIF holds and section 8 for how it is drawn.
-Formats are registered in WRITERS (name -> function(rendering, file, transparent)); to add one, add one.
+Formats are registered in WRITERS (name -> function(rendering, file, transparent)); to add one, add one.  A format that
+can move is also in ANIMATED (name -> function(renderings, durations, file, transparent, loop, speed, samples)).
 """
 from __future__ import print_function
 
 import argparse
 import io
+import itertools
 import os
 import sys
+
+import numpy as np
 
 import bif
 import bifrender
@@ -43,10 +48,111 @@ def write_sixel(r, fp, transparent=False):
     fp.write(bifsixel.encode(r.alpha, r.color, r.paper, transparent=transparent) + b"\n")
 
 
+# GIF: at most 256 colours for the whole animation, so the palette is made once.  Line art is one colour over the page,
+# and then the palette is the exact ramp between them (no quantizer, nothing to flicker); other art is quantized from
+# a sample of its frames, without dithering (dither noise would shimmer on a still background).
+GIF_TRANSPARENT = 255                                       # the palette index of "no colour" (--transparent)
+GIF_SAMPLES = 12                                            # frames looked at to choose the palette
+GIF_SAMPLE_PIXELS = 1500000                                 # ... and how much of them
+
+
+def _padded(pal):
+    pal = list(pal)[:768]
+    return pal + [0] * (768 - len(pal))
+
+
+class GifPalette(object):
+    """The colours of one GIF, made from some of its Renderings, and the conversion of any Rendering to indices."""
+
+    def __init__(self, samples, transparent=False):
+        from PIL import Image
+        self.transparent = transparent
+        inks = set(tuple(int(v) for v in r.color_u8()) if r.uniform else None for r in samples)
+        if len(inks) == 1 and None not in inks:
+            self.ink = inks.pop()
+            self.paper = tuple(int(round(v)) for v in samples[0].paper)
+            self.levels = 254 if transparent else 255
+            ramp = [[int(round(p + (i_ - p) * k / float(self.levels))) for p, i_ in zip(self.paper, self.ink)]
+                    for k in range(self.levels + 1)]
+            self.pimg = Image.new("P", (1, 1))
+            self.pimg.putpalette(_padded(v for c in ramp for v in c))
+        else:
+            self.ink = None
+            step = max(1, int(np.ceil(np.sqrt(len(samples) * samples[0].W * samples[0].H / float(GIF_SAMPLE_PIXELS)))))
+            mont = np.concatenate([r.flatten()[::step, ::step] for r in samples], axis=0)
+            q = Image.fromarray(np.ascontiguousarray(mont), "RGB").quantize(colors=255 if transparent else 256, method=0)
+            q.putpalette(_padded(q.getpalette()))
+            self.pimg = q
+
+    @property
+    def palette(self):
+        return _padded(self.pimg.getpalette())
+
+    def image(self, r):
+        """A Rendering as a mode-P Image using this palette."""
+        from PIL import Image
+        alpha = np.clip(r.alpha, 0.0, 1.0)
+        if self.ink is not None and r.uniform and tuple(int(v) for v in r.color_u8()) == self.ink:
+            if self.transparent:
+                idx = np.where(alpha >= 0.5, self.levels, GIF_TRANSPARENT).astype(np.uint8)
+            else:
+                idx = np.rint(alpha * self.levels).astype(np.uint8)
+            im = Image.frombytes("P", (r.W, r.H), idx.tobytes())
+        else:                                               # a colour the sample did not have: the nearest in the palette
+            rgb = Image.fromarray(np.ascontiguousarray(r.flatten()), "RGB")
+            try:
+                im = rgb.quantize(palette=self.pimg, dither=0)
+            except TypeError:                               # (Pillow before 7 cannot turn dithering off)
+                im = rgb.quantize(palette=self.pimg)
+            if self.transparent:
+                idx = np.array(im)
+                idx[alpha < 0.5] = GIF_TRANSPARENT
+                im = Image.frombytes("P", (r.W, r.H), idx.tobytes())
+        im.putpalette(self.palette)
+        return im
+
+
+def gif_delays(durations_ms, speed=1.0):
+    """GIF counts in hundredths of a second: the times in ms, rounded from the running total so that 25 ms frames do not
+    drift (2, 3, 2, 3 ...), and never under 2 (viewers play a shorter frame at 100 ms).  Returns milliseconds."""
+    out, total, done = [], 0.0, 0
+    for d in durations_ms:
+        total += d / float(speed) / 10.0
+        cs = max(2, int(round(total)) - done)
+        done += cs
+        out.append(cs * 10)
+    return out
+
+
+def write_gif_frames(renders, durations_ms, fp, transparent=False, loop=0, speed=1.0, samples=None):
+    """An animated GIF.  renders: an iterator of Renderings (drawn one at a time; they all have the same size);
+    samples: some of them, in a list, for the palette (default: the first); loop: how often it plays, 0 = forever."""
+    renders = iter(renders)
+    first = next(renders)
+    pal = GifPalette(samples or [first], transparent)
+    images = itertools.chain([pal.image(first)], (pal.image(r) for r in renders))
+    head = next(images)
+    kw = dict(save_all=True, append_images=images, duration=gif_delays(durations_ms, speed), optimize=False,
+              disposal=2 if transparent else 1)
+    if transparent:
+        kw["transparency"] = GIF_TRANSPARENT
+    if loop != 1:
+        kw["loop"] = 0 if loop == 0 else max(0, loop - 1)
+    buf = io.BytesIO()
+    head.save(buf, "GIF", **kw)
+    fp.write(buf.getvalue())
+
+
+def write_gif(r, fp, transparent=False):
+    write_gif_frames([r], [100], fp, transparent)
+
+
 WRITERS = {
     "png": (write_png, (".png",)),
     "sixel": (write_sixel, (".six", ".sixel")),
+    "gif": (write_gif, (".gif",)),
 }
+ANIMATED = {"gif": write_gif_frames}
 
 
 def format_for(name, out_is_tty):
@@ -58,13 +164,42 @@ def format_for(name, out_is_tty):
     return "sixel" if out_is_tty else "png"
 
 
-def convert(pic, fmt, fp, frame=0, transparent=False, **render_opts):
-    """Render frame `frame` of a Picture and write it to `fp` as `fmt`.  Returns the Rendering."""
+def convert(pic, fmt, fp, frame=None, transparent=False, speed=1.0, loop=None, **render_opts):
+    """Render a Picture and write it to `fp` as `fmt`.  Returns the Rendering (of the first frame drawn).
+    frame: which frame to draw; None = frame 0, or all of them if the format can move (GIF) and the picture has several.
+    speed: times the frames go by faster; loop: how often an animation plays (0 = forever; None = as the picture says)."""
     if fmt not in WRITERS:
         raise bif.BifError("unknown output format %r (have: %s)" % (fmt, ", ".join(sorted(WRITERS))))
-    r = bifrender.render(pic, frame=frame, **render_opts)
+    if fmt in ANIMATED and frame is None and len(pic.frames) > 1:
+        return convert_animation(pic, fmt, fp, transparent, speed, loop, **render_opts)
+    r = bifrender.render(pic, frame=frame or 0, **render_opts)
+    if frame is None and len(pic.frames) > 1:
+        r.notes.append("the picture has %d frames and %s holds one: drew frame 0 (--frame N for another, -o FILE.gif for all)"
+                       % (len(pic.frames), fmt.upper()))
     WRITERS[fmt][0](r, fp, transparent)
     return r
+
+
+def convert_animation(pic, fmt, fp, transparent=False, speed=1.0, loop=None, **render_opts):
+    """Every frame of a Picture, drawn alike (the page colour is settled by the first frame, which also fixes the size)."""
+    if speed <= 0:
+        raise bif.BifError("--speed must be positive")
+    n = len(pic.frames)
+    first = bifrender.render(pic, frame=0, **render_opts)
+    opts = dict(render_opts, paper=first.paper)
+    k = min(n, GIF_SAMPLES)
+    picks = sorted(set(int(round(j * (n - 1) / float(k - 1))) for j in range(k)))
+    drawn = dict((i, first if i == 0 else bifrender.render(pic, frame=i, **opts)) for i in picks)
+    samples = [drawn[i] for i in picks]
+
+    def frames():
+        for i in range(n):
+            yield drawn.pop(i) if i in drawn else bifrender.render(pic, frame=i, **opts)
+    if loop is None:
+        loop = int((pic.animation or {}).get("loop", 1))
+    ANIMATED[fmt](frames(), [f.duration if f.duration is not None else 100 for f in pic.frames], fp, transparent,
+                  loop, speed, samples=samples)
+    return first
 
 
 def _color(s):
@@ -83,7 +218,11 @@ def build_parser():
     ap.add_argument("-f", "--format", choices=sorted(WRITERS), help="output format (default: from the file name; "
                     "sixel on a terminal, else png)")
     ap.add_argument("-s", "--sixel", action="store_true", help="same as -f sixel")
-    ap.add_argument("--frame", type=int, default=0, metavar="N", help="which frame of an animation (default 0)")
+    ap.add_argument("--frame", type=int, default=None, metavar="N",
+                    help="draw only this frame of an animation (default: all of them for GIF, else frame 0)")
+    ap.add_argument("--speed", type=float, default=1.0, metavar="F", help="animation: play this many times faster (default 1)")
+    ap.add_argument("--loop", type=int, default=None, metavar="N",
+                    help="animation: how often it plays, 0 = forever (default: as the picture says)")
     ap.add_argument("--scale", type=float, metavar="S", help="pixels per canvas unit (default 1)")
     ap.add_argument("--width", type=int, metavar="PX", help="fit the picture into this width")
     ap.add_argument("--height", type=int, metavar="PX", help="fit the picture into this height")
@@ -113,7 +252,7 @@ def render_options(a):
     paper = _color(a.paper) if a.paper else None
     if bg not in ("", "auto", "transparent"):
         paper = _color(a.background)
-    return dict(frame=a.frame, transparent=a.transparent or bg == "transparent", scale=a.scale, width=a.width, height=a.height,
+    return dict(frame=a.frame, speed=a.speed, loop=a.loop, transparent=a.transparent or bg == "transparent", scale=a.scale, width=a.width, height=a.height,
                 ss=a.ss, ink=_color(a.ink) if a.ink else None, paper=paper,
                 max_pixels=a.max_pixels, layers=set(a.layer) if a.layer else None)
 

@@ -168,6 +168,10 @@ class _Term(object):
         return f, b
 
     # -- cells -----------------------------------------------------------
+    def screen(self):
+        """What is on the screen now, history left out: {(line, column): (char, fg, bg)}, lines counted from 0."""
+        return dict(((y - self.top, x), v) for (y, x), v in self.cells.items() if self.top <= y < self.top + self.rows)
+
     def store(self, y, x, c, f, b):
         if c == " " and b is None:
             self.cells.pop((y, x), None)
@@ -444,6 +448,18 @@ def parse(text, cols=0, tabs=8, rows=24, glyphs=False):
     bgs = [[None] * width for _ in range(nrows)]
     for (yy, xx), (c, f, b) in cells.items():
         ch[yy - y0][xx], fgs[yy - y0][xx], bgs[yy - y0][xx] = c, f, b
+    return Grid(ch, fgs, bgs, glyphs)
+
+
+def screen_grid(cells, rows, cols, glyphs=False):
+    """A Grid of exactly rows x cols from {(line, column): (char, fg, bg)} (see _Term.screen): the same size for
+    every picture of an animation."""
+    ch = [[" "] * cols for _ in range(rows)]
+    fgs = [[None] * cols for _ in range(rows)]
+    bgs = [[None] * cols for _ in range(rows)]
+    for (y, x), (c, f, b) in cells.items():
+        if 0 <= y < rows and 0 <= x < cols:
+            ch[y][x], fgs[y][x], bgs[y][x] = c, f, b
     return Grid(ch, fgs, bgs, glyphs)
 
 
@@ -1813,8 +1829,10 @@ def _dict_of_options(o):
 
 
 def import_grid(grid, o, info=None):
-    """Grid -> bif.Picture.  info: optional {"data": bytes, "encoding": str, "sauce": dict} for the metadata."""
-    info = info or {}
+    """Grid -> bif.Picture.  info: optional {"data": bytes, "encoding": str, "sauce": dict} for the metadata.
+    info["palette"]: the pictures of an animation share one palette: the first call stores it there, later calls add to it."""
+    if info is None:
+        info = {}
     cw = max(4, int(o.cell_w))
     cw += cw % 2                                  # half-cell and braille dots need whole pixels
     mode = "block" if o.mode == "ansi-block" else o.mode
@@ -1845,7 +1863,9 @@ def import_grid(grid, o, info=None):
     W, H = grid.cols * cw + 2 * pad, grid.rows * ch + 2 * pad
     wpx = 0.12 * cw * o.weight
     ink_rgb = np.array(ink_c, np.float32)
-    pal = _Palette(ink_c, paper_c)
+    pal = info.get("palette")
+    if pal is None:
+        pal = info["palette"] = _Palette(ink_c, paper_c)
     cmap = cell_color_map(grid, ink_rgb, paper_c) if use_color and mode in ("line", "mix") else None
     dark_art = dark_picture or (mode in ("tone", "mix") and (o.dark if o.dark is not None else grid.has_color()))
 

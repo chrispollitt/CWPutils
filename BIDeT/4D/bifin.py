@@ -4,11 +4,13 @@
     bifin cow.txt -o cow.bif              ASCII / ANSI / Unicode art, UTF-8 or DOS (CP437), SAUCE read
     cowsay hi | bifin | bifout -s         through a pipe, to SIXEL on the terminal
     echo Hello | bifin -f lettering --font impact --size 120 | bifout -s      a string set in a font
+    bifin bambi.vt --delay 25 -o bambi.bif    a terminal session (what slowcat plays) as an animation; bifout -o bambi.gif
 
 The same readings as unascii (-m line | tone | mix | ansi-block ...), but the result is vectors and
 rasters, not pixels: strokes and letters stay sharp at any `bifout --scale`, the colours are a palette
 a manipulator can change, and the character grid is kept in the file (hidden `cells` layer).
 `-f lettering` is the other importer: not art but a string typeset in a proportional font (bifin --list-fonts).
+`-f vt` (or a file named *.vt) is the third: a terminal session replayed into the frames of an animation.
 Importers are registered in READERS (name -> function(data, options) -> bif.Picture).
 """
 from __future__ import print_function
@@ -20,6 +22,7 @@ import sys
 import bif
 import bifin_lettering
 import bifin_text
+import bifin_vt
 import fonts
 
 VERSION = "0.1"
@@ -43,7 +46,8 @@ def sniff(data):
 
 
 def read_text(data, **options):
-    options.pop("lettering", None)                                  # (the other importer's options)
+    options.pop("lettering", None)                                  # (the other importers' options)
+    options.pop("vt", None)
     return bifin_text.import_text(data, **options)
 
 
@@ -58,11 +62,21 @@ def read_lettering(data, **options):
     return bifin_lettering.lettering(data.decode("utf-8", "replace"), **kw)
 
 
-READERS = {"text": read_text, "lettering": read_lettering}
+def read_vt(data, **options):
+    """A terminal session: one frame for each distinct screen (see bifin_vt)."""
+    kw = dict(options.get("vt") or {})
+    options = dict((k, v) for k, v in options.items() if k not in ("lettering", "vt"))
+    return bifin_vt.import_vt(data, **dict(options, **kw))
+
+
+READERS = {"text": read_text, "lettering": read_lettering, "vt": read_vt}
 
 
 def convert(data, kind=None, **options):
-    """Bytes of any supported input -> bif.Picture.  kind: force an importer by name (default: sniff)."""
+    """Bytes of any supported input -> bif.Picture.  kind: force an importer by name (default: a file named *.vt is a
+    terminal session, else sniff)."""
+    if not kind and (options.get("name") or "").lower().endswith(".vt"):
+        kind = "vt"
     kind = kind or sniff(data)
     if kind == "bif":
         raise bif.BifError("the input is already a BIF")
@@ -131,10 +145,18 @@ def build_parser():
     lt.add_argument("--italic", action="store_true", help="an italic face (faked with a slant if the family has none)")
     lt.add_argument("--margin", type=float, default=0.15, metavar="EM", help="space round the letters, in ems (default 0.15)")
     ap.add_argument("--list-fonts", action="store_true", help="list the font families found and exit")
+    an = ap.add_argument_group("terminal sessions (-f vt, or a file named *.vt): an animation, one frame for each screen")
+    an.add_argument("--delay", type=int, default=100, metavar="MS",
+                    help="how long each newline lasts, as slowcat's argument (default 100)")
+    an.add_argument("--hold", type=int, default=1000, metavar="MS", help="how long the last screen stays (default 1000)")
+    an.add_argument("--fps", type=float, default=0.0, metavar="N",
+                    help="at most this many frames a second (default: a frame for every change)")
+    an.add_argument("--loop", type=int, default=0, metavar="N", help="how many times it plays, 0 = forever (default)")
     ap.add_argument("--no-outlines", action="store_true", help="letters as a raster layer, as unascii draws them, not vector outlines")
     ap.add_argument("--tone-raster", action="store_true", help="tone: the outlines as a raster layer, as unascii draws them, not traced vector lines")
     ap.add_argument("--encoding", help="input encoding (default: UTF-8, else CP437)")
-    ap.add_argument("--cols", type=int, default=0, help="wrap column for .ANS art (default: from SAUCE, else 80 for .ans, else none)")
+    ap.add_argument("--cols", type=int, default=0, help="wrap column for .ANS art (default: from SAUCE, else 80 for .ans, else none); "
+                    "the terminal's width for a session (default 80)")
     ap.add_argument("--rows", type=int, default=24, help="screen height for cursor addressing and scroll regions (default 24)")
     ap.add_argument("--no-crop", action="store_true", help="keep the margin around the drawing")
     ap.add_argument("--no-cells", action="store_true", help="do not keep the character grid in the file")
@@ -158,6 +180,7 @@ def options_of(a):
                    font=art_font, rows=a.rows, color=a.color, cols=a.cols, crop=not a.no_crop, verbose=a.verbose,
                    outlines=not a.no_outlines, tone_vectors=not a.tone_raster, cells=not a.no_cells, keep_source=a.keep_source,
                    name=None if a.file == "-" else a.file, encoding=a.encoding,
+                   vt=dict(delay=a.delay, hold=a.hold, fps=a.fps, loop=a.loop),
                    lettering=dict(font=a.face or a.font, size=a.size, spacing=a.spacing, line_height=a.line_height, align=a.align,
                                   wrap=a.wrap, bold=a.bold, italic=a.italic, margin=a.margin))
     if a.ink:

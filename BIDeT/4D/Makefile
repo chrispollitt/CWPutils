@@ -14,10 +14,10 @@ DOCDIR  = $(DESTDIR)$(PREFIX)/share/doc/bidet4d
 # together in DATADIR: a tool linked into BINDIR runs from there, because Python puts the directory of the
 # real script first on its path.
 TOOLS   = bif bifin bifop bifout bidet
-LIB     = bifrender.py bifsixel.py bifterm.py bifin_text.py bifin_lettering.py fonts.py ttfglyphs.py tonetrace.py
+LIB     = bifrender.py bifsixel.py bifterm.py bifin_text.py bifin_lettering.py bifin_vt.py fonts.py ttfglyphs.py tonetrace.py
 PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB) gallery.py
 DOCS    = README.md BIF-SPEC.md HANDOFF.md
-TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifterm.py tests/test_bifin.py tests/test_lettering.py tests/test_tonetrace.py tests/test_bifop.py tests/test_bidet.py \
+TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifterm.py tests/test_bifin.py tests/test_lettering.py tests/test_tonetrace.py tests/test_bifop.py tests/test_bidet.py tests/test_anim.py \
           tests/test_parity.py tests/ttfbuild.py tests/make_testdata.py tests/reference/unascii_v3.py
 
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bifin.py)
@@ -60,6 +60,7 @@ test-quick: lint
 	$(PYTHON) -W ignore tests/test_tonetrace.py
 	$(PYTHON) -W ignore tests/test_bifop.py
 	$(PYTHON) -W ignore tests/test_bidet.py
+	$(PYTHON) -W ignore tests/test_anim.py
 
 test check: lint
 	PYTHON=$(PYTHON) ./test.sh --quick

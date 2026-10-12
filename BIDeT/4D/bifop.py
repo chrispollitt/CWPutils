@@ -383,6 +383,14 @@ def extent(pic, frame=0):
     return float(b[:, 0].min()), float(b[:, 1].min()), float(b[:, 2].max()), float(b[:, 3].max())
 
 
+def extent_all(pic):
+    """extent() of every frame together: where an animation draws anything at all."""
+    boxes = [e for e in (extent(pic, i) for i in range(len(pic.frames))) if e]
+    if not boxes:
+        return None
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
 def _vector_extent(L, m):
     xy, st = L.arrays["xy"].astype(np.float64), L.arrays["start"].astype(np.int64)
     if len(xy) == 0:
@@ -432,14 +440,14 @@ def _raster_extent(L, m):
 @op("crop", [("margin", _float, 0.0, "blank space to leave round the drawing, in canvas units"),
              ("box", _ids, None, "x0+y0+x1+y1: crop to this rectangle instead of to the ink")],
     "Cut the canvas down to what is drawn (plus a margin), or to a box. The edges fall on whole units, so a pixel "
-    "picture is not resampled.")
+    "picture is not resampled. An animation is cut to what any of its frames draws, so the frames stay the same size.")
 def op_crop(pic, notes, margin, box):
     if box:
         if len(box) != 4:
             raise bif.BifError("crop: box is x0+y0+x1+y1")
         x0, y0, x1, y1 = [_float(v) for v in box]
     else:
-        e = extent(pic, 0)
+        e = extent_all(pic)
         if e is None:
             notes.warn("crop: nothing is drawn, so nothing to crop to")
             return

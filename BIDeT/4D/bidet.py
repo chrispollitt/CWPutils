@@ -244,6 +244,8 @@ def format_for(path):
         return "sixel"
     if ext == ".bif":
         return "bif"
+    if ext == ".gif":
+        return "gif"
     return "png"
 
 
@@ -327,7 +329,7 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
             plan.bifout += ["--width", str(fit_width(pixels if pixels is not None else terminal_pixels(),
                                                      columns if columns is not None else terminal_columns()))]
         elif plan.fmt != "bif":                                           # a file: text fills 1000 px, art is drawn twice life size
-            plan.bifout += ["--width", "1000"] if plan.lettering else ["--scale", "2"]
+            plan.bifout += ["--width", "1000"] if plan.lettering else ["--scale", "1" if plan.fmt == "gif" else "2"]
     return plan
 
 
@@ -352,7 +354,7 @@ def run(plan, data, notes=None):
         a = _parse_flags(bifin.build_parser(), plan.bifin, "bifin flags")
         a.file = plan.source or "-"
         pic = bifin.convert(data, a.kind, **bifin.options_of(a))
-    if not any(L.kind in ("vector", "raster") and L.get("visible", True) for L in pic.layers):
+    if not any(L.kind in ("vector", "raster") and L.get("visible", True) for f in pic.frames for L in f.layers):
         raise bif.BifError("nothing to draw: the input was read as %s and has no lines (a few words? try -t; art? try --art or "
                            "--bifin='-m line')" % pic.meta.get("mode", "art"))
     if plan.ops:
@@ -378,7 +380,8 @@ def build_parser():
                     "with neither, standard input")
     ap.add_argument("-P", "--preset", action="append", metavar="NAME", help="a style; repeat to combine (-P arc -P matrix)")
     ap.add_argument("-l", "--list-presets", action="store_true", help="list the presets and exit")
-    ap.add_argument("-o", "--output", metavar="FILE", help="write the picture here (.png, .six, .bif); '-' = standard output")
+    ap.add_argument("-o", "--output", metavar="FILE", help="write the picture here (.png, .six, .gif, .bif); '-' = standard output.  A .vt file "
+                    "(a terminal session) is an animation: write it as .gif")
     ap.add_argument("-w", "--width", type=int, metavar="PX", help="draw this many pixels wide (default: the terminal's width, "
                     "or, for a file, 1000 for text and twice life size for art)")
     ap.add_argument("-F", "--font", metavar="NAME", help="the font for text (a family, impact, serif, mono, script, ... or a .ttf file; "
