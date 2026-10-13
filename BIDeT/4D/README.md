@@ -35,6 +35,12 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
 
    ![every bidet preset on a sample](gallery/gallery.png)
 
+   (The pictures and animations in `gallery/` are not part of `main`: they are the **`media` branch**, mounted here as a
+   git worktree, and it holds only the latest of them, as one commit that `make media` replaces, so the repository does not
+   grow with every redraw. `make publish-media` sends it to GitHub, if you want it there; in a fresh clone,
+   `git fetch origin media && make media-checkout`. The links in this file are relative, so they show wherever
+   `gallery/` is mounted; on GitHub they need the branch merged or the links changed to `raw.githubusercontent.com/.../media/...`.)
+
    Warps and weights (`arc`, `squeeze`, `wave`, `up`, `italic`, `banner`, `bold`, `thin`), colours (`matrix`,
    `amber`, `blueprint`, `neon`, `chalk`, `stamp`, ...), transforms (`tilt`, `mirror`, `huge`: six times life size
    and still sharp), and the picture-art tracers: `sketch`, `trace` and `contour` turn shaded ASCII into vector

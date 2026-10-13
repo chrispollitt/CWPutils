@@ -1,2 +1,5 @@
 out/
 __pycache__/
+# gallery/ is the `media` branch, mounted here as a git worktree (see the Makefile: media, publish-media): the pictures and
+# animations are kept there, only the latest of them, so that this branch does not grow with every redraw
+gallery/

@@ -35,6 +35,8 @@ help:
 	@echo "  gallery      - redraw gallery/gallery.png: every bidet preset on a sample (a tour, and a visual check)"
 	@echo "  gallery-gif  - redraw gallery/gallery-3d.gif (every 3D preset, the moving ones moving) and gallery/popout.gif"
 	@echo "  time-machine - redraw gallery/time-machine.gif: banner, FIGlet, TOIlet, BIDeT, then it pops out of the screen"
+	@echo "  media        - record gallery/ on the 'media' branch, replacing its one commit (only the latest is kept)"
+	@echo "  publish-media- force-push the media branch to GitHub (optional); prune-media: free the replaced files; media-checkout: mount it"
 	@echo "  install      - install bif, bifin and bifout, and the docs, under PREFIX"
 	@echo "  uninstall    - remove them again"
 	@echo "  installreq   - install the required OS packages (Debian/Ubuntu, as root)"
@@ -80,6 +82,23 @@ gallery:
 gallery-gif:
 	$(PYTHON) gallery.py --gif
 	$(PYTHON) bidet.py -P popout "BIDeT 4D" -w 480 -o gallery/popout.gif
+
+# The pictures and animations in gallery/ live on their own branch, `media`, mounted here as a git worktree.  Only the
+# latest of them is kept: the branch is ONE commit that `make media` replaces (amends), so the repository does not
+# grow with every redraw.  `make publish-media` sends it to GitHub (a force-push of that branch only; skip it to keep
+# the media local); `make prune-media` frees the replaced files on this machine; `make media-checkout` mounts the
+# branch in a fresh clone (after `git fetch origin media`).
+media:
+	cd gallery && git add -A && git commit --amend -q -m "media: gallery and demo animations ($$(date +%F)); only the latest is kept on this branch" && git log --oneline -1
+
+publish-media:
+	cd gallery && git push --force origin media
+
+prune-media:
+	cd gallery && git reflog expire --expire=now --all && git gc --prune=now -q && git count-objects -vH
+
+media-checkout:
+	git worktree add gallery media
 
 time-machine:
 	$(PYTHON) timemachine.py BIDeT -o gallery/time-machine.gif
@@ -128,5 +147,5 @@ dist: lint
 clean:
 	rm -rf __pycache__ tests/__pycache__ tests/reference/__pycache__ dist out bidet4d-*.tar.gz
 
-.PHONY: all help version lint test-quick test check test-full testdata gallery gallery-gif time-machine install install-bin install-doc \
+.PHONY: all help version lint test-quick test check test-full testdata gallery gallery-gif time-machine media publish-media prune-media media-checkout install install-bin install-doc \
         uninstall installreq dist clean
