@@ -152,6 +152,8 @@ knows the cropped one; the whole-pixel pen then rounds differently, about 10% of
   allocated the whole text run per glyph and was 20x slower.
 - Storing vertices as float32 flips a few boundary pixels vs v3 (0.2% on Pillow 7).
 
+- **The user's Cygwin stack (Python 3.12 / Pillow 12.3 / numpy 2.5) traces `tone80.txt` differently** from Windows 3.11 / Pillow 11 and WSL 3.8 / Pillow 7: 49 paths against 44, and an extra faint straight line along the top edge (958 px long, 0.56 px thick). `test_bifop.test_simplify` failed there (IoU 0.796) because that line sits right on the 0.5 coverage mark the `iou` helper binarizes at, and `simplify` moving it 0.2 units flips all its pixels at once; `simplify` itself was right (worst vertex deviation 0.498 of 0.5). Fixed in the test (`iou(..., threshold=0.2)`, 0.996 there), not in `simplify`. A width-aware `simplify` (keep a vertex whose removal changes the pen width) was tried and dropped: it was not the cause. Not chased: why the newer Pillow adds that line (the parity gate, which compares with v3 by position, still passes). When a test fails only on one stack, compare the intermediate numbers (vertex counts, ink pixels, an overlay of the two drawings) before touching code or thresholds.
+
 ## Working here (gotchas)
 
 - No git in the user's habit for edits: **copy a file to its directory's `BAK/` (`name.YYYYMMDD`) before editing
