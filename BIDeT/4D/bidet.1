@@ -7,10 +7,10 @@ bidet \- draw text or terminal art as a picture, in a style: flat, 3D, or animat
 .SH DESCRIPTION
 .B bidet
 is the simple front end of the BIDeT 4D tools
-.BR bifin ,
-.B bifop
+.BR bifin (1),
+.BR bifop (1)
 and
-.BR bifout .
+.BR bifout (1).
 Give it some words, a file of terminal art, a terminal session (a
 .I .vt
 file) or a BIF, and it draws a picture: on a SIXEL terminal, or into a PNG, GIF or SIXEL file named with
@@ -22,18 +22,37 @@ prints the
 command line it would run.
 .SH OPTIONS
 .TP
-.BR \-P " " \fIname\fR
+.BR \-P " \fIname\fR, " \-\-preset " \fIname"
 A preset (a named style); repeat to combine, the later one winning:
 .B \-P arc \-P popout \-P chrome
 is a chrome arch that pops out of the screen.
-.B \-l
-lists them.
 .TP
-.BI \-o " FILE"
-Write the picture here (.png, .six, .gif, .bif).
+.BR \-l ", " \-\-list\-presets
+List the presets and exit.
 .TP
-.BI \-w " PX" "\fR, " \-F " FONT"
-Width in pixels; the font for text (a family, a file, or sans, serif, mono, impact, script ...).
+.BI \-o " FILE" "\fR, " \-\-output " FILE"
+Write the picture here (.png, .six, .gif, .bif); \fB\-\fR is standard output.  Without it the picture goes to the terminal as
+SIXEL if standard output is one, else it is a PNG.
+.TP
+.BI \-w " PX" "\fR, " \-\-width " PX"
+Draw this many pixels wide (default: the terminal's width, or, for a file, 1000 for text, 640 for text in a GIF, and twice
+life size for art).
+.TP
+.BI \-F " FONT" "\fR, " \-\-font " FONT"
+The font for text: a family, a file, or sans, serif, mono, impact, script ...
+.TP
+.B \-\-list\-fonts
+List the fonts found and exit.
+.TP
+.BI \-\-ink " COLOR" "\fR, " \-\-paper " COLOR"
+The colour of the lines, and of the page.
+.TP
+.BR \-\-dark ", " \-\-light
+Draw for a dark background (light lines on black), or a light one (dark lines on white).
+.TP
+.BR \-t ", " \-\-text ", " \-\-art
+The input is text to set in a font, even if it names a file or comes from a pipe; or terminal art, even if it looks like a few
+words.  Without either, plain words are text and anything else is art.
 .TP
 .B \-\-3d\fR, \fB\-\-spin\fR, \fB\-\-sway\fR [\fIDEG\fR], \fB\-\-pop
 3D and animation: a lit solid on a shadow; turning; swinging; or 2D to 3D, the picture starting flat on the screen and
@@ -52,8 +71,11 @@ Your text through banner (1983), FIGlet (1991), TOIlet (2004) and BIDeT (2020), 
 .B \-\-stage\-time
 sets the seconds for each era.
 .TP
-.B \-n
+.BR \-n ", " \-\-show\-pipeline
 Print the pipeline and do not run it.
+.TP
+.BR \-v ", " \-\-verbose ", " \-V ", " \-\-version
+Say what pipeline was run; print the version.
 .TP
 .BI \-\-bifin " FLAGS" "\fR, " \-\-bifop " OPS\fR, " \-\-bifout " FLAGS"
 Extra flags for a stage, as one quoted string (a single flag: \fB\-\-bifout=\-\-erase=bg\fR).
@@ -92,9 +114,9 @@ The presets that come with bidet.
 Your own; also a file named by
 .BR $BIDET_PRESETS .
 .SH SEE ALSO
-.BR bifout (1),
-.BR bifin ,
-.BR bifop .
+.BR bifin (1),
+.BR bifop (1),
+.BR bifout (1).
 The gallery of every preset is in README.md (and
 .B python gallery.py
 draws it).

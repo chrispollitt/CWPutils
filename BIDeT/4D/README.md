@@ -7,7 +7,7 @@ Status: 2026-10-12. The format (`BIF-SPEC.md`), `bif.py`, `bifin` (terminal art,
 exist and are tested; the gallery below shows them. **Setting it up: [`INSTALL.md`](INSTALL.md).** Changing the code:
 [`DEVNOTES.txt`](DEVNOTES.txt). The running state of the work: [`HANDOFF.md`](HANDOFF.md). Where it comes from:
 [`../HISTORY.md`](../HISTORY.md); licence and warranty: [`../LICENSE`](../LICENSE), [`../WARRANTY`](../WARRANTY).
-Man pages: `bidet(1)`, `bifout(1)`. `../3D` (BIDeT3D, with `3D/unascii` and `3D/gfx-conv`) is **legacy**:
+Man pages: `bidet(1)`, `bifin(1)`, `bifop(1)`, `bifout(1)`. `../3D` (BIDeT3D, with `3D/unascii` and `3D/gfx-conv`) is **legacy**:
 it gets no new features or fixes. 4D does not depend on it: the parity tests use a frozen copy of unascii
 (`tests/reference/`) and 4D's own `samples/`; only an optional SIXEL decoder test looks in `3D/gfx-conv`.
 

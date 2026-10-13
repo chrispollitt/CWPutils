@@ -25,4 +25,5 @@ done
 "$PY" -W ignore tests/test_bidet.py || exit 1
 "$PY" -W ignore tests/test_anim.py || exit 1
 "$PY" -W ignore tests/test_3d.py || exit 1
+"$PY" -W ignore tests/test_docs.py || exit 1
 exec "$PY" -W ignore tests/test_parity.py

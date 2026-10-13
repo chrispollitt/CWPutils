@@ -18,11 +18,11 @@ TOOLS   = bif bifin bifop bifout bidet
 LIB     = bifrender.py bifsixel.py bifterm.py bifin_text.py bifin_lettering.py bifin_vt.py bifop_3d.py bifop_join.py bif3d.py timemachine.py fonts.py ttfglyphs.py tonetrace.py
 PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB) gallery.py
 DOCS    = README.md BIF-SPEC.md HANDOFF.md INSTALL.md DEVNOTES.txt
-MANPAGES = bidet.1 bifout.1
+MANPAGES = bidet.1 bifin.1 bifop.1 bifout.1
 # the documents of the whole BIDeT project, one folder up (or beside the Makefile, in an unpacked tarball)
 TOPDIR  = $(if $(wildcard ../LICENSE),..,.)
 TOPDOCS = $(addprefix $(TOPDIR)/,AUTHORS LICENSE WARRANTY HISTORY.md)
-TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifterm.py tests/test_bifin.py tests/test_lettering.py tests/test_tonetrace.py tests/test_bifop.py tests/test_bidet.py tests/test_anim.py tests/test_3d.py \
+TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifterm.py tests/test_bifin.py tests/test_lettering.py tests/test_tonetrace.py tests/test_bifop.py tests/test_bidet.py tests/test_anim.py tests/test_3d.py tests/test_docs.py \
           tests/test_parity.py tests/ttfbuild.py tests/make_testdata.py tests/reference/unascii_v3.py
 
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bifin.py)
@@ -72,6 +72,7 @@ test-quick: lint
 	$(PYTHON) -W ignore tests/test_bidet.py
 	$(PYTHON) -W ignore tests/test_anim.py
 	$(PYTHON) -W ignore tests/test_3d.py
+	$(PYTHON) -W ignore tests/test_docs.py
 
 test check: lint
 	PYTHON=$(PYTHON) ./test.sh --quick

@@ -61,7 +61,7 @@ What goes where (relative to `PREFIX`):
 | `bif`, `bifin`, `bifop`, `bifout`, `bidet` | `bin/`, as links to the files in `share/BIDeT4D/` |
 | the modules, and `presets.ini` | `share/BIDeT4D/` (a tool runs from there, so it finds them) |
 | `README.md`, `BIF-SPEC.md`, `HANDOFF.md` | `share/doc/bidet4d/` |
-| `bidet.1`, `bifout.1` | `share/man/man1/` |
+| `bidet.1`, `bifin.1`, `bifop.1`, `bifout.1` | `share/man/man1/` |
 
 `make dist` makes `bidet4d-VERSION.tar.gz`: the sources, tests, samples, test data and documents. Your own presets
 go in `~/.config/bidet/presets.ini` ([8](#8-environment-variables) says how to put them elsewhere).
@@ -152,4 +152,4 @@ Nothing else is written outside this folder, except `~/.cache/bidet/fonts.json` 
 | a test fails on your machine only | run it again with `python tests/test_NAME.py`, and say which Python, Pillow and numpy you have (`python -c "import PIL, numpy; print(PIL.__version__, numpy.__version__)"`) |
 
 More: `README.md` (the tools, the presets, the gallery), `BIF-SPEC.md` (the file format), `DEVNOTES.txt` (for
-people changing the code), and the man pages `bidet(1)` and `bifout(1)`.
+people changing the code), and the man pages `bidet(1)`, `bifin(1)`, `bifop(1)` and `bifout(1)`.

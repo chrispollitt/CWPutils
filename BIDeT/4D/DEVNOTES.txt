@@ -92,6 +92,8 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
 ----------
 
  make lint          syntax of every program and test, the shell scripts, the man pages (if groff)
+                    (tests/test_docs.py also checks that bifop.1 names every operation and parameter, and that
+                    bifin.1, bifout.1 and bidet.1 name every long option: add a flag or an operation, document it)
  make test-quick    test_bif 37, test_bifout 47, test_bifterm 22, test_bifin 47, test_lettering 39,
                     test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48
  make test          those, and a smoke subset of the parity gate (PARITY_QUICK=1: 7 tests, several minutes)
@@ -185,5 +187,5 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
 -------------
 
  See HANDOFF.md for the full list.  The main ones: APNG / WebP and asciinema input; textures and tiles (they need paint kinds
- in BIF); warps of the solid before extrusion; man pages for bifin and bifop; Python 3.7 / Pillow 5.4 / numpy 1.16 untested;
+ in BIF); warps of the solid before extrusion; Python 3.7 / Pillow 5.4 / numpy 1.16 untested;
  live animation untested outside mintty and Windows Terminal; a `make install` check on a real Linux.

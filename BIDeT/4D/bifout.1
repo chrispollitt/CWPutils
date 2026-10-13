@@ -31,10 +31,10 @@ or
 with no file name it is SIXEL if standard output is a terminal, else PNG.
 .SH OPTIONS
 .TP
-.BI \-o " FILE"
+.BI \-o " FILE" "\fR, " \-\-output " FILE"
 Write here (\fB\-\fR is standard output).
 .TP
-.BI \-f " FORMAT" "\fR, " \-s
+.BI \-f " FORMAT" "\fR, " \-\-format " FORMAT" "\fR, " \-s "\fR, " \-\-sixel
 Force the format (\fBpng\fR, \fBgif\fR, \fBsixel\fR); \fB\-s\fR is \fB\-f sixel\fR.
 .TP
 .BI \-\-scale " S" "\fR, " \-\-width " PX\fR, " \-\-height " PX"
@@ -70,6 +70,20 @@ Leave the page transparent (a GIF with a clear colour, PNG alpha, SIXEL unpainte
 .TP
 .B \-\-force\fR, \fB\-\-no\-query
 Send SIXEL even if the terminal does not say that it can; do not ask the terminal anything.
+.TP
+.BI \-\-background " auto|transparent|COLOR"
+The long form of
+.BR \-b .
+.TP
+.BI \-\-ss " N" "\fR, " \-\-layer " ID\fR, " \-\-max\-pixels " N"
+The supersampling of vector layers (default: automatic, up to 4); draw only this layer id (repeat for several); the largest
+picture to draw, beyond which it is drawn smaller.
+.TP
+.BR \-t ", " \-\-truncated
+Draw what arrived of a file that ends early.
+.TP
+.BR \-v ", " \-\-verbose ", " \-V ", " \-\-version
+Say what was drawn, and how big; print the version.
 .PP
 Everything else is in
 .BR "bifout \-\-help" .
@@ -109,8 +123,8 @@ If set, send SIXEL even if the terminal does not say it can.
 Read, when the terminal will not say its colours, to guess whether it is light or dark.
 .SH SEE ALSO
 .BR bidet (1),
-.BR bifin ,
-.BR bifop .
+.BR bifin (1),
+.BR bifop (1).
 The format is described in BIF\-SPEC.md, and the whole design in README.md, in the share/doc/bidet4d directory.
 .SH AUTHOR
 Chris Pollitt.  Boost Software License 1.0.

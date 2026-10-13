@@ -82,7 +82,7 @@ now exists for several BIFs).
 - The 4D `Makefile` and `requirements.txt`, and the top-level `BIDeT/README.md` (now: 4D current, 3D legacy
   but still the only 3D-WordArt maker, v1/v2 obsolete), are done (verified: `make lint / test-quick / install /
   uninstall / dist` in Cygwin, the installed symlinked tools run, the README's example commands work).
-  Man pages: `bidet.1` and `bifout.1` exist (2026-10-12; `make lint` checks them with groff if present; `make install` puts them in share/man/man1); `bifin.1`, `bifop.1` still to write (3D has `bidet3d.1`). Possible later: a `make install` check on a real Linux.
+  Man pages: `bidet.1`, `bifin.1`, `bifop.1`, `bifout.1` exist (2026-10-12; `make lint` checks them with groff if present; `make install` puts them in share/man/man1; `tests/test_docs.py` checks that they name every bifop operation and parameter and every long option of bifin, bifout and bidet, so a new flag must be documented). Possible later: a `make install` check on a real Linux.
 
 ## Tests
 

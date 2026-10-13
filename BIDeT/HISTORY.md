@@ -96,5 +96,5 @@ How it went, in order:
 ## What is still ahead
 
 APNG and WebP, asciinema recordings (which have real timings), textures and tiles (they need paint kinds in the BIF
-format), warps of the solid before it is extruded, more man pages. The working list is in `4D/HANDOFF.md` and
+format), warps of the solid before it is extruded. The working list is in `4D/HANDOFF.md` and
 `4D/DEVNOTES.txt`.
