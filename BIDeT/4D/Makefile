@@ -95,7 +95,7 @@ publish-media:
 	cd gallery && git push --force origin media
 
 prune-media:
-	cd gallery && git reflog expire --expire=now --all && git gc --prune=now -q && git count-objects -vH
+	cd gallery && git reflog expire --expire-unreachable=now --all && git gc --prune=now -q && git count-objects -vH
 
 media-checkout:
 	git worktree add gallery media
