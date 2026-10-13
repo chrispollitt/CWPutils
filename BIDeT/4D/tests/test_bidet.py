@@ -35,7 +35,8 @@ def plan(*argv, **kw):
     kw.setdefault("stdin_tty", False)
     kw.setdefault("env", {})
     kw.setdefault("columns", 80)
-    kw.setdefault("pixels", None)
+    kw.setdefault("pixels", ())            # the (pretend) terminal does not say how many pixels it has; None would ask the
+    #                                        real one the tests happen to run in, and a mintty that does say (936 px: 889 wide) differs
     return bidet.make_plan(args(*argv), PRESETS, **kw)
 
 
