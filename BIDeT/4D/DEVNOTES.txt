@@ -16,7 +16,7 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
          v
        a BIF  (.bif)     vector + raster layers, palette, grid, frames
          |  bifop        operations (OPS, @op): pen theme crop skew arc wave
-         v                extrude spin sway popout motion join overlay ...
+         v                extrude spin sway popout motion scroll join overlay ...
        a BIF
          |  bifout       writers (WRITERS, ANIMATED): png gif sixel; or plays it
          v
@@ -33,7 +33,7 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
     bifin_text.py        terminal art -> BIF (unascii's reader/classifier by line range + a new assembly)
     bifin_lettering.py   a string in a font -> BIF (fonts.py, ttfglyphs.py)
     bifin_vt.py          a terminal session -> an animation (one frame per screen)
-    bifop.py             tool 2: the registry and command line; bifop_3d.py, bifop_join.py register more ops
+    bifop.py             tool 2: the registry and command line; bifop_3d.py, bifop_join.py, bifop_scroll.py register more ops
     bif3d.py             the 3D stage: solid, camera, shadow, paths (pop, spin, sway)
     bifout.py            tool 3: PNG, GIF, SIXEL, playing; bifrender.py draws a frame; bifsixel.py encodes
     bifterm.py           asking the terminal (DA1, OSC 11, CSI 16 t)
@@ -99,8 +99,8 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
  make lint          syntax of every program and test, the shell scripts, the man pages (if groff)
                     (tests/test_docs.py also checks that bifop.1 names every operation and parameter, and that
                     bifin.1, bifout.1 and bidet.1 name every long option: add a flag or an operation, document it)
- make test-quick    test_bif 37, test_bifout 47, test_bifterm 22, test_bifin 47, test_lettering 39,
-                    test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48, test_gfx 30, test_docs 6
+ make test-quick    test_bif 37, test_bifout 47, test_bifterm 22, test_bifin 47, test_lettering 40,
+                    test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48, test_scroll 27, test_gfx 30, test_docs 6
  make test          those, and a smoke subset of the parity gate (PARITY_QUICK=1: 7 tests, several minutes)
  make test-full     everything, with the full parity matrix (1232 cases, about ten minutes)
 

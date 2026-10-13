@@ -85,8 +85,9 @@ def layout(text, tt, size, spacing=0.0, wrap=0.0, align="left", line_height=None
 
 
 def lettering(text, font=None, size=100.0, spacing=0.0, line_height=None, align="left", wrap=0.0, bold=False,
-              italic=False, margin=0.15, ink=(0, 0, 0), paper=(255, 255, 255), name=None):
-    """A bif.Picture of `text` set in `font` (a name, a list of names joined with commas, or a file)."""
+              italic=False, margin=0.15, ink=(0, 0, 0), paper=(255, 255, 255), name=None, oneline=False):
+    """A bif.Picture of `text` set in `font` (a name, a list of names joined with commas, or a file).  oneline: the text is
+    one line, each run of white space (a line break, an indent) becoming one space: for a ticker."""
     if size <= 0:
         raise bif.BifError("lettering: the size must be positive")
     if align not in ("left", "center", "right"):
@@ -99,6 +100,8 @@ def lettering(text, font=None, size=100.0, spacing=0.0, line_height=None, align=
     except ttfglyphs.Unsupported as e:
         raise bif.BifError("font %s: %s" % (face.path, e))
     text = _clean(text)
+    if oneline:
+        text = " ".join(text.split())
     s = size / float(tt.units_per_em)
     m = tt.metrics()
     placed, pitch, widths = layout(text, tt, size, spacing, wrap, align, line_height)

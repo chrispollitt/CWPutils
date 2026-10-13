@@ -173,6 +173,11 @@ lines (default: the font's); the space round the letters (default 0.15).
 .BI \-\-align " left" | center | right "\fR, " \-\-wrap " PX"
 Alignment of several lines (default left); break lines at spaces to fit this width (default: never).
 .TP
+.TP
+.B \-\-one\-line
+Set it all on one line: every run of white space (a line break, an indent) becomes one space.  bidet does this for
+text that scrolls sideways.
+.TP
 .BR \-\-bold ", " \-\-italic
 A bold or italic face; one the family lacks is faked (an outline; a slant).
 .SS Terminal sessions (\-f vt, or a file named *.vt)

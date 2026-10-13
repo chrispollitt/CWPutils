@@ -41,13 +41,13 @@ INPUTS = {
 
 
 def is_3d(name, presets):
-    """Does the preset (with those it uses) give a 3D look or a motion?"""
-    return any(p.solid or p.motion for p in bidet.expand([name], presets))
+    """Does the preset (with those it uses) give a 3D look, a motion or a scroll?"""
+    return any(p.solid or p.motion or p.scroll for p in bidet.expand([name], presets))
 
 
 def moves(name, presets):
     """Does the preset (with those it uses) animate?"""
-    return any(p.motion for p in bidet.expand([name], presets))
+    return any(p.motion or p.scroll for p in bidet.expand([name], presets))
 
 
 def plan_for(preset, tile_width, presets, still):
@@ -110,6 +110,7 @@ def animated_tiles(name, tile, presets):
     if not moves(name, presets):
         return None
     plan, data = plan_for(name, tile[0] - 8, presets, False)
+    plan.ops = [o + ",time=%g" % (LOOP_SECONDS / 2.0) if o.startswith("scroll:") else o for o in plan.ops]      # a lap that divides the loop
     notes = bidet.bifop.Notes()
     pic = bidet.build_picture(plan, data, notes)
     if len(pic.frames) < 2:

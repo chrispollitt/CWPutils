@@ -73,6 +73,22 @@ to go on).
 The look and the motion: rainbow, chrome, gold, superhero, sunset, aqua, blues, purple, slate, lime, cornflower, graphite,
 brick, cobalt, horizon, or #rrggbb; depth as a fraction of the picture's shorter side.
 .TP
+.B \-\-scroll\fR [\fIDIR\fR]\fB, \-\-window \fIN\fB, \-\-speed \fIN
+Scrolling text, like the CP/M LARGE letter program: the picture slides through a window, round and round, until Ctrl\-C on a
+terminal, or as a looping GIF.
+.I DIR
+is left (the default), right, up (rolling credits) or down.
+.B \-\-window
+is how much shows at once, in times the picture's height (its width going up or down; 5), and
+.B \-\-speed
+how fast, in that unit a second (3 sideways, 0.2 up or down).  A 3D look (\fB\-\-3d\fR, \fB\-P gold\fR) scrolls too.  Give the
+words first or after the flag (text that scrolls sideways is set on one line: line breaks become spaces):
+.B bidet \-\-scroll "Hello, World"
+works.  For the rest (the gap, the start, the lap time) see the
+.B scroll
+operation in
+.BR bifop (1).
+.TP
 .B \-\-time\-machine
 Your text through banner (1983), FIGlet (1991), TOIlet (2004) and BIDeT (2020), then popping out of the screen: an animation.
 .B \-\-stage\-time
@@ -96,10 +112,12 @@ flags for the three tools, and for the 3D ones a
 .B solid
 (the look: material, depth, view ...), a
 .B motion
-(\fBpop+hold+spin\fR, \fBspin\fR, \fBsway\fR) and
+(\fBpop+hold+spin\fR, \fBspin\fR, \fBsway\fR), a
+.B scroll
+(\fBleft window=5 start=enter\fR) and
 .B uses
 (other presets applied first).  There are shapes (arc, squeeze, wave, up ...), colours (matrix, amber, neon ...), tracers for
-picture-style ASCII (sketch, trace, contour), 3D looks (chrome, rainbow, gold ...) and motions (popout, turntable, swing, rise).
+picture-style ASCII (sketch, trace, contour), 3D looks (chrome, rainbow, gold ...), motions (popout, turntable, swing, rise) and scrolls (ticker, cpm, credits).
 Add your own in
 .I ~/.config/bidet/presets.ini
 (a section there replaces the preset of the same name).

@@ -141,6 +141,8 @@ def build_parser():
     lt.add_argument("--line-height", type=float, default=None, metavar="EM", help="distance between lines, in ems (default: the font's)")
     lt.add_argument("--align", choices=["left", "center", "right"], default="left", help="alignment of several lines (default left)")
     lt.add_argument("--wrap", type=float, default=0.0, metavar="PX", help="break lines at spaces to fit this width (default: never)")
+    lt.add_argument("--one-line", action="store_true", help="set it all on one line: every run of white space (a line break, an "
+                    "indent) becomes one space (bidet does this for text that scrolls sideways)")
     lt.add_argument("--bold", action="store_true", help="a bold face (faked with an outline if the family has none)")
     lt.add_argument("--italic", action="store_true", help="an italic face (faked with a slant if the family has none)")
     lt.add_argument("--margin", type=float, default=0.15, metavar="EM", help="space round the letters, in ems (default 0.15)")
@@ -182,7 +184,7 @@ def options_of(a):
                    name=None if a.file == "-" else a.file, encoding=a.encoding,
                    vt=dict(delay=a.delay, hold=a.hold, fps=a.fps, loop=a.loop),
                    lettering=dict(font=a.face or a.font, size=a.size, spacing=a.spacing, line_height=a.line_height, align=a.align,
-                                  wrap=a.wrap, bold=a.bold, italic=a.italic, margin=a.margin))
+                                  wrap=a.wrap, bold=a.bold, italic=a.italic, margin=a.margin, oneline=a.one_line))
     if a.ink:
         options["ink"] = _color(a.ink)
     if a.paper:

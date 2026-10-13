@@ -739,6 +739,7 @@ def main(argv=None):
 sys.modules.setdefault("bifop", sys.modules[__name__])
 import bifop_3d                                                          # noqa: E402,F401  extrude spin sway popout motion
 import bifop_join                                                        # noqa: E402,F401  join overlay
+import bifop_scroll                                                      # noqa: E402,F401  scroll
 
 
 if __name__ == "__main__":

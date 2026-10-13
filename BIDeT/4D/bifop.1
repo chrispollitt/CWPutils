@@ -231,6 +231,35 @@ perspective (2.5); the strength of the shadow, 0 for none (1).  A black shadow d
 Frames a second (15); the pixels per canvas unit that the frames are drawn at (2;
 .B bifout \-\-scale 1
 averages them down).
+.SS Scrolling text
+.TP
+.BI scroll: dir
+Scrolling text: the picture slides through a window, round and round, a seamless loop of frames (the idea of the CP/M LARGE
+letter program: a line of big letters slid across the screen until a key was pressed).  It takes ONE flat picture, so do
+.B crop
+and any warp or 3D look first; the canvas becomes the window.
+.B dir
+is
+.BR left " (a ticker, the default), " right ", " up " (rolling credits) or " down ;
+right and down run the lap the other way.  The parameters:
+.B window
+(how much shows at once, in times the picture's size across the way it travels: its height going sideways, its width going up
+or down; 5),
+.B speed
+(in that unit a second: 3 sideways, 0.2 up or down),
+.B time
+(seconds for one lap, instead of a speed: the loop lasts exactly this long),
+.B gap
+(empty space between the end of one lap and the start of the next, in the same unit; default the window, so the picture has left
+before it comes back, as on CP/M),
+.B start
+.RB ( rest :
+begins with the start of the picture in the window;
+.BR enter :
+begins empty and the picture comes in at the far edge) and
+.B fps
+(25).  A vector layer is cut to what shows in each frame (compound letters whole), so a long banner costs no more per frame
+than a short one; a raster layer, such as an extruded still, is moved whole.  Anything that sits on the character grid is forgotten.
 .SS Joining pictures
 .TP
 .BI join: file
@@ -250,13 +279,15 @@ bifop \-i art.bif \-o thick.bif pen:1.5
 echo Hello | bifin \-f lettering | bifop arc:bend=0.4 extrude:material=gold | bifout \-o hello.png
 echo Hello | bifin \-f lettering | bifop popout:material=rainbow | bifout \-o hello.gif
 echo Hello | bifin \-f lettering | bifop motion:path=pop+hold+spin,hold=2.4 | bifout \-s
+echo Hello World | bifin \-f lettering | bifop crop:margin=10 scroll:left,start=enter | bifout \-o ticker.gif
 bifop \-i a.bif join:b.bif overlay:caption.bif,first=0,last=0 \-o both.bif
 .fi
 .SH DIAGNOSTICS
 An unknown operation or parameter, a value that is not what the parameter takes, or the result not being a valid BIF, is
-reported on standard error and ends the run with a non-zero status.  A 3D operation on a picture of several frames is an
+reported on standard error and ends the run with a non-zero status.  A 3D operation, or a scroll, on a picture of several frames is an
 error: do all the moves in one
-.BR motion .
+.BR motion ,
+and scroll last.
 .SH SEE ALSO
 .BR bifin (1),
 .BR bifout (1),

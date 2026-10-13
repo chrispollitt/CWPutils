@@ -188,6 +188,14 @@ class Layout(unittest.TestCase):
         placed, _pitch, _w = bifin_lettering.layout("BBB\nA", self.tt, 1000, align="right")
         self.assertAlmostEqual([x for _c, _g, x, l in placed if l == 1][0], 1500.0)
 
+    def test_one_line_joins_the_lines_with_single_spaces(self):
+        a = bifin_lettering.lettering("Hello\n   world  again\n\n  -- me", font=PLAIN, oneline=True)
+        b = bifin_lettering.lettering("Hello world again -- me", font=PLAIN)
+        self.assertEqual((a.width, a.height), (b.width, b.height))               # the same picture as the text on one line
+        self.assertTrue(np.array_equal(a.frames[0].layers[0].arrays["xy"], b.frames[0].layers[0].arrays["xy"]))
+        c = bifin_lettering.lettering("Hello\nworld", font=PLAIN)
+        self.assertGreater(c.height, a.height * 1.5)                              # (and without it, two lines)
+
     def test_wrapping_breaks_at_spaces(self):
         placed, _pitch, widths = bifin_lettering.layout("AA AA AA", self.tt, 1000, wrap=3000)
         self.assertEqual(len(widths), 2)                                          # "AA AA" is 2700 wide, "AA AA AA" 4200

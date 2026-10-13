@@ -58,12 +58,13 @@ SAMPLE_KINDS = ("text", "art", "picture", "blocks", "colour")
 class Preset(object):
     """solid: the 3D look, as key=value words for bifop's extrude / spin / popout (material depth view ...);
     motion: what it does, `pop+hold+spin` / `spin` / `sway` / `pop`, then key=value words for it (turns=2);
+    scroll: `left` / `right` / `up` / `down` (optional, left), then key=value words for bifop's scroll (window=5 start=enter);
     uses: names of presets that are applied first (a showpiece made of others)."""
     def __init__(self, name, description="", bifin_flags=None, ops=None, bifout_flags=None, sample="art", solid=None,
-                 motion="", uses=None):
+                 motion="", uses=None, scroll=""):
         self.name, self.description, self.sample = name, description, sample
         self.bifin, self.ops, self.bifout = list(bifin_flags or []), list(ops or []), list(bifout_flags or [])
-        self.solid, self.motion, self.uses = list(solid or []), motion, list(uses or [])
+        self.solid, self.motion, self.uses, self.scroll = list(solid or []), motion, list(uses or []), scroll
 
 
 def preset_files(env=None):
@@ -97,7 +98,7 @@ def load_presets(files=None):
                                        shlex.split(sec.get("bifin", "")), shlex.split(sec.get("bifop", "")),
                                        shlex.split(sec.get("bifout", "")), sec.get("sample", "art").strip(),
                                        shlex.split(sec.get("solid", "")), sec.get("motion", "").strip(),
-                                       sec.get("uses", "").split())
+                                       sec.get("uses", "").split(), sec.get("scroll", "").strip())
             except ValueError as e:
                 raise bif.BifError("%s: preset '%s': %s" % (path, name, e))
     return presets
@@ -143,12 +144,13 @@ def check_preset(p, presets=None):
             bifop.convert_args(name, raw)
         except bif.BifError as e:
             raise bif.BifError("preset '%s': %s" % (p.name, e))
-    for still in (False, True):                                                       # its 3D look and motion, as bifop operations
+    for still in (False, True):                                                       # its 3D look, motion and scroll, as bifop operations
         try:
-            spec = motion_op(build_parser().parse_args([]), chain, still)
-            if spec:
-                name, raw = bifop.parse_spec(spec)
-                bifop.convert_args(name, raw)
+            for make in (motion_op, scroll_op):
+                spec = make(build_parser().parse_args([]), chain, still)
+                if spec:
+                    name, raw = bifop.parse_spec(spec)
+                    bifop.convert_args(name, raw)
         except bif.BifError as e:
             raise bif.BifError("preset '%s': %s" % (p.name, e))
 
@@ -260,7 +262,7 @@ def looks_like_prose(data):
     except UnicodeDecodeError:
         return False
     lines = text.replace("\r\n", "\n").split("\n")
-    if len(lines) > 12 or not all(c.isalnum() or c in PROSE_PUNCTUATION or c == "\n" for c in text.replace("\r", "")):
+    if len(lines) > 12 or not all(c.isalnum() or c in PROSE_PUNCTUATION or c in "\n\t" for c in text.replace("\r", "")):
         return False
     body = text.replace("\n", "")
     if sum(c.isalnum() for c in body) * 2 < len(body.strip()):                   # ".,,::;;" is a texture, not words
@@ -347,6 +349,38 @@ def motion_op(args, chosen=(), still=False):
     return "motion:" + ",".join(["path=" + "+".join(path)] + ["%s=%s" % x for x in kw])
 
 
+def scroll_way(args, chosen=()):
+    """(the way to scroll: left right up down, or None, the preset's key=value words)."""
+    way, kv = None, collections.OrderedDict()
+    for p in chosen:
+        if p.scroll:
+            words = p.scroll.split()
+            way = words.pop(0) if words and "=" not in words[0] else "left"
+            kv = _kvs(words, "preset '%s' scroll" % p.name)
+    return (args.scroll or way), kv
+
+
+def scroll_op(args, chosen=(), still=False):
+    """The bifop `scroll` operation, or None.  It comes from the presets (`scroll = left window=5`, the last one wins) and from
+    --scroll [DIR] / --window / --speed / --fps, which win over them.  It is the last operation: the picture is shaped,
+    coloured and given its 3D look first, then slid through the window.  still=True: None, the picture as it stands (a contact sheet)."""
+    way, kv = scroll_way(args, chosen)
+    if way is None:
+        if args.window is not None or args.speed is not None:
+            raise bif.BifError("--window and --speed are for --scroll (or a preset that scrolls)")
+        return None
+    if still:
+        return None
+    if args.window is not None:
+        kv["window"] = "%g" % args.window
+    if args.speed is not None:
+        kv["speed"] = "%g" % args.speed
+        kv.pop("time", None)
+    if args.fps:
+        kv["fps"] = "%g" % args.fps
+    return "scroll:" + ",".join(["dir=" + way] + ["%s=%s" % x for x in kv.items()])
+
+
 def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=None, pixels=None, data=None, still=False):
     """Turn parsed command-line arguments into a Plan (nothing is drawn).  `data`: the bytes of a standard input
     already read, so that a few plain words can be told from art; a named file is looked into here."""
@@ -380,6 +414,8 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
     # the recipe: presets in the order asked for, then what was asked on the command line
     if plan.lettering:
         plan.bifin = ["-f", "lettering"]  # set in a font, not drawn as art
+        if scroll_way(args, chosen)[0] in ("left", "right"):
+            plan.bifin.append("--one-line")                                   # a ticker is one line: line breaks are spaces
     for p in chosen:
         plan.bifin += p.bifin
         plan.ops += p.ops
@@ -391,6 +427,9 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
     mo = motion_op(args, chosen, still)
     if mo:
         plan.ops.append(mo)
+    so = scroll_op(args, chosen, still)
+    if so:
+        plan.ops.append(so)
     plan.bifout += shlex.split(args.bifout or "")
     # where the picture goes
     plan.output = args.output if args.output and args.output != "-" else None
@@ -481,8 +520,38 @@ def run(plan, data, notes=None):
     return buf.getvalue()
 
 
+def _is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
+# flags whose value is optional: the word after one is its value only if it can be one, else it is the text to draw
+# (`bidet --scroll "Hello"`: argparse would take Hello for the direction)
+OPTIONAL_VALUES = {"--scroll": ("left", lambda s: s in SCROLL_DIRS), "--sway": ("25", _is_number)}
+SCROLL_DIRS = ("left", "right", "up", "down")
+
+
+def bare_optionals(argv):
+    """argv with `--scroll` and `--sway` given their default value (as --scroll=left) where the next word is not a value for them."""
+    out = []
+    for i, a in enumerate(argv):
+        if a in OPTIONAL_VALUES and not (i + 1 < len(argv) and OPTIONAL_VALUES[a][1](argv[i + 1])):
+            a = "%s=%s" % (a, OPTIONAL_VALUES[a][0])
+        out.append(a)
+    return out
+
+
+class _ArgumentParser(argparse.ArgumentParser):
+    def parse_known_args(self, args=None, namespace=None):
+        args = sys.argv[1:] if args is None else list(args)
+        return argparse.ArgumentParser.parse_known_args(self, bare_optionals(args), namespace)
+
+
 def build_parser():
-    ap = argparse.ArgumentParser(
+    ap = _ArgumentParser(
         prog="bidet", description="Draw text or terminal art as a picture, in a style.",
         epilog="bidet is the simple front end of the BIDeT 4D tools bifin, bifop and bifout; "
                "`bidet -n ...` prints the pipeline of those it would run.")
@@ -525,6 +594,13 @@ def build_parser():
                     help="your text through banner (1983), FIGlet, TOIlet, BIDeT (2020), then popping out of the screen: "
                          "an animation (-o FILE.gif, or played on a SIXEL terminal); --stage-time SEC for each era")
     an.add_argument("--stage-time", type=float, default=3.0, metavar="SEC", help="--time-machine: seconds for each era (default 3)")
+    sc = ap.add_argument_group("scrolling text (bifop's scroll: a marquee, a ticker, rolling credits; see `bifop --list`)")
+    sc.add_argument("--scroll", nargs="?", const="left", default=None, choices=SCROLL_DIRS, metavar="DIR",
+                    help="slide it through a window, round and round, like the CP/M LARGE letter program: left (the default), right, up "
+                         "or down.  An animation (-o FILE.gif, or played on a SIXEL terminal until Ctrl-C)")
+    sc.add_argument("--window", type=float, metavar="N", help="--scroll: how much shows at once, in times the picture's height "
+                    "(its width, going up or down); this is the picture's size.  Default 5")
+    sc.add_argument("--speed", type=float, metavar="N", help="--scroll: how fast, in that unit a second (default 3 sideways, 0.2 up or down)")
     ap.add_argument("-n", "--show-pipeline", action="store_true", help="print the bifin | bifop | bifout pipeline and do not run it")
     ap.add_argument("--bifin", metavar="FLAGS", help="extra flags for bifin, as one quoted string (a single flag: --bifin=--mono)")
     ap.add_argument("--bifop", metavar="OPS", help="extra operations for bifop, as one quoted string")
