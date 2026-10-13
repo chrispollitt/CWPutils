@@ -74,7 +74,7 @@ Send SIXEL even if the terminal does not say that it can; do not ask the termina
 Everything else is in
 .BR "bifout \-\-help" .
 .SH ANIMATION
-On a SIXEL terminal an animation is drawn and encoded once, on one shared palette of 253 colours, and then replayed on a
+On a SIXEL terminal an animation is drawn and encoded once, on one shared palette of 254 colours, and then replayed on a
 steady clock until interrupted with Ctrl-C.  A terminal that cannot keep up skips frames; it does not slow the motion down.
 A GIF is written with timings rounded from the running total to its hundredths of a second.
 Into a pipe, a

@@ -1,0 +1,189 @@
+BIDeT 4D -- notes for people changing the code
+==============================================
+
+HANDOFF.md is the running state of the work (what was done last, what is
+untested, the open questions).  This file is the stable part: how the code is
+shaped, how to extend it, how it is tested, and what has bitten before.  README.md
+is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
+2026-10-12.
+
+
+1. THE SHAPE OF IT
+------------------
+
+    terminal art / text / a .vt session
+         |  bifin        importers (READERS): text, lettering, vt
+         v
+       a BIF  (.bif)     vector + raster layers, palette, grid, frames
+         |  bifop        operations (OPS, @op): pen theme crop skew arc wave
+         v                extrude spin sway popout motion join overlay ...
+       a BIF
+         |  bifout       writers (WRITERS, ANIMATED): png gif sixel; or plays it
+         v
+    PNG / GIF / SIXEL on a terminal
+
+    bidet = bifin | bifop | bifout, built from presets and a few flags.  It is
+    SUGAR: it must never do anything the three tools cannot, and `bidet -n`
+    prints the pipeline it would run.  tests/test_bidet.py (SugarOverThePipe)
+    checks that bidet's bytes equal the real tools' bytes.
+
+    The file             what it is
+    bif.py               the BIF library: read, write, validate; `bif.py info|check|chunks`
+    bifin.py             tool 1: the command line and READERS
+    bifin_text.py        terminal art -> BIF (unascii's reader/classifier by line range + a new assembly)
+    bifin_lettering.py   a string in a font -> BIF (fonts.py, ttfglyphs.py)
+    bifin_vt.py          a terminal session -> an animation (one frame per screen)
+    bifop.py             tool 2: the registry and command line; bifop_3d.py, bifop_join.py register more ops
+    bif3d.py             the 3D stage: solid, camera, shadow, paths (pop, spin, sway)
+    bifout.py            tool 3: PNG, GIF, SIXEL, playing; bifrender.py draws a frame; bifsixel.py encodes
+    bifterm.py           asking the terminal (DA1, OSC 11, CSI 16 t)
+    bidet.py             the front end; presets.ini; gallery.py; timemachine.py
+    tonetrace.py         marching squares: tone art as vector lines
+
+    4D does not depend on the legacy ../3D.  Only an optional test uses its SIXEL decoder
+    (../3D/gfx-conv/sixeldec.py).
+
+
+2. HOW TO ADD ...
+-----------------
+
+ An importer     A function(data, **options) -> bif.Picture, added to READERS in bifin.py, and its flags
+                 in build_parser() / options_of().  bifin_vt.py is the smallest complete example.
+                 `convert()` picks one by -f, or by file name (*.vt), or sniffs.
+
+ An operation    @op(name, [(param, converter, default, help)], doc) on a function(pic, notes, **params).
+                 Rules: never write into an array (clone() shares them): replace it; compose geometry
+                 into the layer's `transform`; anything that breaks the character grid calls drop_grid().
+                 Operations in their own module are imported at the bottom of bifop.py, after
+                 sys.modules.setdefault("bifop", ...), so that a script run as `python bifop.py` shares one registry.
+
+ An output       WRITERS[name] = (function(rendering, fp, transparent), extensions).  If it can move,
+                 also ANIMATED[name] = function(renderings, durations_ms, fp, transparent, loop, speed, samples).
+
+ A preset        A section in presets.ini.  Keys: description, sample, bifin, bifop, bifout, and for 3D:
+                 solid (key=value words), motion (pop+hold+spin hold=2.4), uses (presets applied first).
+                 Later presets win where they disagree; `solid` keys REPLACE (one `tall`), ops ACCUMULATE.
+                 bidet.check_preset() validates it (flags, ops, 3D look, `uses`); gallery.py draws it.
+
+ A material      An entry in bif3d.MATERIALS: (face fill, (back, front) side colours, bevel).
+
+ A change to the file format
+                 Write it in BIF-SPEC.md first, then bif.py (read, write, check), then the generator
+                 tests/make_testdata.py (`make testdata`), then whoever uses it.  Unknown layers, keys and
+                 chunks must pass through every tool untouched.
+
+
+3. CONVENTIONS
+--------------
+
+ * Python 3.7, Pillow 5.4 and numpy 1.16 are the floor.  No newer syntax; for newer library features use
+   getattr / try-except (Pillow's quantize(dither=) and enum names are the usual ones).
+ * The tests run on three stacks (section 4).  A feature that works on one is not done.
+ * Terminal output goes through bifout / bifterm only (bidet also asks the window size of the terminal, to fit a picture
+   to it).  Nothing else reads or writes the terminal.
+ * Documents describe what was tested.  If a thing has not been tried in a terminal, a font, a Python, the
+   document says so.
+ * The author keeps a dated copy of a file in BAK/ before editing it (BAK/ is git-ignored).
+ * Files written by Windows tools can look executable to Cygwin's git: after editing, check
+   `git diff --summary` for "mode change" and put it right (chmod) before committing.
+
+
+4. TESTING
+----------
+
+ make lint          syntax of every program and test, the shell scripts, the man pages (if groff)
+ make test-quick    test_bif 37, test_bifout 47, test_bifterm 22, test_bifin 47, test_lettering 39,
+                    test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48
+ make test          those, and a smoke subset of the parity gate (PARITY_QUICK=1: 7 tests, several minutes)
+ make test-full     everything, with the full parity matrix (1232 cases, about ten minutes)
+
+ The parity gate (tests/test_parity.py) holds bifin to a FROZEN copy of the old tool
+ (tests/reference/unascii_v3.py): block mode exact, tone within 0.6% of the ink, line art within 2% (8% coloured),
+ vector letters within 20%.  The limits and their causes are in tolerance(); if one must be widened, measure it and
+ write the reason there.
+
+ While developing: one platform and `make test-quick`.  Full runs and other platforms at milestones, or after changing
+ numerically sensitive code (rendering, tracing, the fields).
+
+ The three stacks that have been used (they do NOT trace or draw identically):
+     Windows      Python 3.11 / numpy 2.2 / Pillow 11
+     WSL Ubuntu   Python 3.8  / numpy 1.17 / Pillow 7      wsl -d Ubuntu-20.04 -- python3 tests/...
+     Cygwin       Python 3.12 / numpy 2.5 / Pillow 12.3
+ What that has already found:
+     - Pillow 7 truncates float coordinates, so the line-art parity limits are wider there.
+     - On Pillow 12 the tone trace of tone80.txt has an extra faint line along the top edge (0.56 px thick), on the
+       0.5 coverage mark.  A test that binarizes at 0.5 flipped all of it at once: test_simplify now compares at 0.2.
+     - A test must not read the terminal it runs in: test_size failed in mintty (936 px wide) and nowhere else, because
+       the helper passed pixels=None ("ask the real terminal").  Pass explicit values.  Tests set BIDET_NO_QUERY=1.
+ When a test fails on only one stack, compare the INTERMEDIATE numbers (vertex counts, ink pixels, an overlay of the two
+ drawings) before touching code or a threshold.  Most of the time the code is right and the measurement is fragile.
+
+ Terminal behaviour is tested against a fake terminal and a fake clock: tests/test_bifterm.py (a pty), and the player in
+ tests/test_3d.py (bytes, order, timing, frame skipping, Ctrl-C cleanup).  Nothing there proves a real terminal
+ draws it.  If ../3D/gfx-conv/sixeldec.py is present, SIXEL can be decoded and looked at: do that before blaming a terminal.
+
+
+5. TERMINALS: WHAT IS KNOWN
+---------------------------
+
+ * Asking: DA1 first and alone (a terminal without SIXEL is asked nothing else); then OSC 11 (background) and CSI 16 t
+   (cell size) with a second DA1 as the end mark.  Silence counts as "no SIXEL" unless --force.  The conversation is with
+   /dev/tty, so it works in a pipe.  POSIX only; elsewhere nothing is asked.
+ * A terminal that gives its background gets OPAQUE frames on that exact colour.  One that does not (Windows Terminal)
+   gets TRANSPARENT frames: a pixel is painted in its own colour if at least half covered, else left clear.  Blending an edge
+   or a shadow with a guessed page made a pale halo on a dark terminal (fixed).  Soft shadows are not drawn there.
+ * Playing: all frames are drawn and encoded once on one shared palette of 254 colours, 253 when the page is transparent (no dithering, so still areas do
+   not shimmer; it bands smooth gradients), then replayed on a steady clock, skipping frames if the terminal is slow.
+   --erase ech (erase the picture's cells first) is the default; bg (SIXEL P2=0) and none exist.
+ * mintty: works well, the only terminal tested thoroughly.  Windows Terminal: noise and stale pixels in animations; --erase bg
+   made it worse.  Others (WezTerm, foot, xterm, mlterm, iTerm2): not tried.  The documents say YMMV.
+
+
+6. NUMBERS AND DECISIONS WORTH KNOWING
+--------------------------------------
+
+ * GIF: a one-colour picture (line art) gets an exact 256-step ramp from ink to page as its palette; anything else one
+   palette median-cut from up to 12 sampled frames, no dithering.  Delays are rounded from the running total to hundredths
+   of a second (25 ms steps come out 2, 3, 2, 3, not drifting), and never under 2.
+ * A .vt session is replayed on bifin_text's terminal emulator and the screen is taken at each newline BEFORE the newline
+   is processed, as `slowcat` sleeps before printing it.  Identical neighbouring screens merge.  Style, colour and palette
+   are settled once from the fullest screen, so all frames are drawn alike.
+ * The 3D stage draws the flat picture at `res` (2) pixels per unit, extrudes it as a stack of perspective-warped
+   silhouettes (about 2 per pixel of depth, at most 320), shades the sides by which way the edge faces, and throws a soft
+   shadow on the screen plane.  Depth and hover are fractions of the drawing's shorter side.  The first frame of a pop-out is
+   the flat picture, to within antialiasing.
+ * `tall=` stretches the picture's height by changing the unit aspect, not by an operation, so presets replace it.
+ * The time machine is an assembly of the tools: .vt eras (bifin -f vt -m ansi-block), lettering, `motion`, `join`,
+   `overlay` (timemachine.py --script prints the shell commands).
+ * Presets, the gallery and the pictures: gallery/ is the `media` branch (one commit, replaced by `make media`).
+ * v3 quirk kept on purpose (parity): a row of only dashes, or one `x`, is classed as tone and draws nothing.  Test sprites
+   need strokes.
+ * A black shadow does not show on a black page.  The time machine's page is #262b33.
+
+
+7. THINGS THAT BITE
+-------------------
+
+ * Python is `python3` on Linux, Cygwin and WSL, `python` or `py` on Windows; Git Bash has none.
+ * Paths: WSL sees Windows drives as /mnt/d/..., Cygwin as /cygdrive/d/ (here also /home/...).  Git Bash rewrites /mnt paths.
+ * An edit script run through a shell heredoc can lose its backslashes; write the script to a file.
+ * A commit message with an apostrophe inside `bash -c '...'` is cut off; use `git commit -F file`.
+ * `git stash` on a repository with someone else's stash in it: use a different way to compare before/after.
+ * `git reflog expire --expire=now --all` also empties the stash reflog; `make prune-media` uses --expire-unreachable.
+
+
+8. RELEASING
+------------
+
+ make lint && make test          on at least two stacks, `make test-full` once
+ make dist                       bidet4d-VERSION.tar.gz (VERSION is read from bifin.py)
+ make gallery gallery-gif time-machine    redraw the pictures, then `make media` to record them
+ make publish-media              optional: force-push the media branch (only that branch)
+
+
+9. KNOWN GAPS
+-------------
+
+ See HANDOFF.md for the full list.  The main ones: APNG / WebP and asciinema input; textures and tiles (they need paint kinds
+ in BIF); warps of the solid before extrusion; man pages for bifin and bifop; Python 3.7 / Pillow 5.4 / numpy 1.16 untested;
+ live animation untested outside mintty and Windows Terminal; a `make install` check on a real Linux.

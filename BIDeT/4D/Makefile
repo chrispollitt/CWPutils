@@ -17,8 +17,11 @@ MANDIR  = $(DESTDIR)$(PREFIX)/share/man/man1
 TOOLS   = bif bifin bifop bifout bidet
 LIB     = bifrender.py bifsixel.py bifterm.py bifin_text.py bifin_lettering.py bifin_vt.py bifop_3d.py bifop_join.py bif3d.py timemachine.py fonts.py ttfglyphs.py tonetrace.py
 PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB) gallery.py
-DOCS    = README.md BIF-SPEC.md HANDOFF.md
+DOCS    = README.md BIF-SPEC.md HANDOFF.md INSTALL.md DEVNOTES.txt
 MANPAGES = bidet.1 bifout.1
+# the documents of the whole BIDeT project, one folder up (or beside the Makefile, in an unpacked tarball)
+TOPDIR  = $(if $(wildcard ../LICENSE),..,.)
+TOPDOCS = $(addprefix $(TOPDIR)/,AUTHORS LICENSE WARRANTY HISTORY.md)
 TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifterm.py tests/test_bifin.py tests/test_lettering.py tests/test_tonetrace.py tests/test_bifop.py tests/test_bidet.py tests/test_anim.py tests/test_3d.py \
           tests/test_parity.py tests/ttfbuild.py tests/make_testdata.py tests/reference/unascii_v3.py
 
@@ -117,7 +120,7 @@ install-bin:
 
 install-doc:
 	$(INSTALL) -d $(DOCDIR) $(MANDIR)
-	$(INSTALL) -m 644 $(DOCS) $(DOCDIR)
+	$(INSTALL) -m 644 $(DOCS) $(TOPDOCS) $(DOCDIR)
 	$(INSTALL) -m 644 $(MANPAGES) $(MANDIR)
 
 uninstall:
@@ -138,13 +141,13 @@ installreq:
 dist: lint
 	rm -rf dist/bidet4d-$(VERSION)
 	mkdir -p dist/bidet4d-$(VERSION)/tests/reference dist/bidet4d-$(VERSION)/testdata dist/bidet4d-$(VERSION)/samples
-	cp $(DISTFILES) dist/bidet4d-$(VERSION)
+	cp $(DISTFILES) $(TOPDOCS) dist/bidet4d-$(VERSION)
 	cp tests/*.py dist/bidet4d-$(VERSION)/tests
 	cp tests/reference/*.py dist/bidet4d-$(VERSION)/tests/reference
 	cp -R testdata/good testdata/bad dist/bidet4d-$(VERSION)/testdata
 	cp samples/* dist/bidet4d-$(VERSION)/samples
-	mkdir -p dist/bidet4d-$(VERSION)/gallery
-	cp gallery/gallery.png dist/bidet4d-$(VERSION)/gallery
+	if [ -f gallery/gallery.png ]; then mkdir -p dist/bidet4d-$(VERSION)/gallery && cp gallery/gallery.png dist/bidet4d-$(VERSION)/gallery; \
+	else echo "(gallery/ is not mounted: the tarball has no pictures; see 'make media-checkout')"; fi
 	tar -C dist -czf bidet4d-$(VERSION).tar.gz bidet4d-$(VERSION)
 	rm -rf dist
 	@echo "made bidet4d-$(VERSION).tar.gz"

@@ -1,0 +1,42 @@
+BIDeT  --  big text and terminal art, drawn as SIXEL graphics
+
+Created and maintained by
+    Chris Pollitt   <chris.pollitt@gmail.com>
+
+BIDeT 4D (the BIF format, the tools bifin, bifop, bifout and bidet, the 3D and
+animation stage, the presets, the tests and the documents) was developed with
+pair-programming assistance from Claude (Anthropic).  See the "Co-Authored-By:"
+trailers in the git history for details.
+
+Borrowed from, with thanks.  Nothing below is bundled in this repository unless
+it says so:
+
+    css3wordart   --   https://github.com/arizzitano/css3wordart
+        The WordArt preset designs (colours, gradient stops, side colours,
+        camera tilts) that BIDeT3D renders in 3D, and that the materials of
+        BIDeT 4D (rainbow, chrome, gold, superhero ...) are re-expressed from.
+        Data only, no code copied.  The repository has no licence file, so its
+        Word textures are NOT bundled (3D/get-textures.sh fetches them).
+
+    libsixel      --   https://github.com/saitoha/libsixel   (MIT)
+        Used by BIDeT3D (legacy) to encode SIXEL.  BIDeT 4D writes SIXEL
+        itself and does not need it.
+
+    Pillow and numpy
+        The only libraries BIDeT 4D needs.  Not bundled.
+
+    banner(1), FIGlet and TOIlet
+        banner: AT&T, UNIX System V.  FIGlet: Glenn Chappell and Ian Chai.
+        TOIlet: Sam Hocevar.  The eras of the time machine ("bidet --time-
+        machine").  The real programs are used if they are installed, and
+        imitations drawn from a font if not.  Nothing of theirs is bundled.
+
+    TrueType fonts
+        None are bundled.  BIDeT finds the ones your system has.  The tests
+        write a tiny font of their own (tests/ttfbuild.py).
+
+Developed and tested mostly in mintty, on Cygwin, with Python 3.8 to 3.12 under
+Windows, WSL and Cygwin.  See the Terminals note in 4D/README.md.
+
+A great many cows were harmed in the making of this program.  They were
+extruded, turned, and popped out of the screen, and they seemed to enjoy it.

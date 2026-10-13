@@ -1,0 +1,29 @@
+NO WARRANTY
+===========
+
+BIDeT is free software under the Boost Software License (see the file
+LICENSE).  There is NO WARRANTY, to the extent permitted by applicable law.
+The licence text says it plainly:
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+    SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+    FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+    ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+
+In plain terms: BIDeT reads what you give it, writes a picture where you say
+(and overwrites a file named with -o without asking), and talks to your
+terminal in escape sequences, including a good deal of SIXEL.  How a terminal
+copes with that varies, and animation is the hardest part.  Some terminals,
+Windows Terminal among them, leave noise or stale pixels behind; if one does,
+type "reset", or write a GIF instead.  It is a hobby project written for an
+audience of roughly one.
+
+The obsolete versions are worse.  BIDeT 1 (v1/) depends on a patched netpbm and
+a pile of other tools, and its fixnetpbm script, which removed system packages
+and installed an unverified .deb as root, has been disabled.  Don't run
+anything in v1/ or v2/ that you have not read first.
+
+If it extrudes your letters through the floor, you get to keep both pieces.

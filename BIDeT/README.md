@@ -7,8 +7,8 @@ big text for the terminal, drawn as SIXEL graphics.
 
 | folder | what | status |
 | --- | --- | --- |
-| [`4D/`](4D/) | **BIDeT 4D**: the BIF image format (`.bif`) and its tools. `bifin` turns terminal art (cowsay, figlet, ANSI and DOS art, jp2a / chafa output) into a BIF of vectors and rasters, `bifout` draws a BIF as PNG or SIXEL at any size. Python, Pillow, numpy; no libsixel. | **current, in development** |
-| [`3D/`](3D/) | **BIDeT3D**: 1990s WordArt, extruded into real 3D (Python, Pillow, numpy, libsixel). Holds [`3D/unascii/`](3D/unascii/) (art back to a line drawing) and [`3D/gfx-conv/`](3D/gfx-conv/) (SIXEL to kitty, iTerm2, ANSI art, Tektronix). | **legacy**: it works, but gets no new features or fixes. Until 4D has its own 3D step, it is the only tool here that makes 3D WordArt. |
+| [`4D/`](4D/) | **BIDeT 4D**: the BIF image format (`.bif`) and its tools. `bidet` is the one command for most people: text or terminal art, in 50 named styles (shapes, colours, 3D solids, animations), as PNG, GIF or SIXEL. Underneath, `bifin` turns terminal art, text in a font or a recorded terminal session into a BIF of vectors and rasters, `bifop` changes it (including extruding it into 3D, and making it pop out of the screen), and `bifout` draws it at any size, or plays it. Python, Pillow, numpy; no libsixel. | **current, in development** |
+| [`3D/`](3D/) | **BIDeT3D**: 1990s WordArt, extruded into real 3D (Python, Pillow, numpy, libsixel). Holds [`3D/unascii/`](3D/unascii/) (art back to a line drawing) and [`3D/gfx-conv/`](3D/gfx-conv/) (SIXEL to kitty, iTerm2, ANSI art, Tektronix). | **legacy**: it works, but gets no new features or fixes. 4D has its own 3D stage now, and its animations. |
 | [`v2/`](v2/) | `bidet2.py`, the Python port of BIDeT | obsolete, **unmaintained** |
 | [`v1/`](v1/) | `BIDeT.pl`, the original Perl/Ghostscript/netpbm version (2020) | obsolete, **unmaintained** |
 
@@ -23,21 +23,32 @@ Makefile, the man page, `INSTALL`) tells you to run it, don't; BIDeT3D and BIDeT
 
 Start here instead.
 
-For 3D WordArt:
-
-    cd 3D
-    ./bidet3d.py -P superhero "Hello, World!"
-    man ./bidet3d.1
-
-See [`3D/README.md`](3D/README.md) for requirements and options.
-
-For terminal art (turn it into a BIF, draw it at any size, change its colours):
-
     cd 4D
+    ./bidet.py "Hello, World!"                         # text, drawn on a SIXEL terminal
+    ./bidet.py -P popout "Hello" -o hello.gif          # 2D to 3D: it pops out of the screen
+    ./bidet.py --time-machine "BIDeT" -o time-machine.gif
+
+To turn terminal art into a BIF, draw it at any size and change its colours:
+
     ./bifin.py ../3D/unascii/samples/cow.txt | ./bifout.py -s
     ./bifin.py art.ans -o art.bif && ./bifout.py art.bif -o art.png --scale 3 --ink "#00ff66" --paper "#101820"
 
-See [`4D/README.md`](4D/README.md) for the tools and [`4D/BIF-SPEC.md`](4D/BIF-SPEC.md) for the file format,
-which is written so that others can build on it.
+See [`4D/INSTALL.md`](4D/INSTALL.md) to set it up, [`4D/README.md`](4D/README.md) for the tools and the gallery, and
+[`4D/BIF-SPEC.md`](4D/BIF-SPEC.md) for the file format, which is written so that others can build on it.
+Animation on a terminal has been tested thoroughly only in mintty: your mileage may vary elsewhere (see the
+*Terminals* note in the 4D README); a GIF works everywhere.
+
+The legacy 3D version: `cd 3D && ./bidet3d.py -P superhero "Hello, World!"`, `man ./bidet3d.1`, and
+[`3D/README.md`](3D/README.md) for requirements and options.
+
+## About the project
+
+| file | what |
+| --- | --- |
+| [`HISTORY.md`](HISTORY.md) | where BIDeT comes from: banner, FIGlet, TOIlet, and the four versions |
+| [`AUTHORS`](AUTHORS) | who made it, and what it borrows |
+| [`LICENSE`](LICENSE) | the Boost Software License 1.0, and the third-party components it does not cover |
+| [`WARRANTY`](WARRANTY) | the plain-language version of "no warranty" |
+| [`4D/INSTALL.md`](4D/INSTALL.md), [`4D/DEVNOTES.txt`](4D/DEVNOTES.txt) | installing BIDeT 4D; notes for people changing it |
 
 Demonstration of the original BIDeT: https://youtu.be/TxpBYhGrmH0

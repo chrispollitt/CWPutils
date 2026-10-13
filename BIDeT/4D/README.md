@@ -1,10 +1,13 @@
 # BIDeT 4D
 
-Re-architecture of BIDeT3D / unascii into three tools that talk through one file format.
-Status: 2026-10-07, **M0 to M3 done, M4 started**: the format spec (draft 2), its reference library `bif.py`,
-Tool 3 (`bifout`: BIF -> PNG / SIXEL) and Tool 1 for terminal art (`bifin`) exist, are tested, and draw
-what unascii draws (the parity gate); Tool 2 (`bifop`) has its first operations.  New here? Read
-[`HANDOFF.md`](HANDOFF.md). `../3D` (BIDeT3D, with `3D/unascii` and `3D/gfx-conv`) is **legacy**:
+Re-architecture of BIDeT3D / unascii into three tools that talk through one file format, and `bidet`, the one
+command that most people will use.
+Status: 2026-10-12. The format (`BIF-SPEC.md`), `bif.py`, `bifin` (terminal art, text in a font, terminal sessions),
+`bifop` (shapes, colour, 3D, animation, joining), `bifout` (PNG, GIF, SIXEL, live playback) and `bidet` with 50 presets
+exist and are tested; the gallery below shows them. **Setting it up: [`INSTALL.md`](INSTALL.md).** Changing the code:
+[`DEVNOTES.txt`](DEVNOTES.txt). The running state of the work: [`HANDOFF.md`](HANDOFF.md). Where it comes from:
+[`../HISTORY.md`](../HISTORY.md); licence and warranty: [`../LICENSE`](../LICENSE), [`../WARRANTY`](../WARRANTY).
+Man pages: `bidet(1)`, `bifout(1)`. `../3D` (BIDeT3D, with `3D/unascii` and `3D/gfx-conv`) is **legacy**:
 it gets no new features or fixes. 4D does not depend on it: the parity tests use a frozen copy of unascii
 (`tests/reference/`) and 4D's own `samples/`; only an optional SIXEL decoder test looks in `3D/gfx-conv`.
 
