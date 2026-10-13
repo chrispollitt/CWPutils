@@ -1,0 +1,116 @@
+.TH BIFOUT 1 "October 2026" "BIDeT 4D" "User Commands"
+.SH NAME
+bifout \- draw a BIF (BIDeT Intermediate Format) as a PNG, GIF or SIXEL picture, or play it on a terminal
+.SH SYNOPSIS
+.B bifout
+[\fIoptions\fR] [\fIFILE.bif\fR]
+.br
+.B bifin
+\&... |
+.B bifop
+\&... |
+.B bifout
+[\fIoptions\fR]
+.SH DESCRIPTION
+.B bifout
+is the third tool of BIDeT 4D.  It reads a BIF, from a file or from standard input, and draws it: as a PNG, as an
+animated GIF, or as SIXEL graphics on a terminal.  Line art is drawn from vectors, so it is as sharp at
+.B \-\-scale 6
+as at
+.BR "\-\-scale 1" .
+A BIF with several frames is an animation: it is written as a GIF, or, if it is going to a terminal that
+reports SIXEL, played there.
+.PP
+The format is chosen from the name given to
+.BR \-o :
+.I .png
+.IR ".gif" ,
+.I .six
+or
+.IR .sixel ;
+with no file name it is SIXEL if standard output is a terminal, else PNG.
+.SH OPTIONS
+.TP
+.BI \-o " FILE"
+Write here (\fB\-\fR is standard output).
+.TP
+.BI \-f " FORMAT" "\fR, " \-s
+Force the format (\fBpng\fR, \fBgif\fR, \fBsixel\fR); \fB\-s\fR is \fB\-f sixel\fR.
+.TP
+.BI \-\-scale " S" "\fR, " \-\-width " PX\fR, " \-\-height " PX"
+Draw at S pixels per canvas unit, or fit the picture into this size.
+.TP
+.BI \-\-ink " COLOR" "\fR, " \-\-paper " COLOR\fR, " \-b " auto|transparent|COLOR"
+Replace the ink colour; the page colour; or choose the page for a terminal:
+.B auto
+asks the terminal for its background (OSC 11) and draws on that, or leaves the page transparent if it will not say.
+.TP
+.B \-\-frame \fIN\fR
+Draw only this frame of an animation (a still).  Without it a GIF gets all the frames, and a terminal plays them.
+.TP
+.BI \-\-speed " F" "\fR, " \-\-fps " N\fR, " \-\-loop " N"
+Animation: play F times as fast; at most N frames a second (fewer is quicker to draw and smaller); N times
+(0 = until interrupted).
+.TP
+.BI \-\-cell " WxH"
+Animation on a terminal: the size of a character cell in pixels, if the terminal does not say (default: asked, then the
+window size, then 10x20).
+.TP
+.BR \-\-erase " " ech | bg | none
+Animation on a terminal whose colour is not known (transparent frames): how an earlier frame is kept from showing through.
+.B ech
+(the default) erases the picture's character cells first;
+.B bg
+has the terminal fill unpainted pixels with its own background (SIXEL P2=0);
+.B none
+does neither.  See TERMINALS.
+.TP
+.B \-\-transparent
+Leave the page transparent (a GIF with a clear colour, PNG alpha, SIXEL unpainted).
+.TP
+.B \-\-force\fR, \fB\-\-no\-query
+Send SIXEL even if the terminal does not say that it can; do not ask the terminal anything.
+.PP
+Everything else is in
+.BR "bifout \-\-help" .
+.SH ANIMATION
+On a SIXEL terminal an animation is drawn and encoded once, on one shared palette of 253 colours, and then replayed on a
+steady clock until interrupted with Ctrl-C.  A terminal that cannot keep up skips frames; it does not slow the motion down.
+A GIF is written with timings rounded from the running total to its hundredths of a second.
+Into a pipe, a
+.I .six
+file or a PNG only frame 0 can go, and bifout says so.
+.SH TERMINALS
+SIXEL support differs from terminal to terminal, and animation puts it under the most strain.
+.B bifout
+has been tested thoroughly only in mintty, where it works well.
+.B Your mileage may vary
+(YMMV) in other terminals.
+.PP
+In Windows Terminal, which does not report its background colour, animations show noise and leftover pixels of earlier frames.
+Soft shadows are not drawn there, since the page is unknown.
+.B \-\-erase bg
+was tried and is worse, not better.  Other terminals (WezTerm, foot, xterm \-ti vt340, mlterm, iTerm2 ...) have not been tried
+by the author.  Until a terminal's own SIXEL handling improves, the dependable way to see an animation is to write it as a
+GIF with
+.BR "\-o FILE.gif" .
+.SH ENVIRONMENT
+.TP
+.B BIDET_NO_QUERY
+If set, never ask the terminal anything.
+.TP
+.B BIDET_CELL
+The character cell, as WxH in pixels, for an animation (see \fB\-\-cell\fR).
+.TP
+.B LSIX_FORCE_SIXEL_SUPPORT
+If set, send SIXEL even if the terminal does not say it can.
+.TP
+.B COLORFGBG
+Read, when the terminal will not say its colours, to guess whether it is light or dark.
+.SH SEE ALSO
+.BR bidet (1),
+.BR bifin ,
+.BR bifop .
+The format is described in BIF\-SPEC.md, and the whole design in README.md, in the share/doc/bidet4d directory.
+.SH AUTHOR
+Chris Pollitt.  Boost Software License 1.0.

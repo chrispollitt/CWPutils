@@ -9,6 +9,7 @@ INSTALL ?= install
 BINDIR  = $(DESTDIR)$(PREFIX)/bin
 DATADIR = $(DESTDIR)$(PREFIX)/share/BIDeT4D
 DOCDIR  = $(DESTDIR)$(PREFIX)/share/doc/bidet4d
+MANDIR  = $(DESTDIR)$(PREFIX)/share/man/man1
 
 # The tools (linked into BINDIR without the .py) and the modules they import.  All of them are installed
 # together in DATADIR: a tool linked into BINDIR runs from there, because Python puts the directory of the
@@ -17,11 +18,12 @@ TOOLS   = bif bifin bifop bifout bidet
 LIB     = bifrender.py bifsixel.py bifterm.py bifin_text.py bifin_lettering.py bifin_vt.py bifop_3d.py bifop_join.py bif3d.py timemachine.py fonts.py ttfglyphs.py tonetrace.py
 PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB) gallery.py
 DOCS    = README.md BIF-SPEC.md HANDOFF.md
+MANPAGES = bidet.1 bifout.1
 TESTS   = tests/test_bif.py tests/test_bifout.py tests/test_bifterm.py tests/test_bifin.py tests/test_lettering.py tests/test_tonetrace.py tests/test_bifop.py tests/test_bidet.py tests/test_anim.py tests/test_3d.py \
           tests/test_parity.py tests/ttfbuild.py tests/make_testdata.py tests/reference/unascii_v3.py
 
 VERSION = $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' bifin.py)
-DISTFILES = $(PYFILES) presets.ini Makefile requirements.txt test.sh .gitignore $(DOCS)
+DISTFILES = $(PYFILES) presets.ini Makefile requirements.txt test.sh .gitignore $(DOCS) $(MANPAGES)
 
 all: lint
 
@@ -53,6 +55,7 @@ lint:
 	    $(PYTHON) -c "import ast,sys; ast.parse(open(sys.argv[1], encoding='utf-8').read())" $$f || exit 1; \
 	done
 	@sh -n test.sh
+	@if command -v groff >/dev/null 2>&1; then for m in $(MANPAGES); do groff -man -ww -z $$m || exit 1; done; fi
 	@echo "lint ok"
 
 test-quick: lint
@@ -113,11 +116,13 @@ install-bin:
 	for t in $(TOOLS); do ln -sf ../share/BIDeT4D/$$t.py $(BINDIR)/$$t; done
 
 install-doc:
-	$(INSTALL) -d $(DOCDIR)
+	$(INSTALL) -d $(DOCDIR) $(MANDIR)
 	$(INSTALL) -m 644 $(DOCS) $(DOCDIR)
+	$(INSTALL) -m 644 $(MANPAGES) $(MANDIR)
 
 uninstall:
 	for t in $(TOOLS); do rm -f $(BINDIR)/$$t; done
+	for m in $(MANPAGES); do rm -f $(MANDIR)/$$m; done
 	rm -rf $(DOCDIR) $(DATADIR)
 
 # Run once, as root.  Elsewhere: pip install -r requirements.txt  (no libsixel needed: SIXEL is written here)

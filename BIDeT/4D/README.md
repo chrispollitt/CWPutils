@@ -61,6 +61,13 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
 
    ![popout](gallery/popout.gif)
 
+   **Terminals: your mileage may vary.** SIXEL support differs from terminal to terminal, and animation puts it under the
+   most strain. Playing an animation live has been tested thoroughly only in **mintty**, where it works well. In
+   **Windows Terminal**, which does not report its background colour, animations show noise and leftover pixels of
+   earlier frames (soft shadows are not drawn there; `--erase bg` was tried and is worse, not better); other terminals
+   (WezTerm, foot, `xterm -ti vt340`, mlterm, iTerm2 ...) have not been tried by the author. The dependable way to see an
+   animation anywhere is a GIF: `bidet -P popout "Hello" -o hello.gif`. The man pages `bidet(1)` and `bifout(1)` say the same.
+
 | file | what |
 | --- | --- |
 | [`BIF-SPEC.md`](BIF-SPEC.md) | the format |

@@ -1,0 +1,102 @@
+.TH BIDET 1 "October 2026" "BIDeT 4D" "User Commands"
+.SH NAME
+bidet \- draw text or terminal art as a picture, in a style: flat, 3D, or animated
+.SH SYNOPSIS
+.B bidet
+[\fIoptions\fR] [\fB\-P\fR \fIpreset\fR ...] [\fITEXT\fR | \fIFILE\fR]
+.SH DESCRIPTION
+.B bidet
+is the simple front end of the BIDeT 4D tools
+.BR bifin ,
+.B bifop
+and
+.BR bifout .
+Give it some words, a file of terminal art, a terminal session (a
+.I .vt
+file) or a BIF, and it draws a picture: on a SIXEL terminal, or into a PNG, GIF or SIXEL file named with
+.BR \-o .
+It is sugar over the pipeline, not a second implementation:
+.B bidet \-n
+prints the
+.B bifin | bifop | bifout
+command line it would run.
+.SH OPTIONS
+.TP
+.BR \-P " " \fIname\fR
+A preset (a named style); repeat to combine, the later one winning:
+.B \-P arc \-P popout \-P chrome
+is a chrome arch that pops out of the screen.
+.B \-l
+lists them.
+.TP
+.BI \-o " FILE"
+Write the picture here (.png, .six, .gif, .bif).
+.TP
+.BI \-w " PX" "\fR, " \-F " FONT"
+Width in pixels; the font for text (a family, a file, or sans, serif, mono, impact, script ...).
+.TP
+.B \-\-3d\fR, \fB\-\-spin\fR, \fB\-\-sway\fR [\fIDEG\fR], \fB\-\-pop
+3D and animation: a lit solid on a shadow; turning; swinging; or 2D to 3D, the picture starting flat on the screen and
+popping out of it (add
+.B \-\-spin
+or
+.B \-\-sway
+to go on).
+.TP
+.BI \-\-material " NAME" "\fR, " \-\-depth " F\fR, " \-\-view " YAW,PITCH,ROLL\fR, " \-\-turns " N\fR, " \-\-fps " N"
+The look and the motion: rainbow, chrome, gold, superhero, sunset, aqua, blues, purple, slate, lime, cornflower, graphite,
+brick, cobalt, horizon, or #rrggbb; depth as a fraction of the picture's shorter side.
+.TP
+.B \-\-time\-machine
+Your text through banner (1983), FIGlet (1991), TOIlet (2004) and BIDeT (2020), then popping out of the screen: an animation.
+.B \-\-stage\-time
+sets the seconds for each era.
+.TP
+.B \-n
+Print the pipeline and do not run it.
+.TP
+.BI \-\-bifin " FLAGS" "\fR, " \-\-bifop " OPS\fR, " \-\-bifout " FLAGS"
+Extra flags for a stage, as one quoted string (a single flag: \fB\-\-bifout=\-\-erase=bg\fR).
+.PP
+Everything else is in
+.BR "bidet \-\-help" .
+.SH PRESETS
+A preset is a section of
+.IR presets.ini :
+flags for the three tools, and for the 3D ones a
+.B solid
+(the look: material, depth, view ...), a
+.B motion
+(\fBpop+hold+spin\fR, \fBspin\fR, \fBsway\fR) and
+.B uses
+(other presets applied first).  There are shapes (arc, squeeze, wave, up ...), colours (matrix, amber, neon ...), tracers for
+picture-style ASCII (sketch, trace, contour), 3D looks (chrome, rainbow, gold ...) and motions (popout, turntable, swing, rise).
+Add your own in
+.I ~/.config/bidet/presets.ini
+(a section there replaces the preset of the same name).
+.SH TERMINALS
+On a terminal that reports SIXEL, a still is drawn there and an animation is played.  SIXEL support differs from terminal
+to terminal, and animation puts it under the most strain.  It has been tested thoroughly only in mintty, where it works well.
+.B Your mileage may vary
+(YMMV) in other terminals, including Windows Terminal, where animations show noise and leftover pixels of earlier frames.
+The dependable way to see an animation is a GIF:
+.BR "bidet \-P popout Hello \-o hello.gif" .
+See
+.BR bifout (1).
+.SH FILES
+.TP
+.I presets.ini
+The presets that come with bidet.
+.TP
+.I ~/.config/bidet/presets.ini
+Your own; also a file named by
+.BR $BIDET_PRESETS .
+.SH SEE ALSO
+.BR bifout (1),
+.BR bifin ,
+.BR bifop .
+The gallery of every preset is in README.md (and
+.B python gallery.py
+draws it).
+.SH AUTHOR
+Chris Pollitt.  Boost Software License 1.0.
