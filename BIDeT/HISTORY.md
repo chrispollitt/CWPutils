@@ -51,8 +51,8 @@ Two helpers grew beside it, and moved into `3D/` on 2026-10-07:
 - **`unascii/`**: terminal art back to a line drawing. It reads a cowsay or a figlet as pen strokes, joins the ends that
   meet, rounds the corners; it replays its input on a terminal emulator (cursor addressing, scroll regions), so screen
   dumps work; and for art made of blocks it draws the coloured picture it is.
-- **`gfx-conv/`**: SIXEL to kitty, iTerm2, ANSI art and Tektronix, and a history of how pictures got into terminals
-  (`GRAPHICS-HISTORY.md`).
+- **`gfx-conv/`**: SIXEL to kitty, iTerm2, ANSI art and Tektronix. Its history of how pictures got into terminals,
+  [`GRAPHICS-HISTORY.md`](GRAPHICS-HISTORY.md), now lives at the top level, since it is about all of BIDeT's output.
 
 ## Why a format (a reading of the repository, not the author's words)
 

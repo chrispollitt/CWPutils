@@ -46,6 +46,7 @@ The legacy 3D version: `cd 3D && ./bidet3d.py -P superhero "Hello, World!"`, `ma
 | file | what |
 | --- | --- |
 | [`HISTORY.md`](HISTORY.md) | where BIDeT comes from: banner, FIGlet, TOIlet, and the four versions |
+| [`GRAPHICS-HISTORY.md`](GRAPHICS-HISTORY.md) | pictures in a text box: ANSI art, Tektronix, ReGIS, SIXEL, iTerm2 and kitty; why they never converged, and where pictures get lost on the way to the screen |
 | [`AUTHORS`](AUTHORS) | who made it, and what it borrows |
 | [`LICENSE`](LICENSE) | the Boost Software License 1.0, and the third-party components it does not cover |
 | [`WARRANTY`](WARRANTY) | the plain-language version of "no warranty" |

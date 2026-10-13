@@ -100,7 +100,7 @@ install-gfx:
 	$(INSTALL) -m 755 $(addprefix $(GFX)/,$(addsuffix .py,$(GFXTOOLS))) $(DATADIR)/gfx
 	$(INSTALL) -d $(DOCDIR)
 	$(INSTALL) -m 644 $(GFX)/README.md $(DOCDIR)/gfx-conv.md
-	$(INSTALL) -m 644 $(GFX)/GRAPHICS-HISTORY.md $(DOCDIR)
+	$(INSTALL) -m 644 ../GRAPHICS-HISTORY.md $(DOCDIR)
 	for t in $(GFXTOOLS); do ln -sf ../share/BIDeT3D/gfx/$$t.py $(BINDIR)/$$t; done
 
 # unascii: the module (where bidet3d --lineart finds it) and the tool, linked into BINDIR
@@ -132,8 +132,9 @@ dist: lint
 	mkdir -p dist/bidet3d-$(VERSION)
 	cp $(DISTFILES) dist/bidet3d-$(VERSION)
 	mkdir -p dist/bidet3d-$(VERSION)/gfx
-	cp $(addprefix $(GFX)/,$(GFXLIB) $(addsuffix .py,$(GFXTOOLS)) README.md GRAPHICS-HISTORY.md test.sh) \
+	cp $(addprefix $(GFX)/,$(GFXLIB) $(addsuffix .py,$(GFXTOOLS)) README.md test.sh) \
 	   dist/bidet3d-$(VERSION)/gfx
+	cp ../GRAPHICS-HISTORY.md dist/bidet3d-$(VERSION)/gfx
 	mkdir -p dist/bidet3d-$(VERSION)/unascii/samples
 	cp $(UNASCII)/unascii.py $(UNASCII)/README.md $(UNASCII)/test.sh dist/bidet3d-$(VERSION)/unascii
 	cp $(UNASCII)/samples/* dist/bidet3d-$(VERSION)/unascii/samples

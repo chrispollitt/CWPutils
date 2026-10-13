@@ -1,6 +1,6 @@
 # Pictures in a Text Box: A History of Graphics in Terminals
 
-A terminal was built to show characters. Almost since the first one, people have wanted it to show pictures anyway, and they have done it in four different ways: by arranging characters so they look like a picture, by sending the terminal line-drawing instructions, by sending it a bitmap, and by hiding a bitmap inside an escape sequence that only some terminals understand. All four are still in use, and the converters in this folder exist because no single one of them works everywhere.
+A terminal was built to show characters. Almost since the first one, people have wanted it to show pictures anyway, and they have done it in four different ways: by arranging characters so they look like a picture, by sending the terminal line-drawing instructions, by sending it a bitmap, and by hiding a bitmap inside an escape sequence that only some terminals understand. All four are still in use, and the converters in BIDeT (`3D/gfx-conv/`, and the output formats of BIDeT 4D's `bifout`) exist because no single one of them works everywhere.
 
 This document traces how each approach arose, why the standards ended up incompatible, and where, as of 2026, the pictures still get lost on the way to the screen: in the middle layers (§7). It is a companion to the `TERMINAL-HISTORY.md` in the `tvmail` repo, which covers how *text* got addressed on the screen; this one covers what got drawn on top of it.
 
