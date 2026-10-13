@@ -1,0 +1,209 @@
+.TH BIFIN 1 "October 2026" "BIDeT 4D" "User Commands"
+.SH NAME
+bifin \- make a BIF (BIDeT Intermediate Format) from terminal art, text in a font, or a recorded terminal session
+.SH SYNOPSIS
+.B bifin
+[\fIoptions\fR] [\fIFILE\fR]
+.br
+.I command
+|
+.B bifin
+[\fIoptions\fR] |
+.B bifop
+\&... |
+.B bifout
+[\fIoptions\fR]
+.SH DESCRIPTION
+.B bifin
+is the first tool of BIDeT 4D.  It reads terminal art (ASCII, ANSI, Unicode, DOS art in CP437), a string to be set
+in a font, or a recorded terminal session, and writes a BIF: vectors and rasters, a palette of colours with roles, the
+character grid, and, for a session, one frame for each screen.  The BIF goes to standard output or to
+.BR \-o ;
+it is meant for
+.BR bifop (1)
+and
+.BR bifout (1).
+.B bifin
+will not write a BIF to a terminal.
+.PP
+With no
+.I FILE
+it reads standard input.  Unlike a picture of the art, the BIF keeps what the art was made of: strokes stay sharp at any
+size, letters are outlines read from a font, and the colours are a palette that can be changed afterwards.
+.SH INPUT KINDS
+The kind is chosen with
+.BR \-f ,
+or, if it is not given, from the file name (a name ending in
+.I .vt
+is a session) and then from what the input looks like.
+.TP
+.B text
+(the default for art) Terminal art, UTF-8 or CP437, with ANSI colour, cursor addressing and scroll regions replayed on a
+terminal emulator, so that screen dumps work.  A SAUCE record is read for its title, credit and width.  Name the mode with
+.BR \-m .
+.TP
+.B lettering
+A string set in a proportional font: the font's own advance widths and kerning, one filled vector layer, sharp at any size.
+The text is the input, or the file.
+.TP
+.B vt
+A terminal session, as
+.B slowcat
+plays one: it is replayed, the screen is taken at every newline (before the newline is processed), and each distinct screen is
+a frame.  All the frames are drawn alike, and the canvas is cut to what any of them draws.
+.SH OPTIONS
+.SS General
+.TP
+.BI \-o " FILE" "\fR, " \-\-output " FILE"
+Write the BIF here (default: standard output).
+.TP
+.BR \-f " \fIKIND\fR, " \-\-from " \fIKIND"
+.BR text ,
+.B lettering
+or
+.BR vt .
+.TP
+.BR \-v ", " \-\-verbose
+Say what was decided (the mode, the font, the strokes).
+.TP
+.BR \-V ", " \-\-version
+Print the version.
+.SS Art
+.TP
+.BR \-m " \fIMODE\fR, " \-\-mode " \fIMODE"
+.B lineart
+redraws line art (cowsay, figlet) as a line drawing, and outlines picture-style art;
+.BR ansi\-block " (or " block )
+draws art made of blocks and graphic characters as the coloured picture it is;
+.B auto
+(the default) chooses.
+.BR line ", " tone " and " mix
+force one method of
+.BR lineart :
+joined strokes; traced outlines and contour lines of picture-style art (jp2a, chafa); both.
+.TP
+.BI \-c " PX" "\fR, " \-\-cell " PX"
+The nominal width of one character cell in the file's units (default 12).
+.TP
+.BI \-a " ASPECT" "\fR, " \-\-aspect " ASPECT"
+Cell height divided by width (default 2.0).
+.TP
+.BI \-w " WEIGHT" "\fR, " \-\-weight " WEIGHT"
+The thickness of the pen (default 1).
+.TP
+.BI \-\-cols " N" "\fR, " \-\-rows " N"
+The width at which art wraps (default: from SAUCE, else 80 for a
+.I .ans
+file, else never), and the height of the screen that cursor addressing and scroll regions refer to (default 24).  For a
+session
+.B \-\-cols
+is the terminal's width (default 80).
+.TP
+.BI \-\-encoding " NAME"
+The input's encoding (default: UTF-8, else CP437).
+.TP
+.B \-\-no\-crop
+Keep the margin round the drawing.
+.TP
+.B \-\-no\-cells
+Do not keep the character grid in the file (a hidden
+.B cells
+layer).
+.TP
+.B \-\-keep\-source
+Store the input itself in the file.
+.SS Colour
+.TP
+.BR \-\-color " \fIauto\fR|\fIon\fR|\fIoff\fR, " \-\-mono
+Keep the ANSI colours: if the art has any (default), always, or never.
+.B \-\-mono
+is one colour, the palette's ink.
+.TP
+.BI \-\-ink " COLOR" "\fR, " \-\-paper " COLOR"
+The ink and the page colour in the palette (default black on white; light grey on black for colour block art).
+.TP
+.BR \-\-dark ", " \-\-invert
+Tone mode: the art is light on dark (on by itself when the art uses colour); outline the negative.
+.SS Line mode
+.TP
+.BI \-j " CELLS" "\fR, " \-\-join " CELLS"
+Join stroke ends this close, in cell widths (default 1; 0 = never).
+.TP
+.BI \-\-spline " F" "\fR, " \-\-no\-round
+Spline smoothing of joined strokes, in cell widths (default 0.6; 0 = only round the corners); or no smoothing at all.
+.TP
+.BI \-\-shade " CHARS" "\fR, " \-\-hatch " F"
+Runs of these characters are shading and get hatched (default X; the empty string = none); the spacing of the hatching.
+.TP
+.BI \-\-text\-bold " F"
+How much letters thicken with a weight above 1.2 (default 0.25; 0 = never).
+.TP
+.B \-\-no\-outlines
+Letters as a raster layer, not vector outlines.
+.SS Tone mode
+.TP
+.BI \-\-smooth " F" "\fR, " \-\-detail " F" "\fR, " \-\-scale " F" "\fR, " \-\-levels " N"
+Blur in dot pitches (default 0.7; for block art, the softening of the pixels, default 0.12, 0 = crisp); the smallest tonal
+step that gets an outline (0 to 1, default 0.12); the finest outline feature in dot pitches (default 0.4); the contour lines
+through the shading (default 3, 0 = outlines only).
+.TP
+.B \-\-tone\-raster
+The outlines as a raster layer, not traced vector lines.
+.SS Fonts
+.TP
+.BI \-\-font " FONT"
+Art: the monospace TrueType font, a file or a name.  With
+.B \-f lettering
+the same as
+.BR \-\-face .
+.TP
+.BI \-\-face " FACE"
+Lettering: the font to set the text in: a file, a family (\fBimpact\fR, \fB"Times New Roman"\fR), a generic name
+(\fBsans\fR, \fBserif\fR, \fBmono\fR, \fBscript\fR, \fBcomic\fR ...) or several joined with commas (default \fBsans\fR).
+Art ignores it, so that a recipe can ask for a face without breaking the art it is used on.
+.TP
+.B \-\-list\-fonts
+List the font families found, and exit.
+.SS Lettering (\-f lettering)
+.TP
+.BI \-\-size " PX" "\fR, " \-\-spacing " EM" "\fR, " \-\-line\-height " EM" "\fR, " \-\-margin " EM"
+Font size in the units of the picture (default 100); extra space between letters in ems (default 0); the distance between
+lines (default: the font's); the space round the letters (default 0.15).
+.TP
+.BI \-\-align " left" | center | right "\fR, " \-\-wrap " PX"
+Alignment of several lines (default left); break lines at spaces to fit this width (default: never).
+.TP
+.BR \-\-bold ", " \-\-italic
+A bold or italic face; one the family lacks is faked (an outline; a slant).
+.SS Terminal sessions (\-f vt, or a file named *.vt)
+.TP
+.BI \-\-delay " MS" "\fR, " \-\-hold " MS"
+How long each newline lasts, as
+.BR slowcat 's
+argument (default 100); how long the last screen stays (default 1000).
+.TP
+.BI \-\-fps " N" "\fR, " \-\-loop " N"
+At most this many frames a second (default: a frame for every change); how many times it plays, 0 = forever (default).
+.SH EXAMPLES
+.nf
+cowsay hi | bifin | bifout \-s            a cow, on the terminal
+bifin art.ans \-o art.bif                 DOS art, kept as a BIF
+bifin \-m ansi\-block art.ans | bifout \-o art.png
+echo Hello | bifin \-f lettering \-\-face impact \-\-size 120 | bifout \-s
+bifin bambi.vt \-\-delay 25 \-\-hold 3000 | bifout \-o bambi.gif
+.fi
+.SH DIAGNOSTICS
+.B bifin
+exits with a message on standard error and a non-zero status if the input cannot be read, or if no importer fits it.
+A row of only dashes, or a lone
+.BR x ,
+is read as tone art and draws nothing in line mode (this is how the original tool read it, kept on purpose).
+.SH SEE ALSO
+.BR bifop (1),
+.BR bifout (1),
+.BR bidet (1).
+The format is described in BIF\-SPEC.md, and
+.B bif.py info FILE
+says what a BIF holds.
+.SH AUTHOR
+Chris Pollitt.  Boost Software License 1.0.

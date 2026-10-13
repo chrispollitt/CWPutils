@@ -1,0 +1,264 @@
+.TH BIFOP 1 "October 2026" "BIDeT 4D" "User Commands"
+.SH NAME
+bifop \- change a BIF (BIDeT Intermediate Format): weight, colour, shape, 3D, animation
+.SH SYNOPSIS
+.B bifop
+[\fB\-i\fR \fIFILE\fR] [\fB\-o\fR \fIFILE\fR] \fIOP\fR [\fIOP\fR ...]
+.br
+.B bifop \-\-list
+.br
+.B bifin
+\&... |
+.B bifop
+.IR OP " [" OP " ...] |"
+.B bifout
+\&...
+.SH DESCRIPTION
+.B bifop
+is the second tool of BIDeT 4D.  It reads a BIF from standard input (or
+.BR \-i ),
+applies the operations in the order given, and writes the changed BIF to standard output (or
+.BR \-o ).
+What an operation does not know about passes through untouched (unknown layers, array names, keys and chunks), the credit
+and licence are kept, and each operation is appended to the picture's history, as BIF\-SPEC.md asks of a manipulator.
+.SH OPERATIONS: SYNTAX
+An operation is
+.IR name ,
+.IB name : value
+(the value of its first parameter), or
+.IB name : key = value , key = value \fR.
+Lists inside a value are joined with
+.B +
+(\fBlayer=strokes+text\fR).  Colours are
+.B #rrggbb
+or a name.  Operations that take
+.B layer=
+change only those layer ids (default: every layer they apply to);
+.B frame=
+only that frame.  Several operations can be given in one command:
+.B bifop pen:1.5 theme:ink=#00ff66,paper=#101820 crop:margin=8
+.SH OPTIONS
+.TP
+.BI \-i " FILE" "\fR, " \-\-input " FILE"
+The BIF to change (default: standard input).
+.TP
+.BI \-o " FILE" "\fR, " \-\-output " FILE"
+Write here (default: standard output).
+.TP
+.BR \-l ", " \-\-list
+Describe every operation and its parameters, and exit.
+.TP
+.BR \-t ", " \-\-truncated
+Work on what arrived of a file that ends early.
+.TP
+.BR \-V ", " \-\-version
+Print the version.
+.SH OPERATIONS
+.SS Style
+.TP
+.BI pen: factor
+Multiply the stroke width of vector layers.  Letters (filled outlines) get bolder by an outline of (factor \- 1) stems; they
+cannot be made thinner than the font drew them.  Also
+.BR layer ", " frame .
+.TP
+.BI theme: ink = C , paper = C , text = C , accent = C
+Re-colour by role: every palette entry with that role gets the colour.  A
+.B paper
+also becomes the background.
+.TP
+.BI recolor: FROM = TO + ...
+Change palette colours.
+.I FROM
+is a palette index or a
+.BR #rrggbb ,
+.I TO
+a colour:
+.B recolor:2=#ff0000
+or
+.BR recolor:#cc2828=#00aa00+3=blue .
+.TP
+.BI opacity: value
+The opacity of layers, 0 to 1.  Also
+.BR layer ", " frame .
+.TP
+.BI blend: mode
+How a layer combines with what is below it:
+.BR normal ", " multiply ", " screen " or " erase .
+Also
+.BR layer ", " frame .
+.SS Layers and frames
+.TP
+.BI keep: layer " \fR, " drop: layer " \fR, " hide: layer " \fR, " show: layer
+Keep only these layers; remove them; keep them but do not draw them; draw them (again).  Layer ids are joined with
+.BR + .
+.TP
+.BI frame: n
+Keep frame
+.I n
+of an animation, as a still picture.
+.TP
+.BI meta: title = T , comment = T , author = T
+Set descriptive metadata.
+.SS Geometry
+.TP
+.BI crop: margin = M , box = x0 + y0 + x1 + y1
+Cut the canvas down to what is drawn plus a margin (canvas units), or to a box.  The edges fall on whole units, so a pixel
+picture is not resampled.  An animation is cut to what any of its frames draws, so that the frames stay the same size.
+.TP
+.BI scale: factor
+Change the units: the canvas and everything on it grow by the factor, vectors without loss.
+.TP
+.BI stretch: y = F , x = F
+Stretch along one axis, as WordArt does for tall or squat letters.
+.TP
+.BI rotate: degrees
+Turn the picture clockwise; the canvas grows to hold it.
+.TP
+.BI flip: axis
+Mirror it:
+.B h
+(left to right, the default) or
+.B v
+(top to bottom).
+.TP
+.BI skew: x = D , y = D
+Shear: lean the verticals to the right by D degrees (italic), tilt the baseline downwards to the right by D degrees.
+.PP
+Operations that break the character grid (\fBstretch\fR, \fBrotate\fR, \fBflip\fR, \fBskew\fR and the warps below) forget the
+grid and the hidden
+.B cells
+layer.
+.SS Shapes: WordArt warps (vector layers; a raster layer is skipped, with a warning)
+.TP
+.BI arc: bend = F
+Bow shapes into an arch: how far the middle rises, as a fraction of the picture height (default 0.4; negative: a bowl).
+.TP
+.BI squeeze: peak = F , ends = F
+Taller in the middle than at the ends (defaults 1.4 and 0.8).
+.TP
+.BI wave: amplitude = F , length = F , phase = F
+Ripple up and down: the height as a fraction of the picture height (0.1), the wave length as a fraction of its width (1.0),
+where it starts, in turns (0).  Strokes are made finer first so that they bend.
+.PP
+The warps also take
+.B step
+(the longest segment before warping, in canvas units),
+.B layer
+and
+.BR frame .
+.TP
+.BI simplify: tolerance
+Fewer vertices: drop points of vector paths that lie within the tolerance of the line between their neighbours.  Also
+.BR layer ", " frame .
+.SS 3D and animation
+These take ONE flat frame, draw it once, and replace it with raster frames: a lit solid on a shadow on the screen.  They are the
+animations of bidet3d, and the new one, in which the picture lies flat on the screen and pops out of it.
+.TP
+.B extrude
+A still: the picture extruded to
+.BR depth ,
+turned to
+.BR view ,
+lit, on its shadow.
+.TP
+.B spin
+Turns about the vertical axis, a seamless loop.  Also
+.B speed
+(degrees a second, default 90; negative: the other way) and
+.B turns
+(default 1).
+.TP
+.B sway
+Swings to and fro, a seamless loop.  Also
+.B degrees
+(each side of the view, default 25) and
+.B time
+(seconds for there and back, default 4).
+.TP
+.B popout
+2D to 3D: the picture flat on the screen, then it grows its depth, rises toward the viewer on a shadow that parts from it, and
+turns to the view.  The first frame is the flat picture.  Also
+.B time
+(default 1.6 seconds).
+.TP
+.BI motion: path = moves
+Several moves, each from where the last stopped, joined with
+.BR + :
+.BR flat ", " tick ", " pop ", " hold ", " spin ", " sway ", " still .
+.B flat+tick+pop+hold+spin
+starts as the picture is, lets a ticker or caption be laid over a run of its frames, pops out, rests, and turns.  The
+parameters of the moves:
+.BR time " (a pop, 1.6 s), " hold " (1 s), " flat " (1 s), " ticks " (24), " tickms " (40), " speed ", " turns ", " degrees ,
+and
+.B swing
+(a sway, 4 s).
+.PP
+The parameters of all of them:
+.TP
+.BI depth = F
+Extrusion depth, as a fraction of the drawing's shorter side (default 0.22).
+.TP
+.BI hover = F
+How far it floats off the screen when it is up, in the same unit (default 0.6; 0 for
+.BR extrude ).
+.TP
+.BI view = yaw + pitch + roll
+The camera in degrees (default \-20+8+0); the yaw alone is allowed.
+.TP
+.BI tall = F
+Stretch the height before extruding (WordArt's taller letters, 1.4).  A later setting replaces an earlier one.
+.TP
+.BI material = NAME
+The face:
+.BR rainbow ", " chrome ", " gold ", " superhero ", " sunset ", " aqua ", " blues ", " purple ", " slate ", " lime ", "
+.BR cornflower ", " graphite ", " brick ", " cobalt ", " horizon ,
+or
+.BR #rrggbb ;
+default: the picture's own colours.
+.TP
+.BI side = back + front
+The colours of the extrusion, for example
+.BR #2a1040+#5a2a7a .
+.TP
+.BI bevel = F ", " perspective = F ", " shadow = F
+The edge lighting of the face, 0 to 1 (the material's); the camera distance in picture widths, smaller meaning stronger
+perspective (2.5); the strength of the shadow, 0 for none (1).  A black shadow does not show on a black page.
+.TP
+.BI fps = N ", " res = N
+Frames a second (15); the pixels per canvas unit that the frames are drawn at (2;
+.B bifout \-\-scale 1
+averages them down).
+.SS Joining pictures
+.TP
+.BI join: file
+Play the other picture(s) after this one: their frames are added, the colours merged, and the canvas is the larger of the two
+(the smaller is centred).  Several files:
+.BR a.bif+b.bif .
+.TP
+.BI overlay: file , first = N , last = N , x = D , y = D
+Draw the other picture's layers on top of frames of this one (colours merged).  A one\-frame picture goes on every frame it
+covers (default all); a longer one goes frame by frame from
+.BR first .
+Negative frame numbers count from the end.  For captions, tickers and logos.
+.SH EXAMPLES
+.nf
+bifin art.txt | bifop pen:2 theme:ink=#00ff66,paper=#101820 | bifout \-s
+bifop \-i art.bif \-o thick.bif pen:1.5
+echo Hello | bifin \-f lettering | bifop arc:bend=0.4 extrude:material=gold | bifout \-o hello.png
+echo Hello | bifin \-f lettering | bifop popout:material=rainbow | bifout \-o hello.gif
+echo Hello | bifin \-f lettering | bifop motion:path=pop+hold+spin,hold=2.4 | bifout \-s
+bifop \-i a.bif join:b.bif overlay:caption.bif,first=0,last=0 \-o both.bif
+.fi
+.SH DIAGNOSTICS
+An unknown operation or parameter, a value that is not what the parameter takes, or the result not being a valid BIF, is
+reported on standard error and ends the run with a non-zero status.  A 3D operation on a picture of several frames is an
+error: do all the moves in one
+.BR motion .
+.SH SEE ALSO
+.BR bifin (1),
+.BR bifout (1),
+.BR bidet (1).
+.B bifop \-\-list
+describes every operation and its defaults; the format is in BIF\-SPEC.md.
+.SH AUTHOR
+Chris Pollitt.  Boost Software License 1.0.
