@@ -128,15 +128,17 @@ The first inline pictures in terminals were not escape sequences at all. `w3m` d
 * **Failure modes differ.** A terminal that does not know SIXEL prints its data as text. One that does not know an APC command usually swallows it silently. Text art never fails, but never looks as good.
 * **The multiplexer problem.** Everything in between a program and the real terminal (a multiplexer, a remote-session layer, a pseudo-console) has to understand the sequence well enough to pass it along. That is the next section.
 
-The practical result is the table the `gfx-conv` tools implement: given SIXEL, produce whichever format the terminal at hand can use.
+The practical result is the table the `gfx-conv` tools implemented, and that BIDeT 4D's `bifout` implements now: given a picture, produce whichever format the terminal at hand can use (`bifout -f auto`, the default on a terminal, picks one from what the terminal says about itself).
 
-| era and approach | converter in this folder | what it needs from the terminal |
-| :--- | :--- | :--- |
-| ASCII/ANSI art, block and Braille glyphs | `sixel2ans.py` | UTF-8 and SGR colour; nothing else |
-| Tektronix 4010/4014 vectors | `sixel2tek.py` | a Tek emulator (xterm `-t`) |
-| iTerm2 inline images | `sixel2iterm.py` | OSC 1337 support |
-| kitty graphics protocol | `sixel2kitty.py` | APC `_G` support |
-| (SIXEL itself) | `bidet3d` | DCS sixel support |
+| era and approach | legacy converter (`3D/gfx-conv/`) | BIDeT 4D (`bifout -f ...`) | what it needs from the terminal |
+| :--- | :--- | :--- | :--- |
+| ASCII/ANSI art, block and Braille glyphs | `sixel2ans.py` | `ansi` (`.ans`) | UTF-8 and SGR colour; nothing else |
+| Tektronix 4010/4014 vectors | `sixel2tek.py` | `tek` (the picture's own paths as strokes), `tek-hatch`, `tek-dots`, `tek-contour` (from its pixels) | a Tek emulator (xterm `-t`) |
+| iTerm2 inline images | `sixel2iterm.py` | `iterm` | OSC 1337 support |
+| kitty graphics protocol | `sixel2kitty.py` | `kitty` | APC `_G` support |
+| (SIXEL itself) | `bidet3d` | `sixel` | DCS sixel support |
+
+A BIF still has its strokes, so for a vector terminal 4D does not have to vectorise a bitmap, as `sixel2tek` had to: `-f tek` draws the paths themselves.
 
 ---
 

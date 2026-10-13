@@ -2,14 +2,18 @@
 """bifout: turn a BIF (BIDeT Intermediate Format) into a picture.
 
     bifout x.bif -o x.png                 PNG
-    bifout x.bif -s                       SIXEL to the terminal (also the default on a terminal)
+    bifout x.bif                          on a terminal: what it can show (SIXEL, kitty, iTerm2, else coloured text)
+    bifout x.bif -s                       SIXEL to the terminal
+    bifout x.bif -f kitty                 the kitty graphics protocol; -f iterm, -f ansi (coloured Unicode text)
+    bifout x.bif -f tek                   Tektronix vectors, from the picture's own paths (-f tek-hatch, tek-dots, tek-contour)
     bifout x.bif -o x.gif                 an animation (a BIF with several frames) as an animated GIF
     unascii-or-whatever | bifout -o -     BIF from a pipe, PNG to a pipe
 
 The picture is drawn at `--scale` pixels per canvas unit (or fitted into `--width` / `--height`), so
 line art is as sharp as you ask for.  See BIF-SPEC.md for what a BIF holds and section 8 for how it is drawn.
-Formats are registered in WRITERS (name -> function(rendering, file, transparent)); to add one, add one.  A format that
-can move is also in ANIMATED (name -> function(renderings, durations, file, transparent, loop, speed, samples)).
+Formats are registered in WRITERS (name -> function(rendering, file, transparent, **options)); to add one, add one.  A format
+that can move is also in ANIMATED (name -> function(renderings, durations, file, transparent, loop, speed, samples)).  The
+formats that are not images in a file (kitty, iTerm2, ANSI art, Tektronix) are in bifgfx.py.
 """
 from __future__ import print_function
 
@@ -18,11 +22,13 @@ import io
 import itertools
 import math
 import os
+import shutil
 import sys
 
 import numpy as np
 
 import bif
+import bifgfx
 import bifrender
 import bifsixel
 import bifterm
@@ -34,7 +40,7 @@ LIGHT_INK, DARK_INK = (235, 235, 235), (25, 25, 25)         # what the ink becom
 # ---------------------------------------------------------------------------------------------
 # Writers: function(rendering, fp, transparent) -> None
 # ---------------------------------------------------------------------------------------------
-def write_png(r, fp, transparent=False):
+def png_bytes(r, transparent=False):
     from PIL import Image
     if transparent:
         img = Image.fromarray(r.rgba(), "RGBA")
@@ -42,10 +48,14 @@ def write_png(r, fp, transparent=False):
         img = Image.fromarray(r.flatten(), "RGB")
     buf = io.BytesIO()
     img.save(buf, "PNG")
-    fp.write(buf.getvalue())
+    return buf.getvalue()
 
 
-def write_sixel(r, fp, transparent=False):
+def write_png(r, fp, transparent=False, **options):
+    fp.write(png_bytes(r, transparent))
+
+
+def write_sixel(r, fp, transparent=False, **options):
     fp.write(bifsixel.encode(r.alpha, r.color, r.paper, transparent=transparent) + b"\n")
 
 
@@ -168,16 +178,66 @@ def write_gif_frames(renders, durations_ms, fp, transparent=False, loop=0, speed
     fp.write(buf.getvalue())
 
 
-def write_gif(r, fp, transparent=False):
+def write_gif(r, fp, transparent=False, **options):
     write_gif_frames([r], [100], fp, transparent)
+
+
+# The formats of bifgfx: a PNG in an escape sequence (kitty, iTerm2), coloured text, Tektronix vectors.  `options` come
+# from format_options(): cols, rows, glyphs, colors, aspect, term, tek_invert; a writer takes what it needs.
+def write_kitty(r, fp, transparent=True, cols=None, rows=None, **options):
+    fp.write(bifgfx.kitty_sequence(png_bytes(r, transparent), cols, rows) + b"\n")
+
+
+def write_iterm(r, fp, transparent=True, cols=None, rows=None, **options):
+    fp.write(bifgfx.iterm_sequence(png_bytes(r, transparent), cols, rows) + b"\n")
+
+
+def ansi_geometry(r, cols=None, rows=None, aspect=2.0, term=(80, 24)):
+    """(cols, rows) in characters for a rendering."""
+    return bifgfx.ansi_size(r.W, r.H, cols, rows, aspect, term[0], term[1])
+
+
+def write_ansi(r, fp, transparent=False, cols=None, rows=None, glyphs="blocks", colors=24, aspect=2.0, term=(80, 24), **options):
+    """Coloured Unicode text, a line to a row of characters.  A page that is not transparent is filled in (the picture's own,
+    or the --paper); transparent leaves the terminal's background showing."""
+    cols, rows = ansi_geometry(r, cols, rows, aspect, term)
+    page = None if transparent else tuple(int(v) for v in r.paper)
+    fp.write(bifgfx.ansi_art(r.rgba(), cols, rows, glyphs, colors, page))
+
+
+TEK_ERASE = b"\x1b\x0c"                         # clears the Tektronix screen: first in every stream
+
+
+def _tek_writer(mode):
+    """mode: "vector" (the picture's own paths, or hatching if it has none), or hatch / dots / contour (from the pixels)."""
+    def write(r, fp, transparent=False, pic=None, frame=0, tek_invert=False, **options):
+        body = bifgfx.tek_vectors(pic, frame) if (mode == "vector" and pic is not None) else None
+        if body is None:
+            if mode == "vector":
+                r.notes.append("no vector layer to draw as strokes: drawn as hatching (tek-hatch)")
+            rgba = r.rgba()
+            if r.uniform:                                   # one colour of ink, whatever it is: the coverage is the ink
+                rgba[..., :3] = 255
+            body = bifgfx.tek_raster(rgba, "hatch" if mode == "vector" else mode, invert=tek_invert)[0]
+        fp.write(TEK_ERASE + body)
+    return write
 
 
 WRITERS = {
     "png": (write_png, (".png",)),
     "sixel": (write_sixel, (".six", ".sixel")),
     "gif": (write_gif, (".gif",)),
+    "kitty": (write_kitty, ()),
+    "iterm": (write_iterm, ()),
+    "ansi": (write_ansi, (".ans", ".ansi")),
+    "tek": (_tek_writer("vector"), (".tek",)),
+    "tek-hatch": (_tek_writer("hatch"), ()),
+    "tek-dots": (_tek_writer("dots"), ()),
+    "tek-contour": (_tek_writer("contour"), ()),
 }
 ANIMATED = {"gif": write_gif_frames}
+TERMINAL_FORMATS = ("sixel", "kitty", "iterm", "ansi", "tek", "tek-hatch", "tek-dots", "tek-contour")      # what a terminal can be sent
+PLAYABLE = ("sixel", "ansi")                                                 # ... and of those, what plays an animation
 
 
 def format_for(name, out_is_tty):
@@ -186,7 +246,7 @@ def format_for(name, out_is_tty):
     for f, (_, exts) in WRITERS.items():
         if ext in exts:
             return f
-    return "sixel" if out_is_tty else "png"
+    return "auto" if out_is_tty else "png"
 
 
 def schedule(pic, fps=None, speed=1.0):
@@ -232,11 +292,11 @@ def draw_all(pic, indexes, render_opts):
     return first, frames(), samples
 
 
-def convert(pic, fmt, fp, frame=None, transparent=False, speed=1.0, loop=None, fps=None, **render_opts):
+def convert(pic, fmt, fp, frame=None, transparent=False, speed=1.0, loop=None, fps=None, fmt_opts=None, **render_opts):
     """Render a Picture and write it to `fp` as `fmt`.  Returns the Rendering (of the first frame drawn).
     frame: which frame to draw; None = frame 0, or all of them if the format can move (GIF) and the picture has several.
     speed: times the frames go by faster; loop: how often an animation plays (0 = forever; None = as the picture says);
-    fps: at most this many frames a second."""
+    fps: at most this many frames a second.  fmt_opts: what the format itself takes (format_options())."""
     if fmt not in WRITERS:
         raise bif.BifError("unknown output format %r (have: %s)" % (fmt, ", ".join(sorted(WRITERS))))
     if fmt in ANIMATED and frame is None and len(pic.frames) > 1:
@@ -244,8 +304,8 @@ def convert(pic, fmt, fp, frame=None, transparent=False, speed=1.0, loop=None, f
     r = bifrender.render(pic, frame=frame or 0, **render_opts)
     if frame is None and len(pic.frames) > 1:
         r.notes.append("the picture has %d frames and %s holds one: drew frame 0 (--frame N for another, -o FILE.gif for all%s)"
-                       % (len(pic.frames), fmt.upper(), "; on a terminal it is played" if fmt == "sixel" else ""))
-    WRITERS[fmt][0](r, fp, transparent)
+                       % (len(pic.frames), fmt.upper(), "; on a terminal it is played" if fmt in PLAYABLE else ""))
+    WRITERS[fmt][0](r, fp, transparent, pic=pic, frame=frame or 0, **(fmt_opts or {}))
     return r
 
 
@@ -352,25 +412,35 @@ def play_sixel(sixels, delays_ms, rows, cols, out, loops=0, transparent=False, c
 
 
 def play(pic, out, cell, frame=None, transparent=False, speed=1.0, loop=None, fps=None, progress=None, clock=None, sleep=None,
-         erase="ech", **render_opts):
-    """Draw every frame of an animated Picture, encode them as SIXEL on one palette, and play them on `out` (a terminal).
-    cell: (width, height) of a character cell in pixels.  loop: 0 = until Ctrl-C (default: as the picture says).
-    Returns the Rendering of the first frame."""
+         erase="ech", fmt="sixel", fmt_opts=None, **render_opts):
+    """Draw every frame of an animated Picture, encode them (SIXEL on one palette, or coloured text) and play them on `out`
+    (a terminal).  cell: (width, height) of a character cell in pixels.  loop: 0 = until Ctrl-C (default: as the picture
+    says).  fmt: "sixel" or "ansi".  Returns the Rendering of the first frame."""
     sched = schedule(pic, fps, speed)
     first, frames, samples = draw_all(pic, [i for i, _ in sched], render_opts)
-    sixels = []
+    encoded = []
+    if fmt == "ansi":                                   # text: the same size for every frame, the picture's own page if opaque
+        fo = fmt_opts or {}
+        cols, text_rows = ansi_geometry(first, fo.get("cols"), fo.get("rows"), fo.get("aspect", 2.0), fo.get("term", (80, 24)))
+        page = None if transparent else tuple(int(v) for v in first.paper)
+        enc = (bifgfx.ansi_art(r.rgba(), cols, text_rows, fo.get("glyphs", "blocks"), fo.get("colors", 24), page) for r in frames)
+        rows, transparent, erase = text_rows + 1, False, "none"      # (every cell is written: nothing to erase)
+    elif fmt == "sixel":
+        enc = sixel_frames(frames, samples, transparent, erase)
+        rows = int(math.ceil(first.H / float(cell[1]))) + 1
+        cols = int(math.ceil(first.W / float(cell[0]))) + 1
+    else:
+        raise bif.BifError("%s cannot play an animation (sixel and ansi can)" % fmt)
     try:
-        for n, six in enumerate(sixel_frames(frames, samples, transparent, erase)):
-            sixels.append(six)
+        for n, frame_bytes in enumerate(enc):
+            encoded.append(frame_bytes)
             if progress:
                 progress(n + 1, len(sched))
     except KeyboardInterrupt:
         return first
     if loop is None:
         loop = int((pic.animation or {}).get("loop", 1))
-    rows = int(math.ceil(first.H / float(cell[1]))) + 1
-    cols = int(math.ceil(first.W / float(cell[0]))) + 1
-    play_sixel(sixels, [d for _, d in sched], rows, cols, out, loop, transparent, clock, sleep, erase)
+    play_sixel(encoded, [d for _, d in sched], rows, cols, out, loop, transparent, clock, sleep, erase)
     return first
 
 
@@ -384,12 +454,25 @@ def _color(s):
 
 def build_parser():
     """bifout's command line (also used by bidet to read a preset's bifout flags)."""
-    ap = argparse.ArgumentParser(prog="bifout", description="Draw a BIF as a PNG or SIXEL picture.")
+    ap = argparse.ArgumentParser(prog="bifout", description="Draw a BIF as a picture: PNG, GIF, SIXEL, kitty, iTerm2, coloured "
+                                 "text or Tektronix vectors.")
     ap.add_argument("file", nargs="?", default="-", help="a .bif file (default: standard input)")
     ap.add_argument("-o", "--output", metavar="FILE", help="write here ('-' = standard output)")
-    ap.add_argument("-f", "--format", choices=sorted(WRITERS), help="output format (default: from the file name; "
-                    "sixel on a terminal, else png)")
+    ap.add_argument("-f", "--format", choices=sorted(WRITERS) + ["auto"],
+                    help="output format (default: from the file name; on a terminal auto, else png).  auto: what the terminal can "
+                         "show: kitty or iTerm2 if the environment says so, else SIXEL if the terminal reports it, else ansi.  "
+                         "tek: Tektronix strokes from the picture's own paths; tek-hatch, tek-dots, tek-contour: from its pixels")
     ap.add_argument("-s", "--sixel", action="store_true", help="same as -f sixel")
+    ap.add_argument("--cols", type=int, metavar="N", help="kitty, iterm: scale the picture to this many character cells wide; "
+                    "ansi: the width in characters (negative: that many fewer than the terminal; default: the picture's own size "
+                    "at 8 pixels a character, at most the terminal's width)")
+    ap.add_argument("--rows", type=int, metavar="N", help="kitty, iterm, ansi: the same, for the height (the picture's shape is kept)")
+    ap.add_argument("--glyphs", choices=list(bifgfx.GLYPHS), default="blocks",
+                    help="ansi: the characters to use: half blocks; plus quadrants; plus eighths (default); Braille dots")
+    ap.add_argument("--colors", type=int, choices=list(bifgfx.COLOR_DEPTHS), default=24,
+                    help="ansi: the colour depth: 24-bit (default), 256 or 16 colours")
+    ap.add_argument("--tek-invert", action="store_true", help="tek-hatch, tek-dots, tek-contour: dark is ink (for a picture of "
+                    "dark shading on a light page)")
     ap.add_argument("--frame", type=int, default=None, metavar="N",
                     help="draw only this frame of an animation (default: all of them for GIF, else frame 0)")
     ap.add_argument("--speed", type=float, default=1.0, metavar="F", help="animation: play this many times faster (default 1)")
@@ -410,11 +493,13 @@ def build_parser():
     ap.add_argument("--ink", metavar="COLOR", help="replace the palette's `ink` colour")
     ap.add_argument("--paper", metavar="COLOR", help="the page colour (default: the picture's, else white, "
                     "or black for light art)")
-    ap.add_argument("--transparent", action="store_true", help="leave the page transparent (PNG alpha / SIXEL unpainted)")
+    ap.add_argument("--transparent", action="store_true", help="leave the page transparent (PNG alpha, SIXEL unpainted, ansi "
+                    "and kitty and iterm: the terminal's own background shows)")
     ap.add_argument("-b", "--background", metavar="auto|transparent|COLOR",
-                    help="the page: a colour (as --paper), transparent, or auto: for SIXEL on a terminal, the terminal's own "
-                         "background colour (asked with OSC 11), or transparent if it will not say, and the ink made light or dark "
-                         "to show on it; anywhere else the picture's own page (default: the picture's)")
+                    help="the page: a colour (as --paper), transparent, or auto: on a terminal, the terminal's own "
+                         "background colour (asked with OSC 11) for SIXEL, or transparent (kitty, iterm, ansi, or if it will not "
+                         "say), and the ink made light or dark to show on it; anywhere else the picture's own page "
+                         "(default: the picture's)")
     ap.add_argument("--force", action="store_true", help="send SIXEL even if the terminal does not say it has it")
     ap.add_argument("--no-query", action="store_true", help="do not ask the terminal anything (also BIDET_NO_QUERY=1)")
     ap.add_argument("--layer", action="append", metavar="ID", help="draw only this layer id (repeatable)")
@@ -438,23 +523,24 @@ def render_options(a):
 
 
 def to_terminal(a, fmt, out_is_tty=True):
-    """Is the picture SIXEL for standard output (not `-o FILE`)?  Then it is meant for the terminal, whether or not
-    standard output is one right now (it may be a pipe to `less -R` or `cut`): the terminal is asked, like the
-    old bidet's test-sixel did.  Callers that only ask on a real tty pass out_is_tty."""
-    return fmt == "sixel" and out_is_tty and (not a.output or a.output == "-")
+    """Is the picture for the terminal on standard output (not `-o FILE`)?  Then it is meant for the terminal, whether or not
+    standard output is one right now (it may be a pipe to `less -R` or `cut`): for SIXEL the terminal is asked what it can do,
+    like the old bidet's test-sixel did.  Callers that only ask on a real tty pass out_is_tty."""
+    return (fmt in TERMINAL_FORMATS or fmt == "auto") and out_is_tty and (not a.output or a.output == "-")
 
 
 def ask_terminal(a, fmt, out_is_tty=True, env=None, want_cell=False):
-    """What the terminal says (bifterm.Reply), asking only if SIXEL is going to it; NOTHING otherwise.  want_cell: also how
-    big a character cell is (an animation needs it to know how many lines it takes)."""
-    if not to_terminal(a, fmt, out_is_tty) or a.no_query:
+    """What the terminal says (bifterm.Reply), asking only if SIXEL may be going to it (sixel, or auto); NOTHING otherwise.
+    want_cell: also how big a character cell is (an animation needs it to know how many lines it takes)."""
+    if not to_terminal(a, fmt, out_is_tty) or a.no_query or fmt not in ("sixel", "auto"):
         return bifterm.NOTHING
     return bifterm.query(want_bg=(a.background or "").lower() == "auto", want_cell=want_cell, env=env, debug=a.verbose)
 
 
 def plays(pic, a, fmt, out_tty=True):
-    """Is this an animation that goes to the terminal as SIXEL, to be played?  (Not with --frame, not into a file or a pipe.)"""
-    return len(pic.frames) > 1 and a.frame is None and to_terminal(a, fmt, out_tty)
+    """Is this an animation that goes to the terminal as something that can play (SIXEL, coloured text, or auto: which will be
+    one of them or not), to be played?  (Not with --frame, not into a file or a pipe.)"""
+    return len(pic.frames) > 1 and a.frame is None and to_terminal(a, fmt, out_tty) and (fmt in PLAYABLE or fmt == "auto")
 
 
 def progress_on_stderr(done, total):
@@ -463,28 +549,75 @@ def progress_on_stderr(done, total):
         sys.stderr.flush()
 
 
-def terminal_options(pic, a, opts, reply, env=None):
-    """The render options for a picture that goes to a terminal that said `reply`: refuses SIXEL a terminal says it has
-    not (unless --force), and settles `--background auto`: the terminal's colour for the page, or transparent if it
-    would not say; the ink becomes light or dark if the page would swallow it."""
+def terminal_options(pic, a, opts, reply, env=None, fmt="sixel", check=None):
+    """The render options for a picture that goes to a terminal that said `reply`, in format `fmt`: refuses SIXEL a terminal
+    says it has not (unless --force; `check`: only when that was asked for, which is the default for fmt "sixel"), and settles
+    `--background auto`: the terminal's colour for the page (SIXEL), or transparent (kitty, iterm, ansi, or if it will not say);
+    the ink becomes light or dark if the page would swallow it."""
     env = os.environ if env is None else env
-    if reply.asked and reply.sixel is not True and not (a.force or env.get("LSIX_FORCE_SIXEL_SUPPORT")):
+    check = (fmt == "sixel") if check is None else check
+    if check and reply.asked and reply.sixel is not True and not (a.force or env.get("LSIX_FORCE_SIXEL_SUPPORT")):
         raise bif.BifError("your terminal does not report having SIXEL graphics support%s.  Try mintty, xterm -ti vt340, "
-                           "mlterm, Windows Terminal or WezTerm; or --force to send it anyway, or -o FILE.png"
+                           "mlterm, Windows Terminal or WezTerm; or --force to send it anyway, -f ansi for coloured text, -f auto "
+                           "to let bifout choose, or -o FILE.png"
                            % ("" if reply.sixel is False else " (it did not answer)"))
     if (a.background or "").lower() != "auto":
         return opts
     opts = dict(opts)
-    if reply.bg:
+    if reply.bg and fmt == "sixel":
         opts["paper"], opts["transparent"] = tuple(reply.bg), False
         page = reply.bg
     else:
         opts["transparent"] = True                              # the terminal's own colour shows through
-        page = (255, 255, 255) if bifterm.guess_dark(env) is False else (0, 0, 0)       # dark unless it says light
+        page = reply.bg or ((255, 255, 255) if bifterm.guess_dark(env) is False else (0, 0, 0))     # dark unless it says light
     inks = [e["rgb"] for e in pic.palette if e.get("role") == "ink"]
     if inks and not opts.get("ink") and abs(bifterm.luminance(inks[0]) - bifterm.luminance(page)) < 0.4:
         opts["ink"] = LIGHT_INK if bifterm.luminance(page) < 0.5 else DARK_INK
     return opts
+
+
+def format_options(a, cell=None, reply=None):
+    """The options of the formats themselves (what a writer in WRITERS takes), from parsed arguments: the size in characters,
+    the glyph set and colour depth of ansi, the shape of a character cell, the terminal's size."""
+    cw, ch = cell if cell else cell_size(a.cell, reply)
+    t = shutil.get_terminal_size((80, 24))
+    return dict(cols=a.cols, rows=a.rows, glyphs=a.glyphs, colors=a.colors, aspect=ch / float(cw), term=(t.columns, t.lines),
+                tek_invert=a.tek_invert)
+
+
+def terminal_data(pic, a, fmt, opts, out=None, tty=True):
+    """Everything about drawing a picture for the terminal on standard output in `fmt` (auto: whatever it can show) except
+    writing it.  An animation that the format can play (and tty: standard output is a terminal) is played on `out` here.
+    Returns (the Rendering of the first frame, the bytes to write, or None if it was played)."""
+    out = out or sys.stdout.buffer
+    multi = len(pic.frames) > 1 and a.frame is None
+    reply = ask_terminal(a, fmt, want_cell=multi or fmt == "auto")
+    asked_for = fmt
+    if fmt == "auto":
+        fmt = "sixel" if (a.force or os.environ.get("LSIX_FORCE_SIXEL_SUPPORT")) else bifgfx.pick_format(reply)
+    opts = terminal_options(pic, a, opts, reply, fmt=fmt, check=(asked_for == "sixel"))
+    cell = cell_size(a.cell, reply)
+    fo = format_options(a, cell)
+    if multi and tty and fmt in PLAYABLE:
+        return play(pic, out, cell, progress=progress_on_stderr, erase=a.erase, fmt=fmt, fmt_opts=fo, **opts), None
+    buf = io.BytesIO()
+    r = convert(pic, fmt, buf, fmt_opts=fo, **opts)
+    return r, buf.getvalue()
+
+
+def show(pic, a, fmt, opts, out=None, tty=True):
+    """terminal_data(), and the bytes written to `out` (standard output): a Tektronix picture, on a terminal, switches an xterm
+    into Tek mode, draws, waits for Enter and switches back.  Returns the Rendering of the first frame."""
+    out = out or sys.stdout.buffer
+    r, data = terminal_data(pic, a, fmt, opts, out, tty)
+    if data is None:
+        return r
+    if tty and data.startswith(TEK_ERASE):
+        bifgfx.tek_emit(data[len(TEK_ERASE):], out, xterm=True, erase=True)
+    else:
+        out.write(data)
+        out.flush()
+    return r
 
 
 def main(argv=None):
@@ -495,25 +628,24 @@ def main(argv=None):
         ap.error("no input: give a .bif file or pipe one in")
     out_tty = sys.stdout.isatty()
     fmt = "sixel" if a.sixel else (a.format or format_for(a.output if a.output != "-" else None, out_tty and not a.output))
-    if (not a.output or a.output == "-") and out_tty and fmt != "sixel":
-        ap.error("will not write %s to a terminal: use -o FILE, -s for SIXEL, or a pipe" % fmt.upper())
+    on_stdout = not a.output or a.output == "-"
+    if fmt == "auto" and not on_stdout:
+        ap.error("-f auto chooses what a terminal can show: use a format with -o FILE")
+    if on_stdout and out_tty and fmt not in TERMINAL_FORMATS and fmt != "auto":
+        ap.error("will not write %s to a terminal: use -o FILE, -s for SIXEL, -f ansi, -f auto, or a pipe" % fmt.upper())
     try:
         if a.file == "-":
             pic = bif.read(sys.stdin.buffer, allow_truncated=a.truncated)
         else:
             pic = bif.load(a.file, allow_truncated=a.truncated)
-        buf = io.BytesIO()
         opts = render_options(a)
-        animated = plays(pic, a, fmt, out_tty)
-        if to_terminal(a, fmt):
-            reply = ask_terminal(a, fmt, want_cell=animated)
-            opts = terminal_options(pic, a, opts, reply)
-        if animated:                                             # play it: there is no file to write
-            r = play(pic, sys.stdout.buffer, cell_size(a.cell, reply), progress=progress_on_stderr, erase=a.erase, **opts)
+        if to_terminal(a, fmt):                                  # for the terminal: it is asked, and an animation played
+            r = show(pic, a, fmt, opts, tty=out_tty)
             for n in r.notes:
                 sys.stderr.write("bifout: %s\n" % n)
             return
-        r = convert(pic, fmt, buf, **opts)
+        buf = io.BytesIO()
+        r = convert(pic, fmt, buf, fmt_opts=format_options(a), **opts)
     except (bif.BifError, IOError) as e:
         sys.exit("bifout: %s" % e)
     for n in r.notes:

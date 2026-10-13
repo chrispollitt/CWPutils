@@ -272,7 +272,8 @@ class Output(unittest.TestCase):
         self.assertEqual(plan(sample("cow.txt"), "-o", "a.sixel").fmt, "sixel")
         self.assertEqual(plan(sample("cow.txt"), "-o", "a.bif").fmt, "bif")
         self.assertEqual(plan(sample("cow.txt"), "-o", "a.unknown").fmt, "png")
-        self.assertEqual(plan(sample("cow.txt"), stdout_tty=True).fmt, "sixel")           # on a terminal
+        self.assertEqual(plan(sample("cow.txt"), stdout_tty=True).fmt, "auto")            # on a terminal: what it can show
+        self.assertEqual(plan(sample("cow.txt"), "--format", "sixel", stdout_tty=True).fmt, "sixel")
         self.assertEqual(plan(sample("cow.txt")).fmt, "png")                               # in a pipe
         self.assertEqual(plan(sample("cow.txt"), "-o", "-", stdout_tty=True).fmt, "png")
 
@@ -299,7 +300,7 @@ class Output(unittest.TestCase):
         self.assertTrue(p.shell().startswith("printf '%s\\n' "))
         self.assertEqual(shlex.split(p.shell().split(" | ")[0])[2], "it's a \"test\"")           # quoted so a shell gives it back
         self.assertEqual(plan(sample("cow.txt"), stdout_tty=True, pixels=(800, 600)).shell(),
-                         "bifin %s | bifout --background auto --width 760 -s" % shlex.quote(sample("cow.txt")))
+                         "bifin %s | bifout --background auto --width 760" % shlex.quote(sample("cow.txt")))     # (auto: no format flag)
         self.assertEqual(plan(stdin_tty=False).shell(), "bifin | bifout --scale 2 -o -")
         self.assertEqual(plan(sample("cow.txt"), "-o", "a.six").shell(), "bifin %s | bifout --scale 2 -o a.six" % shlex.quote(sample("cow.txt")))
         self.assertEqual(plan(sample("cow.txt"), "-o", "a.bif").shell(), "bifin %s -o a.bif" % shlex.quote(sample("cow.txt")))
@@ -353,7 +354,7 @@ class SugarOverThePipe(unittest.TestCase):
 
     def test_sixel_on_a_terminal(self):
         data = open(sample("cow.txt"), "rb").read()
-        p = plan(sample("cow.txt"), "-P", "wave", stdout_tty=True, pixels=(900, 600))
+        p = plan(sample("cow.txt"), "-P", "wave", "--format", "sixel", stdout_tty=True, pixels=(900, 600))
         self.assertEqual(p.fmt, "sixel")
         out = bidet.run(p, data)
         self.assertTrue(out.startswith(b"\x1bP") and out.rstrip().endswith(b"\x1b\\"))

@@ -13,7 +13,7 @@ and
 .BR bifout (1).
 Give it some words, a file of terminal art, a terminal session (a
 .I .vt
-file) or a BIF, and it draws a picture: on a SIXEL terminal, or into a PNG, GIF or SIXEL file named with
+file) or a BIF, and it draws a picture: on a terminal, in whatever it can show, or into a PNG, GIF, SIXEL, ANSI or Tektronix file named with
 .BR \-o .
 It is sugar over the pipeline, not a second implementation:
 .B bidet \-n
@@ -31,8 +31,15 @@ is a chrome arch that pops out of the screen.
 List the presets and exit.
 .TP
 .BI \-o " FILE" "\fR, " \-\-output " FILE"
-Write the picture here (.png, .six, .gif, .bif); \fB\-\fR is standard output.  Without it the picture goes to the terminal as
-SIXEL if standard output is one, else it is a PNG.
+Write the picture here (.png, .gif, .six, .ans, .tek, .bif); \fB\-\fR is standard output.  Without it the picture goes to the
+terminal if standard output is one, else it is a PNG.
+.TP
+.BI \-\-format " FORMAT"
+The format, if the file name or the terminal should not decide: \fBpng\fR, \fBgif\fR, \fBsixel\fR, \fBkitty\fR, \fBiterm\fR,
+\fBansi\fR (coloured text), \fBtek\fR (Tektronix strokes), \fBtek\-hatch\fR, \fBtek\-dots\fR, \fBtek\-contour\fR, \fBbif\fR, or
+\fBauto\fR, which on a terminal is the default: SIXEL if the terminal has it, kitty or iTerm2 if that is what it is, else coloured text.
+See
+.BR bifout (1).
 .TP
 .BI \-w " PX" "\fR, " \-\-width " PX"
 Draw this many pixels wide (default: the terminal's width, or, for a file, 1000 for text, 640 for text in a GIF, and twice
@@ -97,7 +104,8 @@ Add your own in
 .I ~/.config/bidet/presets.ini
 (a section there replaces the preset of the same name).
 .SH TERMINALS
-On a terminal that reports SIXEL, a still is drawn there and an animation is played.  SIXEL support differs from terminal
+On a terminal that reports SIXEL, a still is drawn there and an animation is played; one that does not gets the kitty or iTerm2
+protocol if that is what it is, else coloured text, which plays an animation too.  SIXEL support differs from terminal
 to terminal, and animation puts it under the most strain.  It has been tested thoroughly only in mintty, where it works well.
 .B Your mileage may vary
 (YMMV) in other terminals, including Windows Terminal, where animations show noise and leftover pixels of earlier frames.

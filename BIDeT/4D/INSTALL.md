@@ -68,10 +68,13 @@ go in `~/.config/bidet/presets.ini` ([8](#8-environment-variables) says how to p
 
 ## 4. Terminals and SIXEL
 
-A picture on the terminal is SIXEL. Before sending any, `bifout` asks the terminal whether it has it (the DA1 reply),
-and, if it is going to draw on the terminal's own background, what that colour is (OSC 11) and how big a character
-cell is (CSI 16 t). A terminal that says it has no SIXEL gets an error, not garbage. `python bifterm.py` shows what
-yours says.
+On a terminal, `bifout` and `bidet` send what the terminal can show (`-f auto`, the default): SIXEL if it has it, the kitty
+or iTerm2 image protocol if it says it is kitty (or Ghostty) or iTerm2, else coloured Unicode text, which any UTF-8 terminal
+shows. To decide, `bifout` asks the terminal whether it has SIXEL (the DA1 reply) and, if it is going to draw on the
+terminal's own background, what that colour is (OSC 11) and how big a character cell is (CSI 16 t). `-f sixel` by name
+is checked: a terminal that says it has no SIXEL gets an error, not garbage. `python bifterm.py` shows what yours says.
+`-f kitty`, `-f iterm`, `-f ansi` and `-f tek` (Tektronix, for `xterm -t`) choose a format yourself; `-o x.ans` writes coloured
+text you can `cat` anywhere.
 
 **Your mileage may vary.** SIXEL support differs from terminal to terminal, and animation puts it under the most
 strain. Live pictures are well tested in **mintty** only. In **Windows Terminal**, which does not report its
@@ -111,6 +114,7 @@ branch's one commit); `make publish-media` force-pushes just that branch, if you
 | --- | --- |
 | `BIDET_NO_QUERY=1` | never ask the terminal anything (the tests set it) |
 | `LSIX_FORCE_SIXEL_SUPPORT=1` | send SIXEL even if the terminal does not say it can (`--force`) |
+| `KITTY_WINDOW_ID`, `TERM`, `TERM_PROGRAM`, `LC_TERMINAL` | read by `-f auto` to tell kitty / Ghostty and iTerm2 from the rest |
 | `BIDET_CELL=WxH` | the size of a character cell in pixels, if the terminal will not say (`--cell`) |
 | `COLORFGBG` | read, when the terminal will not say its colours, to guess light or dark |
 | `BIDET_PRESETS=FILE` | an extra presets file, read after the shipped one |
@@ -142,7 +146,7 @@ Nothing else is written outside this folder, except `~/.cache/bidet/fonts.json` 
 
 | you see | what to do |
 | --- | --- |
-| `your terminal does not report having SIXEL graphics support` | use a SIXEL terminal (mintty, WezTerm, foot, `xterm -ti vt340`, mlterm ...), or `--force` to send it anyway, or write a file with `-o x.png` |
+| `your terminal does not report having SIXEL graphics support` (only when you said `-f sixel`) | use a SIXEL terminal (mintty, WezTerm, foot, `xterm -ti vt340`, mlterm ...), or `--force`, or `-f auto` / `-f ansi` for what the terminal can show, or write a file with `-o x.png` |
 | a blank picture from a few words | the words were taken for art: say `-t` (text) or `--art` (art) |
 | text in the wrong font, or "no font" | `bidet --list-fonts`; install a TrueType font or give `-F FILE.ttf`; delete `~/.cache/bidet/fonts.json` if you added fonts |
 | a picture wider than the terminal, or clipped | `-w PX`, or `--cell WxH` if the terminal will not say its cell size |

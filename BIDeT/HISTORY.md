@@ -66,8 +66,8 @@ share it.
 "4D" is 3D plus time. A picture is described once, in a file, the **BIF** (BIDeT Intermediate Format: vector and
 raster layers, a palette with roles, the character grid kept alongside, frames for animation, a chunked stream in the
 spirit of PNG), and three tools pass it along: `bifin` makes a BIF from terminal art, text in a font, or a recorded
-terminal session; `bifop` changes it (weight, colour, shape, crop, 3D); `bifout` draws it as PNG, GIF or SIXEL at any
-size, or plays it on a terminal. `bidet` is the casual front end, sugar over that pipeline and never a second
+terminal session; `bifop` changes it (weight, colour, shape, crop, 3D); `bifout` draws it as PNG or GIF, or on a
+terminal as SIXEL, kitty or iTerm2 graphics, coloured text or Tektronix vectors, at any size, and plays it. `bidet` is the casual front end, sugar over that pipeline and never a second
 implementation. The format is specified (`4D/BIF-SPEC.md`) so that others can build on it.
 
 How it went, in order:
@@ -81,7 +81,12 @@ How it went, in order:
 4. **animation** (12 October 2026): a recorded terminal session (`bambi.vt`, `tetris.vt`) becomes an animated GIF;
    bidet3d's spin, sway and time machine were ported; and the new thing, a flat picture that **pops out of the
    screen**, growing depth and rising on a shadow that parts from it; presets for all of it; a gallery that shows them
-   all; and the pictures moved to their own `media` branch so the repository does not grow with every redraw.
+   all; and the pictures moved to their own `media` branch so the repository does not grow with every redraw;
+5. **every way to a terminal** (12 October 2026): `bifout` gained the output formats of `3D/gfx-conv` (kitty and iTerm2
+   images, ANSI art, Tektronix), ported by copy and tested byte for byte against the originals. `-f auto`, now the
+   default on a terminal, picks whichever the terminal can show; coloured text plays an animation too; and `-f tek`
+   draws the picture's own paths as strokes, which a BIF can do and a bitmap converter could not
+   ([`GRAPHICS-HISTORY.md`](GRAPHICS-HISTORY.md) is the story of why there are so many).
 
 ## Decisions that stuck
 

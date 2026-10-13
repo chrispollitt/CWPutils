@@ -37,6 +37,7 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
     bif3d.py             the 3D stage: solid, camera, shadow, paths (pop, spin, sway)
     bifout.py            tool 3: PNG, GIF, SIXEL, playing; bifrender.py draws a frame; bifsixel.py encodes
     bifterm.py           asking the terminal (DA1, OSC 11, CSI 16 t)
+    bifgfx.py            the formats that are not an image file or SIXEL: kitty, iTerm2, ANSI art, Tektronix; `auto`
     bidet.py             the front end; presets.ini; gallery.py; timemachine.py
     tonetrace.py         marching squares: tone art as vector lines
 
@@ -57,8 +58,12 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
                  Operations in their own module are imported at the bottom of bifop.py, after
                  sys.modules.setdefault("bifop", ...), so that a script run as `python bifop.py` shares one registry.
 
- An output       WRITERS[name] = (function(rendering, fp, transparent), extensions).  If it can move,
-                 also ANIMATED[name] = function(renderings, durations_ms, fp, transparent, loop, speed, samples).
+ An output       WRITERS[name] = (function(rendering, fp, transparent, **options), extensions).  The options are
+                 format_options()'s (cols, rows, glyphs, colors, aspect, term, tek_invert) plus pic= and frame=; take what
+                 you need and ignore the rest.  If it can move, also ANIMATED[name] = function(renderings,
+                 durations_ms, fp, transparent, loop, speed, samples); a format for a terminal is also in TERMINAL_FORMATS
+                 (and in PLAYABLE if bifout.play() can play it).  Encoders for the terminal formats live in bifgfx.py, which
+                 was ported by copy from ../3D/gfx-conv (tests/test_gfx.py compares the two byte for byte where it is present).
 
  A preset        A section in presets.ini.  Keys: description, sample, bifin, bifop, bifout, and for 3D:
                  solid (key=value words), motion (pop+hold+spin hold=2.4), uses (presets applied first).
@@ -95,7 +100,7 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
                     (tests/test_docs.py also checks that bifop.1 names every operation and parameter, and that
                     bifin.1, bifout.1 and bidet.1 name every long option: add a flag or an operation, document it)
  make test-quick    test_bif 37, test_bifout 47, test_bifterm 22, test_bifin 47, test_lettering 39,
-                    test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48
+                    test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48, test_gfx 30, test_docs 6
  make test          those, and a smoke subset of the parity gate (PARITY_QUICK=1: 7 tests, several minutes)
  make test-full     everything, with the full parity matrix (1232 cases, about ten minutes)
 
@@ -120,7 +125,7 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
  When a test fails on only one stack, compare the INTERMEDIATE numbers (vertex counts, ink pixels, an overlay of the two
  drawings) before touching code or a threshold.  Most of the time the code is right and the measurement is fragile.
 
- Terminal behaviour is tested against a fake terminal and a fake clock: tests/test_bifterm.py (a pty), and the player in
+ Terminal behaviour is tested against a fake terminal and a fake clock (and `auto` against fake replies and environments): tests/test_bifterm.py (a pty), and the player in
  tests/test_3d.py (bytes, order, timing, frame skipping, Ctrl-C cleanup).  Nothing there proves a real terminal
  draws it.  If ../3D/gfx-conv/sixeldec.py is present, SIXEL can be decoded and looked at: do that before blaming a terminal.
 

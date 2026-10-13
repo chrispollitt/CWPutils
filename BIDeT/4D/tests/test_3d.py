@@ -380,10 +380,14 @@ class Playback(unittest.TestCase):
         self.assertEqual(int(up[:-1]), -(-r.H // 20) + 1)
 
     def test_sixel_is_the_default_on_a_terminal_and_an_animation_there_plays(self):
-        self.assertEqual(bifout.format_for(None, True), "sixel")                            # a terminal: SIXEL
+        self.assertEqual(bifout.format_for(None, True), "auto")                             # a terminal: what it can show
         self.assertEqual(bifout.format_for(None, False), "png")                             # a pipe or a file: PNG
         self.assertEqual(bifout.format_for("x.gif", True), "gif")                           # a file name decides
         self.assertEqual(bifout.format_for("x.six", False), "sixel")
+        import bifgfx
+        import bifterm
+        capable = bifterm.Reply(True, None, None, True)
+        self.assertEqual(bifgfx.pick_format(capable, {}), "sixel")                           # ... which is SIXEL if it has it
         pic, still = self.pic(), bifop.apply(self.pic(), ["frame:0"], bifop.Notes())
         parse = lambda *argv: bifout.build_parser().parse_args(list(argv))
         self.assertTrue(bifout.plays(pic, parse(), "sixel", True))                          # an animation to a SIXEL terminal: played

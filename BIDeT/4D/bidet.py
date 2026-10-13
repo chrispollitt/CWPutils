@@ -32,6 +32,7 @@ import shlex
 import sys
 
 import bif
+import bifgfx
 import bifin
 import bifop
 import bifout
@@ -210,7 +211,8 @@ class Plan(object):
         self.bifin = []
         self.ops = []
         self.bifout = []
-        self.fmt = "png"              # png | sixel | bif
+        self.fmt = "png"              # png | gif | bif, or for a terminal: auto | sixel | kitty | iterm | ansi | tek ...
+        self.format = None            # the format that was asked for with --format (else it follows from where the picture goes)
         self.output = None            # a file name, or None for standard output
 
     def stages(self):
@@ -230,7 +232,8 @@ class Plan(object):
                 out[-1] += ["-o", self.output]
         else:
             tail = ["bifout"] + self.bifout + ([infile] if infile else [])
-            tail += ["-s"] if self.fmt == "sixel" and not self.output else []
+            if self.format and not (self.output and format_for(self.output) == self.fmt):
+                tail += ["-f", self.format]
             tail += ["-o", self.output or "-"] if (self.output or self.fmt == "png") else []
             out.append(tail)
         return out
@@ -269,14 +272,15 @@ def looks_like_prose(data):
 
 
 def format_for(path):
-    ext = os.path.splitext(path or "")[1].lower()
-    if ext in (".six", ".sixel"):
-        return "sixel"
-    if ext == ".bif":
+    """The format a file name asks for: .bif, or any of bifout's (.png, .gif, .six, .ans, .tek ...), else a PNG."""
+    if os.path.splitext(path or "")[1].lower() == ".bif":
         return "bif"
-    if ext == ".gif":
-        return "gif"
-    return "png"
+    return bifout.format_for(path, False)
+
+
+def for_terminal(fmt):
+    """Is this a format that a terminal is sent (auto: whichever it can show)?"""
+    return fmt == "auto" or fmt in bifout.TERMINAL_FORMATS
 
 
 MOVE_OPS = {"pop": "popout", "spin": "spin", "sway": "sway"}
@@ -390,12 +394,14 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
     plan.bifout += shlex.split(args.bifout or "")
     # where the picture goes
     plan.output = args.output if args.output and args.output != "-" else None
-    if args.output and args.output != "-":
+    if args.format:
+        plan.fmt = plan.format = args.format                              # asked for: it wins over the file name
+    elif args.output and args.output != "-":
         plan.fmt = format_for(args.output)
     elif args.output == "-":
         plan.fmt = "png"                                                  # asked for on standard output
     elif stdout_tty:
-        plan.fmt = "sixel"
+        plan.fmt = "auto"                                                 # what the terminal can show: SIXEL if it has it
     else:
         plan.fmt = "png"
     # colours: what is asked for (--ink / --paper, last, so it wins; --dark / --light).  Else, on a terminal, bifout's
@@ -407,7 +413,7 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
         plan.ops.append("theme:" + ",".join(k + "=" + v for k, v in (("ink", args.ink), ("paper", args.paper)) if v))
     elif dark is not None and not themed:
         plan.ops.insert(0, DARK_THEME if dark else LIGHT_THEME)
-    elif plan.fmt == "sixel" and not plan.output and not themed:
+    elif for_terminal(plan.fmt) and not plan.fmt.startswith("tek") and not plan.output and not themed:
         own = _parse_flags(bifout.build_parser(), plan.bifout, "bifout flags")
         if not (own.background or own.paper or own.transparent):
             plan.bifout += ["--background", "auto"]
@@ -418,7 +424,7 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
     if args.width:
         plan.bifout += ["--width", str(args.width)]
     elif probe.scale is None and probe.width is None and probe.height is None:
-        if plan.fmt == "sixel" and not plan.output:
+        if for_terminal(plan.fmt) and not plan.fmt.startswith("tek") and not plan.output:
             plan.bifout += ["--width", str(fit_width(pixels if pixels is not None else terminal_pixels(),
                                                      columns if columns is not None else terminal_columns()))]
         elif plan.fmt != "bif":                                           # a file: text fills 1000 px, art is drawn twice life size
@@ -466,16 +472,11 @@ def run(plan, data, notes=None):
     a = _parse_flags(bifout.build_parser(), plan.bifout, "bifout flags")
     buf = io.BytesIO()
     opts = bifout.render_options(a)
-    if not plan.output and bifout.to_terminal(a, plan.fmt):                              # SIXEL for the terminal: ask it, as bifout does
-        animated = bifout.plays(pic, a, plan.fmt, sys.stdout.isatty())
-        reply = bifout.ask_terminal(a, plan.fmt, want_cell=animated)
-        opts = bifout.terminal_options(pic, a, opts, reply)
-        if animated:                                                                      # play it (there is nothing to write)
-            r = bifout.play(pic, sys.stdout.buffer, bifout.cell_size(a.cell, reply), progress=bifout.progress_on_stderr,
-                            erase=a.erase, **opts)
-            notes.lines.extend(r.notes)
-            return b""
-    r = bifout.convert(pic, plan.fmt, buf, **opts)
+    if not plan.output and bifout.to_terminal(a, plan.fmt):                              # for the terminal: it is asked, as bifout does
+        r, data = bifout.terminal_data(pic, a, plan.fmt, opts, tty=sys.stdout.isatty())   # (an animation is played there and then)
+        notes.lines.extend(r.notes)
+        return b"" if data is None else data
+    r = bifout.convert(pic, plan.fmt, buf, fmt_opts=bifout.format_options(a), **opts)
     notes.lines.extend(r.notes)
     return buf.getvalue()
 
@@ -489,8 +490,12 @@ def build_parser():
                     "with neither, standard input")
     ap.add_argument("-P", "--preset", action="append", metavar="NAME", help="a style; repeat to combine (-P arc -P matrix)")
     ap.add_argument("-l", "--list-presets", action="store_true", help="list the presets and exit")
-    ap.add_argument("-o", "--output", metavar="FILE", help="write the picture here (.png, .six, .gif, .bif); '-' = standard output.  A .vt file "
-                    "(a terminal session) is an animation: write it as .gif")
+    ap.add_argument("-o", "--output", metavar="FILE", help="write the picture here (.png, .gif, .six, .ans, .tek, .bif); '-' = standard "
+                    "output.  A .vt file (a terminal session) is an animation: write it as .gif")
+    ap.add_argument("--format", choices=sorted(bifout.WRITERS) + ["auto", "bif"], metavar="FORMAT",
+                    help="the format of the picture, if the file name or the terminal should not decide: png, gif, sixel, kitty, iterm, "
+                         "ansi (coloured text), tek (Tektronix strokes), tek-hatch, tek-dots, tek-contour, bif; on a terminal the "
+                         "default is auto: SIXEL if the terminal has it, kitty or iTerm2 if that is what it is, else ansi")
     ap.add_argument("-w", "--width", type=int, metavar="PX", help="draw this many pixels wide (default: the terminal's width, "
                     "or, for a file, 1000 for text and twice life size for art)")
     ap.add_argument("-F", "--font", metavar="NAME", help="the font for text (a family, impact, serif, mono, script, ... or a .ttf file; "
@@ -555,11 +560,10 @@ def time_machine(args):
             with open(args.output, "wb") as f:
                 bifout.convert(pic, fmt, f, width=args.width)
         return 0
-    a = bifout.build_parser().parse_args(["-s"])
-    reply = bifout.ask_terminal(a, "sixel", want_cell=True)
-    opts = bifout.terminal_options(pic, a, bifout.render_options(a), reply)
+    a = bifout.build_parser().parse_args(["--background", "auto"] + (["-f", args.format] if args.format else []))
+    opts = bifout.render_options(a)
     opts["width"] = args.width or fit_width(terminal_pixels(), terminal_columns())
-    bifout.play(pic, sys.stdout.buffer, bifout.cell_size(None, reply), progress=bifout.progress_on_stderr, erase=a.erase, **opts)
+    bifout.show(pic, a, a.format or "auto", opts, tty=True)
     return 0
 
 
@@ -589,8 +593,8 @@ def main(argv=None):
         if args.show_pipeline:
             print(plan.shell())
             return 0
-        if plan.fmt != "bif" and not plan.output and sys.stdout.isatty() and plan.fmt != "sixel":
-            raise bif.BifError("will not write a %s to a terminal" % plan.fmt)
+        if plan.fmt != "bif" and not plan.output and sys.stdout.isatty() and not for_terminal(plan.fmt):
+            raise bif.BifError("will not write a %s to a terminal: use -o FILE, or --format auto" % plan.fmt)
         notes = bifop.Notes()
         if data is None:
             data = read_input(plan)
@@ -604,6 +608,8 @@ def main(argv=None):
     if plan.output:
         with open(plan.output, "wb") as f:
             f.write(blob)
+    elif sys.stdout.isatty() and blob.startswith(bifout.TEK_ERASE):       # a Tektronix picture on a terminal: xterm's Tek mode
+        bifgfx.tek_emit(blob[len(bifout.TEK_ERASE):], sys.stdout.buffer, xterm=True, erase=True)
     else:
         sys.stdout.buffer.write(blob)
         sys.stdout.buffer.flush()

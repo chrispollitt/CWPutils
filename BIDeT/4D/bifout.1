@@ -1,6 +1,6 @@
 .TH BIFOUT 1 "October 2026" "BIDeT 4D" "User Commands"
 .SH NAME
-bifout \- draw a BIF (BIDeT Intermediate Format) as a PNG, GIF or SIXEL picture, or play it on a terminal
+bifout \- draw a BIF (BIDeT Intermediate Format) as a PNG, GIF, SIXEL, kitty, iTerm2, coloured text or Tektronix picture, or play it on a terminal
 .SH SYNOPSIS
 .B bifout
 [\fIoptions\fR] [\fIFILE.bif\fR]
@@ -14,12 +14,13 @@ bifout \- draw a BIF (BIDeT Intermediate Format) as a PNG, GIF or SIXEL picture,
 .SH DESCRIPTION
 .B bifout
 is the third tool of BIDeT 4D.  It reads a BIF, from a file or from standard input, and draws it: as a PNG, as an
-animated GIF, or as SIXEL graphics on a terminal.  Line art is drawn from vectors, so it is as sharp at
+animated GIF, or on a terminal in whatever that terminal can show (SIXEL, the kitty or iTerm2 image protocols, coloured text,
+Tektronix vectors; see FORMATS).  Line art is drawn from vectors, so it is as sharp at
 .B \-\-scale 6
 as at
 .BR "\-\-scale 1" .
-A BIF with several frames is an animation: it is written as a GIF, or, if it is going to a terminal that
-reports SIXEL, played there.
+A BIF with several frames is an animation: it is written as a GIF, or, if it is going to a terminal as SIXEL or
+as coloured text, played there.
 .PP
 The format is chosen from the name given to
 .BR \-o :
@@ -27,15 +28,37 @@ The format is chosen from the name given to
 .IR ".gif" ,
 .I .six
 or
-.IR .sixel ;
-with no file name it is SIXEL if standard output is a terminal, else PNG.
+.IR .sixel ,
+.I .ans
+(or
+.IR .ansi )
+or
+.IR .tek ;
+with no file name it is
+.B auto
+if standard output is a terminal (SIXEL if the terminal has it), else PNG.
 .SH OPTIONS
 .TP
 .BI \-o " FILE" "\fR, " \-\-output " FILE"
 Write here (\fB\-\fR is standard output).
 .TP
 .BI \-f " FORMAT" "\fR, " \-\-format " FORMAT" "\fR, " \-s "\fR, " \-\-sixel
-Force the format (\fBpng\fR, \fBgif\fR, \fBsixel\fR); \fB\-s\fR is \fB\-f sixel\fR.
+Force the format: \fBpng\fR, \fBgif\fR, \fBsixel\fR, \fBkitty\fR, \fBiterm\fR, \fBansi\fR, \fBtek\fR, \fBtek\-hatch\fR,
+\fBtek\-dots\fR, \fBtek\-contour\fR, or \fBauto\fR (for a terminal only); \fB\-s\fR is \fB\-f sixel\fR.  See FORMATS.
+.TP
+.BI \-\-cols " N" "\fR, " \-\-rows " N"
+The size in character cells.  \fBkitty\fR and \fBiterm\fR: scale the picture to this many cells.  \fBansi\fR: the width and height
+of the text (negative: that many fewer than the terminal; default: the picture's own size at 8 pixels a character, at most the
+terminal's width).  The picture's shape is kept.
+.TP
+.BI \-\-glyphs " half" | quad | blocks | braille
+\fBansi\fR: the characters to use: half blocks; plus quadrants; plus eighths (the default); Braille dots.
+.TP
+.BI \-\-colors " 24" | 256 | 16
+\fBansi\fR: the colour depth: 24-bit (the default), 256 or 16 colours.
+.TP
+.B \-\-tek\-invert
+\fBtek\-hatch\fR, \fBtek\-dots\fR, \fBtek\-contour\fR: dark is ink (for a picture of dark shading on a light page).
 .TP
 .BI \-\-scale " S" "\fR, " \-\-width " PX\fR, " \-\-height " PX"
 Draw at S pixels per canvas unit, or fit the picture into this size.
@@ -43,7 +66,8 @@ Draw at S pixels per canvas unit, or fit the picture into this size.
 .BI \-\-ink " COLOR" "\fR, " \-\-paper " COLOR\fR, " \-b " auto|transparent|COLOR"
 Replace the ink colour; the page colour; or choose the page for a terminal:
 .B auto
-asks the terminal for its background (OSC 11) and draws on that, or leaves the page transparent if it will not say.
+asks the terminal for its background (OSC 11) and draws on that (SIXEL), or leaves the page transparent (kitty, iterm, ansi,
+or if the terminal will not say), and makes the ink light or dark so that it shows.
 .TP
 .B \-\-frame \fIN\fR
 Draw only this frame of an animation (a still).  Without it a GIF gets all the frames, and a terminal plays them.
@@ -87,8 +111,46 @@ Say what was drawn, and how big; print the version.
 .PP
 Everything else is in
 .BR "bifout \-\-help" .
+.SH FORMATS
+.TP
+.B png, gif
+Files.  A GIF holds all the frames of an animation.
+.TP
+.B sixel
+SIXEL graphics, the format most terminals that draw pictures share.  A terminal is asked whether it has it, and one that says
+it has not gets an error, not garbage (\fB\-\-force\fR to send it anyway).  Plays an animation.
+.TP
+.B kitty
+The kitty graphics protocol (APC), for kitty, WezTerm, Ghostty and some others: the picture as a PNG in chunks of 4096 bytes, with
+its transparency.  One frame.
+.TP
+.B iterm
+iTerm2's inline images (OSC 1337), for iTerm2, WezTerm, mintty and some others: the picture as a PNG in one sequence, with its
+transparency.  One frame.
+.TP
+.B ansi
+Coloured Unicode text, which any UTF-8 terminal shows: every character cell is an 8 by 8 patch of the picture, and the block,
+quadrant, eighth or Braille character and the two colours that fit it best are chosen (\fB\-\-glyphs\fR, \fB\-\-colors\fR).  A
+transparent page leaves the terminal's own background showing.  A file of it can be shown with \fBcat\fR.  Plays an animation.
+.TP
+.B tek
+Tektronix 4010/4014 vector graphics, for xterm's Tek mode (\fBxterm \-t\fR) and real Tektronix terminals: the picture's own paths,
+as strokes (a letter as its outline; no colour, no thickness).  A picture with no vector layer is drawn as
+.BR tek\-hatch .
+On an xterm the terminal is put into Tek mode, the picture drawn, Enter waited for, and the VT window restored; into a file or
+a pipe it is a plain Tek stream.  Everything is drawn at 1024 by 780, the 4010's addressing.
+.TP
+.B tek\-hatch, tek\-dots, tek\-contour
+Tektronix vectors made from the picture's pixels, bright meaning ink: horizontal scan lines, denser where it is brighter; dots,
+Floyd-Steinberg dithered; or outlines and brightness contour lines, like a map.
+.TP
+.B auto
+(on a terminal, the default) whichever the terminal can show: \fBkitty\fR or \fBiterm\fR if the environment says that is the
+terminal, else \fBsixel\fR if the terminal reports it (or nothing could be asked), else \fBansi\fR.  The formats not listed
+here as playing an animation draw its first frame, and say so.
 .SH ANIMATION
-On a SIXEL terminal an animation is drawn and encoded once, on one shared palette of 254 colours, and then replayed on a
+On a terminal that is sent SIXEL (or coloured text, with \fB\-f ansi\fR, which works on any UTF-8 terminal), an animation is
+drawn and encoded once, SIXEL on one shared palette of 254 colours, and then replayed on a
 steady clock until interrupted with Ctrl-C.  A terminal that cannot keep up skips frames; it does not slow the motion down.
 A GIF is written with timings rounded from the running total to its hundredths of a second.
 Into a pipe, a
@@ -121,10 +183,14 @@ If set, send SIXEL even if the terminal does not say it can.
 .TP
 .B COLORFGBG
 Read, when the terminal will not say its colours, to guess whether it is light or dark.
+.TP
+.BR KITTY_WINDOW_ID ", " TERM ", " TERM_PROGRAM ", " LC_TERMINAL
+Read by \fB\-f auto\fR to tell kitty (also Ghostty: \fBTERM_PROGRAM=ghostty\fR) and iTerm2 from the others.
 .SH SEE ALSO
 .BR bidet (1),
 .BR bifin (1),
 .BR bifop (1).
-The format is described in BIF\-SPEC.md, and the whole design in README.md, in the share/doc/bidet4d directory.
+The format is described in BIF\-SPEC.md, and the whole design in README.md, in the share/doc/bidet4d directory;
+GRAPHICS\-HISTORY.md there says why a picture can reach a terminal in so many different ways.
 .SH AUTHOR
 Chris Pollitt.  Boost Software License 1.0.
