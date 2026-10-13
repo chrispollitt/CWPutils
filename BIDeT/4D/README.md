@@ -29,8 +29,8 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
    `bifin | bifop | bifout` pipeline it prints draws (a test checks that), and presets are recipes of those tools'
    flags in [`presets.ini`](presets.ini), which anyone can extend in `~/.config/bidet/presets.ini`. At present it
    draws text, set in any installed TrueType font (`bidet -F impact "Sale"`, `bidet --list-fonts`), and art, in the
-   shapes and colours BIF has; bidet3d's gradient, texture and 3D styles come with paint kinds and the extrusion
-   step. The presets are a tour of what 4D does,
+   shapes, colours, 3D solids and animations BIF and the 3D stage have (textures and tiles come with paint kinds).
+   The presets are a tour of what 4D does,
    each drawn on an input that suits it (`make gallery` redraws this):
 
    ![every bidet preset on a sample](gallery/gallery.png)
@@ -39,6 +39,21 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
    `amber`, `blueprint`, `neon`, `chalk`, `stamp`, ...), transforms (`tilt`, `mirror`, `huge`: six times life size
    and still sharp), and the picture-art tracers: `sketch`, `trace` and `contour` turn shaded ASCII into vector
    outlines and contour lines, and `pixels` keeps block art exact.
+
+   **3D and 4D.** Looks (`chrome`, `rainbow`, `gold`, `superhero`, `dusk`, `lagoon`, `cobalt`, `graphite`, `brick`, `horizon`,
+   `lime`, and `relief`, which extrudes line art) are lit, extruded solids on a shadow; motions (`popout`: 2D to 3D, it
+   pops out of the screen; `turntable`; `swing`; `rise`) make them move (a GIF, or live on a SIXEL terminal); and
+   they combine with each other and with the shapes, the later one winning:
+   `bidet -P arc -P popout -P chrome "Hello" -o hello.gif` is a chrome arch that pops out of the screen.
+   Showpieces are made of others (`marquee`, `bubble`, `ripple`, `skyline`, `reveal`, `carnival`). A preset says
+   `solid = material=gold depth=0.16 tall=1.2`, `motion = pop+hold+spin hold=2.4`, or `uses = arc gold`
+   (see the top of `presets.ini`). `python gallery.py --gif` draws every 3D preset together, the moving ones moving:
+
+   ![every 3D and 4D preset, moving](gallery/gallery-3d.gif)
+
+   And one of them alone, `bidet -P popout "BIDeT 4D" -o popout.gif`:
+
+   ![popout](gallery/popout.gif)
 
 | file | what |
 | --- | --- |
@@ -55,7 +70,7 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
 | [`tonetrace.py`](tonetrace.py) | marching squares: contour lines of a field as sub-pixel polylines, plus stitching, simplification and bilinear sampling. Tone mode (picture-style art: jp2a, chafa, shaded ASCII) is traced with it, so its outlines are vectors whose width fades with the edge strength (`--tone-raster` for unascii's raster of them) |
 | [`bidet.py`](bidet.py), [`presets.ini`](presets.ini) | the simple front end (see above): input and output are detected (a file name is a file, anything else is text; SIXEL on a terminal, else PNG, or by the `-o` extension, `.bif` too), the size fits the terminal's pixels (or `-w`), light-on-dark follows `COLORFGBG` or `--dark`; `-P` can be repeated; `--bifin` / `--bifop` / `--bifout` pass extra flags to a stage; text is set in a font (`-f lettering`, `-F FONT`) and not left to the art classifier. 3D and animation (bidet3d's, and the new one), each a `bifop` operation in the printed pipeline: `--3d` (a still), `--spin`, `--sway [DEG]`, `--pop` (2D to 3D; add `--spin` to go on), `--material`, `--depth`, `--view Y,P,R`, `--turns`, `--fps`; `--time-machine` (`--stage-time`). On a SIXEL terminal an animation is played; `-o x.gif` writes it |
 | [`gallery.py`](gallery.py), [`gallery/`](gallery/) | draws every preset on a sample as one contact sheet (`make gallery`): a tour of 4D, and a quick visual check that no change to a tool broke a preset |
-| [`bifop.py`](bifop.py) | **Tool 2**: `bifop OP [OP ...]` reads a BIF (stdin or `-i`), writes the changed BIF (stdout or `-o`). Operations: `pen` (line thickness), `theme` / `recolor` (colours by role or number), `opacity`, `blend`, `crop`, `scale`, `rotate`, `flip`, `skew`, `keep` / `drop` / `hide` / `show` (layers), `frame`, `meta`, `simplify`, and the WordArt warps `wave`, `arc`, `squeeze` (on vector layers). `bifop --list` describes them; they are registered with `@op`. It does what BIF-SPEC.md asks of a manipulator: passes on everything it does not know, keeps the credit and licence, appends to `meta.history`. |
+| [`bifop.py`](bifop.py) | **Tool 2**: `bifop OP [OP ...]` reads a BIF (stdin or `-i`), writes the changed BIF (stdout or `-o`). Operations: `pen` (line thickness), `theme` / `recolor` (colours by role or number), `opacity`, `blend`, `crop`, `scale`, `rotate`, `flip`, `skew`, `stretch`, `keep` / `drop` / `hide` / `show` (layers), `frame`, `meta`, `simplify`, and the WordArt warps `wave`, `arc`, `squeeze` (on vector layers). `bifop --list` describes them; they are registered with `@op`. It does what BIF-SPEC.md asks of a manipulator: passes on everything it does not know, keeps the credit and licence, appends to `meta.history`. |
 | [`bifout.py`](bifout.py) | **Tool 3**: `bifout x.bif -o x.png [--scale S \| --width PX] [--ink C --paper C]`, `bifout x.bif -s` (SIXEL), `bifout x.bif -o x.gif` (an animated GIF of all the frames: `--speed F`, `--loop N`, `--frame N` for one still; line art gets an exact ink-to-page ramp as its palette so nothing flickers, colour art one palette quantized from sampled frames, no dithering; `--transparent` gives a hard-edged transparent GIF; times are rounded to GIF's 1/100 s from the running total so 25 ms steps do not drift), pipes both ways. Writers are registered in `WRITERS` (and `ANIMATED` if they can move). An animation sent to a SIXEL terminal (the default when the output is a terminal that reports SIXEL) is **played**: every frame is drawn and encoded once on one shared palette, then replayed on a steady clock until Ctrl-C (`--loop N` for N times; a terminal that cannot keep up skips frames; `--fps N` thins it; `--cell WxH` if the terminal will not say how big its cells are; synchronized output where supported; a transparent page is erased per frame). Into a pipe, a `.six` file or a PNG there is room for one picture: frame 0, and it says so (`--frame N`). SIXEL for the terminal (stdout, not `-o FILE`) is checked first: a terminal that does not report SIXEL (conhost, say) gets an error, not garbage (`--force` to send anyway); `-b auto` draws the page in the terminal's own background colour, or transparent if it will not say, with the ink made light or dark to show on it |
 | [`bifterm.py`](bifterm.py) | asks the controlling terminal (`/dev/tty`, so it works in a pipeline and with the output piped) what it is: DA1 for SIXEL, OSC 11 for the background, CSI 16 t for the cell size. `python bifterm.py` shows what yours says; `BIDET_NO_QUERY=1` or `--no-query` turns asking off. POSIX only (Linux, WSL, macOS, Cygwin; native Windows Python is not asked and goes on) |
 | [`bifrender.py`](bifrender.py) | BIF -> pixels: vector layers (strokes, fills with holes, caps / joins, tapers, transforms), raster layers (affine, smooth or nearest), blend modes, `ink` / `paper` role overrides |
@@ -152,7 +167,7 @@ the `shape` layer of a BIF instead of the lossy `mask()` call.
    walk.vt -o walk.gif` does it in one command (`tests/test_anim.py`, 21 tests; tried on bambi.vt, tetris.vt and
    vttest's torturet.vt, which are not in the repo). **Second cut (done): bidet3d's animations, and 2D to 3D.**
    The 3D stage (`bif3d.py`, `bifop_3d.py`: extrude, spin, sway, popout, motion), `join` / `overlay`, playing an
-   animation on a SIXEL terminal, and `timemachine.py` (`tests/test_3d.py`, 35 tests; the SIXEL player is tested
+   animation on a SIXEL terminal, and `timemachine.py` (`tests/test_3d.py`, 45 tests; the SIXEL player is tested
    against a fake terminal and clock, not yet in a real one). Still to do: APNG / WebP, asciinema `.cast` input
    (it has real timings), more materials (textures and tiles need paint kinds in BIF), `bifop` warps of the solid
    (arc, squeeze, wave) before it is extruded, a 3D importer from a `shape` layer.

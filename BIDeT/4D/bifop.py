@@ -476,6 +476,18 @@ def op_scale(pic, notes, factor):
     post_transform(pic, (factor, 0.0, 0.0, factor, 0.0, 0.0))
 
 
+@op("stretch", [("y", _float, 1.0, "multiply the height by this (taller letters: 1.3)"),
+                ("x", _float, 1.0, "multiply the width by this")],
+    "Stretch the picture along one axis, as WordArt does to make letters tall or squat. The canvas grows with it; "
+    "forgets the character grid.")
+def op_stretch(pic, notes, y, x):
+    if x <= 0 or y <= 0:
+        raise bif.BifError("stretch: x and y must be positive")
+    drop_grid(pic)
+    pic.width, pic.height = pic.width * x, pic.height * y
+    post_transform(pic, (x, 0.0, 0.0, y, 0.0, 0.0))
+
+
 @op("rotate", [("degrees", _float, REQUIRED, "clockwise")],
     "Turn the picture; the canvas grows to hold it (the corners stay transparent). Forgets the character grid.")
 def op_rotate(pic, notes, degrees):

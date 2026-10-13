@@ -33,6 +33,7 @@ def common(hover=0.6):
     ("depth", _float, 0.22, "extrusion depth, as a fraction of the drawing's shorter side"),
     ("hover", _float, hover, "how far it floats off the screen when it is up (same unit)"),
     ("view", _ids, None, "yaw+pitch+roll in degrees (default -20+8+0); yaw alone is allowed"),
+    ("tall", _float, 1.0, "stretch the picture's height by this before it is extruded (WordArt's taller letters: 1.4)"),
     ("material", _str, None, "the face: rainbow chrome gold superhero sunset aqua blues purple slate lime cornflower, or "
                              "#rrggbb; default: the picture's own colours"),
     ("side", _ids, None, "the extrusion's colours, back+front, e.g. #2a1040+#5a2a7a (default: from the material or the face)"),
@@ -75,7 +76,13 @@ def _lift(pic, notes, name, segments, o):
         raise bif.BifError("%s: needs a flat picture (one frame); to do several moves in one go use motion:path=pop+spin" % name)
     if o["fps"] <= 0 or o["res"] < 1:
         raise bif.BifError("%s: fps must be positive and res at least 1" % name)
-    r = bifrender.render(pic, frame=0, scale=float(o["res"]))
+    if o["tall"] <= 0:
+        raise bif.BifError("%s: tall must be positive" % name)
+    src = pic
+    if o["tall"] != 1.0:                                          # taller: the same picture on a taller unit (not an op of its own:
+        src = bifop.clone(pic)                                    # a later preset's `tall` then replaces this one, it does not pile up)
+        src.unit_aspect = float(pic.unit_aspect) * o["tall"]
+    r = bifrender.render(src, frame=0, scale=float(o["res"]))
     for n_ in r.notes:
         notes.warn("%s: %s" % (name, n_))
     rgb = np.broadcast_to(r.color_u8(), (r.H, r.W, 3))
@@ -122,8 +129,9 @@ def _lift(pic, notes, name, segments, o):
     bifop.drop_grid(pic)
     pic.frames = frames
     pic.width, pic.height = int(math.ceil(bounds[2] - 1e-9)), int(math.ceil(bounds[3] - 1e-9))
+    pic.unit_aspect = src.unit_aspect
     pic.animation = {"loop": 0} if len(frames) > 1 else None
-    pic.meta["solid"] = {"depth": o["depth"], "hover": o["hover"], "view": list(view), "material": o["material"] or "picture",
+    pic.meta["solid"] = {"tall": o["tall"], "depth": o["depth"], "hover": o["hover"], "view": list(view), "material": o["material"] or "picture",
                          "perspective": o["perspective"], "fps": fps}
 
 

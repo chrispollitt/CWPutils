@@ -55,9 +55,14 @@ SAMPLE_KINDS = ("text", "art", "picture", "blocks", "colour")
 
 
 class Preset(object):
-    def __init__(self, name, description="", bifin_flags=None, ops=None, bifout_flags=None, sample="art"):
+    """solid: the 3D look, as key=value words for bifop's extrude / spin / popout (material depth view ...);
+    motion: what it does, `pop+hold+spin` / `spin` / `sway` / `pop`, then key=value words for it (turns=2);
+    uses: names of presets that are applied first (a showpiece made of others)."""
+    def __init__(self, name, description="", bifin_flags=None, ops=None, bifout_flags=None, sample="art", solid=None,
+                 motion="", uses=None):
         self.name, self.description, self.sample = name, description, sample
         self.bifin, self.ops, self.bifout = list(bifin_flags or []), list(ops or []), list(bifout_flags or [])
+        self.solid, self.motion, self.uses = list(solid or []), motion, list(uses or [])
 
 
 def preset_files(env=None):
@@ -89,10 +94,25 @@ def load_presets(files=None):
             try:
                 presets[name] = Preset(name, sec.get("description", "").strip(),
                                        shlex.split(sec.get("bifin", "")), shlex.split(sec.get("bifop", "")),
-                                       shlex.split(sec.get("bifout", "")), sec.get("sample", "art").strip())
+                                       shlex.split(sec.get("bifout", "")), sec.get("sample", "art").strip(),
+                                       shlex.split(sec.get("solid", "")), sec.get("motion", "").strip(),
+                                       sec.get("uses", "").split())
             except ValueError as e:
                 raise bif.BifError("%s: preset '%s': %s" % (path, name, e))
     return presets
+
+
+def expand(names, presets, _seen=()):
+    """The presets of `names` in order, each preceded by the ones it `uses` (a list of Preset)."""
+    out = []
+    for name in names:
+        if name not in presets:
+            raise bif.BifError("no preset '%s' (bidet --list-presets shows them)" % name)
+        if name in _seen:
+            raise bif.BifError("preset '%s' uses itself" % name)
+        out += expand(presets[name].uses, presets, _seen + (name,))
+        out.append(presets[name])
+    return out
 
 
 def _parse_flags(parser, flags, what):
@@ -108,8 +128,10 @@ def _parse_flags(parser, flags, what):
         sys.stderr = saved
 
 
-def check_preset(p):
-    """Raise BifError if a preset's recipe would not run: bad flags or operations."""
+def check_preset(p, presets=None):
+    """Raise BifError if a preset's recipe would not run: bad flags or operations, a 3D look or motion that bifop would
+    refuse, or (with `presets`, all of them) a `uses` that is missing or goes round in a circle."""
+    chain = expand([p.name], presets) if presets is not None else [p]
     if p.sample not in SAMPLE_KINDS:
         raise bif.BifError("preset '%s': sample is one of %s, not '%s'" % (p.name, ", ".join(SAMPLE_KINDS), p.sample))
     _parse_flags(bifin.build_parser(), p.bifin, "preset '%s' bifin flags" % p.name)
@@ -118,6 +140,14 @@ def check_preset(p):
         try:
             name, raw = bifop.parse_spec(spec)
             bifop.convert_args(name, raw)
+        except bif.BifError as e:
+            raise bif.BifError("preset '%s': %s" % (p.name, e))
+    for still in (False, True):                                                       # its 3D look and motion, as bifop operations
+        try:
+            spec = motion_op(build_parser().parse_args([]), chain, still)
+            if spec:
+                name, raw = bifop.parse_spec(spec)
+                bifop.convert_args(name, raw)
         except bif.BifError as e:
             raise bif.BifError("preset '%s': %s" % (p.name, e))
 
@@ -249,40 +279,71 @@ def format_for(path):
     return "png"
 
 
-def motion_op(args):
-    """The bifop operation for --3d / --spin / --sway / --pop (and what goes with them), or None.  They are the animations of
-    bidet3d, and the new one: the picture flat on the screen, popping out of it."""
-    if not (args.spin or args.sway is not None or args.pop or args.solid):
-        return None
-    kw = []
-    if args.material:
-        kw.append("material=%s" % args.material)
-    if args.depth is not None:
-        kw.append("depth=%g" % args.depth)
-    if args.view:
-        kw.append("view=%s" % args.view.replace(",", "+"))
-    if args.fps:
-        kw.append("fps=%g" % args.fps)
-    moves = []
-    if args.pop:
-        moves.append("pop")
-    if args.spin or args.sway is not None:
+MOVE_OPS = {"pop": "popout", "spin": "spin", "sway": "sway"}
+
+
+def _kvs(tokens, what):
+    out = collections.OrderedDict()
+    for t in tokens:
+        k, eq, v = t.partition("=")
+        if not (eq and k):
+            raise bif.BifError("%s: '%s' is not key=value" % (what, t))
+        out[k] = v
+    return out
+
+
+def motion_op(args, chosen=(), still=False):
+    """The bifop operation for the 3D look and the motion, or None.  They come from the presets (`solid =`, `motion =`, later
+    ones win) and from --3d / --spin / --sway / --pop / --material / --depth / --view / --turns / --fps, which win over
+    them: bidet3d's animations, and the new one, the picture flat on the screen popping out of it.  A look without a motion is a
+    still (`extrude`).  still=True: only the final pose of the motion, floating (for a contact sheet)."""
+    solid, path, extras, have = collections.OrderedDict(), None, collections.OrderedDict(), False
+    for p in chosen:
+        if p.solid:
+            solid.update(_kvs(p.solid, "preset '%s' solid" % p.name))
+            have = True
+        if p.motion:
+            words = p.motion.split()
+            path = [m for m in words[0].split("+") if m]
+            extras = _kvs(words[1:], "preset '%s' motion" % p.name)
+            have = True
+    cli = bool(args.spin or args.sway is not None or args.pop)
+    if cli:                                                                    # what was asked for replaces the presets' motion
+        path, extras = [], collections.OrderedDict()
         if args.pop:
-            moves.append("hold")
-        moves.append("spin" if args.spin else "sway")
-    if not moves:
-        return "extrude" + (":" + ",".join(kw) if kw else "")
-    if args.turns is not None and "spin" in moves:
-        kw.append("turns=%g" % args.turns)
-    if args.sway is not None and "sway" in moves:
-        kw.append("degrees=%g" % args.sway)
-    if len(moves) == 1:
-        name = {"pop": "popout", "spin": "spin", "sway": "sway"}[moves[0]]
-        return name + (":" + ",".join(kw) if kw else "")
-    return "motion:" + ",".join(["path=" + "+".join(moves)] + kw)
+            path.append("pop")
+        if args.spin or args.sway is not None:
+            if args.pop:
+                path.append("hold")
+            path.append("spin" if args.spin else "sway")
+    elif args.solid:                                                           # --3d: a still
+        path, extras = [], collections.OrderedDict()
+    if not (have or cli or args.solid):
+        return None
+    if args.material:
+        solid["material"] = args.material
+    if args.depth is not None:
+        solid["depth"] = "%g" % args.depth
+    if args.view:
+        solid["view"] = args.view.replace(",", "+")
+    if args.fps:
+        solid["fps"] = "%g" % args.fps
+    path = path or []
+    if still or not path:
+        if still and path:
+            solid.setdefault("hover", "0.6")                                   # the pose it ends in: up off the screen
+        return "extrude" + (":" + ",".join("%s=%s" % kv for kv in solid.items()) if solid else "")
+    if args.turns is not None and "spin" in path:
+        extras["turns"] = "%g" % args.turns
+    if args.sway is not None and "sway" in path:
+        extras["degrees"] = "%g" % args.sway
+    kw = list(solid.items()) + list(extras.items())
+    if len(path) == 1 and path[0] in MOVE_OPS:
+        return MOVE_OPS[path[0]] + (":" + ",".join("%s=%s" % x for x in kw) if kw else "")
+    return "motion:" + ",".join(["path=" + "+".join(path)] + ["%s=%s" % x for x in kw])
 
 
-def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=None, pixels=None, data=None):
+def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=None, pixels=None, data=None, still=False):
     """Turn parsed command-line arguments into a Plan (nothing is drawn).  `data`: the bytes of a standard input
     already read, so that a few plain words can be told from art; a named file is looked into here."""
     env = os.environ if env is None else env
@@ -305,7 +366,8 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
         plan.literal = " ".join(words)
     # a literal is words to set in a font; so is a file or standard input of plain words, or when asked with -t
     # (the art classifier takes words for picture art and draws nothing); --art or an importer flag says otherwise
-    user_in = shlex.split(args.bifin or "") + [f for p in (presets.get(n) for n in args.preset or []) if p for f in p.bifin]
+    chosen = expand(args.preset or [], presets)
+    user_in = shlex.split(args.bifin or "") + [f for p in chosen for f in p.bifin]
     art_flags = any(f in ("-f", "--from", "-m", "--mode") or f.startswith("--from=") or f.startswith("--mode=") for f in user_in)
     if plan.literal is not None:
         plan.lettering = True
@@ -314,11 +376,6 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
     # the recipe: presets in the order asked for, then what was asked on the command line
     if plan.lettering:
         plan.bifin = ["-f", "lettering"]  # set in a font, not drawn as art
-    chosen = []
-    for name in args.preset or []:
-        if name not in presets:
-            raise bif.BifError("no preset '%s' (bidet --list-presets shows them)" % name)
-        chosen.append(presets[name])
     for p in chosen:
         plan.bifin += p.bifin
         plan.ops += p.ops
@@ -327,7 +384,7 @@ def make_plan(args, presets, env=None, stdout_tty=None, stdin_tty=None, columns=
         plan.bifin += ["--face" if plan.lettering else "--font", args.font]                 # (the lettering's, or the art's)
     plan.bifin += shlex.split(args.bifin or "")
     plan.ops += shlex.split(args.bifop or "")
-    mo = motion_op(args)
+    mo = motion_op(args, chosen, still)
     if mo:
         plan.ops.append(mo)
     plan.bifout += shlex.split(args.bifout or "")
@@ -384,9 +441,8 @@ def read_input(plan):
     return sys.stdin.buffer.read()
 
 
-def run(plan, data, notes=None):
-    """Draw the plan: the bytes of the result (a PNG, SIXEL or BIF)."""
-    notes = notes or bifop.Notes()
+def build_picture(plan, data, notes):
+    """The plan's bifin and bifop stages: the Picture, before it is drawn."""
     if plan.is_bif:
         pic = bif.loads(data)
     else:
@@ -398,6 +454,13 @@ def run(plan, data, notes=None):
                            "--bifin='-m line')" % pic.meta.get("mode", "art"))
     if plan.ops:
         pic = bifop.apply(pic, plan.ops, notes)
+    return pic
+
+
+def run(plan, data, notes=None):
+    """Draw the plan: the bytes of the result (a PNG, SIXEL or BIF)."""
+    notes = notes or bifop.Notes()
+    pic = build_picture(plan, data, notes)
     if plan.fmt == "bif":
         return bif.dumps(pic)
     a = _parse_flags(bifout.build_parser(), plan.bifout, "bifout flags")

@@ -33,6 +33,7 @@ help:
 	@echo "  test-full    - lint, then everything including the full parity matrix (about 10 minutes)"
 	@echo "  testdata     - regenerate testdata/ (only when the spec or tests/make_testdata.py changed)"
 	@echo "  gallery      - redraw gallery/gallery.png: every bidet preset on a sample (a tour, and a visual check)"
+	@echo "  gallery-gif  - redraw gallery/gallery-3d.gif (every 3D preset, the moving ones moving) and gallery/popout.gif"
 	@echo "  time-machine - redraw gallery/time-machine.gif: banner, FIGlet, TOIlet, BIDeT, then it pops out of the screen"
 	@echo "  install      - install bif, bifin and bifout, and the docs, under PREFIX"
 	@echo "  uninstall    - remove them again"
@@ -75,6 +76,10 @@ testdata:
 
 gallery:
 	$(PYTHON) gallery.py
+
+gallery-gif:
+	$(PYTHON) gallery.py --gif
+	$(PYTHON) bidet.py -P popout "BIDeT 4D" -w 480 -o gallery/popout.gif
 
 time-machine:
 	$(PYTHON) timemachine.py BIDeT -o gallery/time-machine.gif
@@ -123,5 +128,5 @@ dist: lint
 clean:
 	rm -rf __pycache__ tests/__pycache__ tests/reference/__pycache__ dist out bidet4d-*.tar.gz
 
-.PHONY: all help version lint test-quick test check test-full testdata gallery time-machine install install-bin install-doc \
+.PHONY: all help version lint test-quick test check test-full testdata gallery gallery-gif time-machine install install-bin install-doc \
         uninstall installreq dist clean

@@ -29,7 +29,7 @@ SHADOW_SLICES = 14         # the shadow is soft, so it needs fewer
 MAX_PIXELS = 60000000
 LIGHT = np.array([-0.45, -0.55, 0.70], np.float32)
 LIGHT /= np.linalg.norm(LIGHT)
-SHADOW_DIR = (0.45 / 0.70, 0.55 / 0.70)               # the shadow of a point h above the screen lands this far over, per h
+SHADOW_DIR = (0.30, 0.40)                             # the shadow of a point h above the screen lands this far over, per h (a high lamp)
 
 
 def C(h):
@@ -58,6 +58,11 @@ MATERIALS = {
     "slate": (("solid", "#2F5485"), ("#8a8a8a", "#b3b3b3"), 0.25),
     "lime": (("solid", "#71F504"), ("#00116B", "#0a2090"), 0.25),
     "cornflower": (("solid", "#6495ed"), ("#1b2a4a", "#3e5c99"), 0.25),
+    "graphite": (("linear", "h", [(0, "#606060"), (.5, "#ffffff"), (1, "#606060")]), ("#27271F", "#60614B"), 0.4),
+    "brick": (("solid", "#4E0E0E"), ("#7C3E2C", "#E8703C"), 0.25),
+    "cobalt": (("solid", "#1657BD"), ("#4d0d0d", "#771515"), 0.25),
+    "horizon": (("linear", "v", [(0, "#7286a7"), (.13, "#7286a7"), (.5, "#ffffff"), (.56, "#812f30"), (1, "#ffffff")]),
+                ("#161616", "#8d8d8d"), 0.25),
 }
 
 

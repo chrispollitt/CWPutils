@@ -454,6 +454,162 @@ class Bidet(unittest.TestCase):
         self.assertIn("-o FILE.gif", err)
 
 
+PRESETS = None
+
+
+def presets():
+    global PRESETS
+    if PRESETS is None:
+        import bidet
+        PRESETS = bidet.load_presets([os.path.join(ROOT, "presets.ini")])
+    return PRESETS
+
+
+def plan_ops(*argv):
+    import bidet
+    args = bidet.build_parser().parse_args(list(argv) + ["-o", "x.gif", "Hi"])
+    return bidet.make_plan(args, presets(), stdout_tty=False, stdin_tty=False, env={}).ops
+
+
+class SolidPresets(unittest.TestCase):
+    """The 3D presets: `solid =` (the look), `motion =` (what it does), `uses =` (made of others)."""
+
+    def test_the_shipped_ones(self):
+        ps = presets()
+        looks = ("chrome", "rainbow", "gold", "superhero", "dusk", "lagoon", "cobalt", "graphite", "brick", "horizon", "lime", "relief")
+        moves_ = ("popout", "turntable", "swing", "rise")
+        shows = ("marquee", "bubble", "ripple", "skyline", "reveal", "carnival")
+        for n in looks + moves_ + shows:
+            self.assertIn(n, ps)
+        for n in looks:
+            self.assertTrue(ps[n].solid and not ps[n].motion, n)
+            self.assertIn("material=", " ".join(ps[n].solid))
+        for n in moves_:
+            self.assertTrue(ps[n].motion and ps[n].uses, n)
+        import bidet
+        for n in ps:
+            bidet.check_preset(ps[n], ps)
+
+    def test_a_look_alone_is_a_still_and_a_motion_makes_it_move(self):
+        still = plan_ops("-P", "chrome")
+        self.assertEqual(still[-1].split(":")[0], "extrude")
+        self.assertIn("material=chrome", still[-1])
+        self.assertIn("tall=1.2", still[-1])
+        moving = plan_ops("-P", "popout")
+        self.assertTrue(moving[-1].startswith("motion:path=pop+hold+spin"))
+        self.assertIn("material=rainbow", moving[-1])                                    # (via uses: its look)
+        self.assertIn("hold=2.4", moving[-1])
+        self.assertTrue(plan_ops("-P", "turntable")[-1].startswith("spin:"))
+        self.assertTrue(plan_ops("-P", "swing")[-1].startswith("sway:"))
+        self.assertIn("degrees=30", plan_ops("-P", "swing")[-1])
+        self.assertNotIn("extrude", " ".join(plan_ops("-P", "arc")))                      # a 2D preset stays 2D
+
+    def test_presets_combine_later_wins_and_nothing_piles_up(self):
+        ops = plan_ops("-P", "arc", "-P", "popout", "-P", "chrome")
+        self.assertEqual(ops[0].split(":")[0], "arc")                                      # the shape first
+        last = ops[-1]
+        self.assertIn("material=chrome", last)                                            # the look after the motion wins
+        self.assertNotIn("rainbow", last)
+        self.assertEqual(last.count("tall="), 1)                                          # `tall` replaced, not multiplied
+        self.assertIn("path=pop+hold+spin", last)
+        self.assertEqual(sum(1 for o in ops if o.startswith("stretch")), 0)
+        rev = plan_ops("-P", "chrome", "-P", "popout")[-1]
+        self.assertIn("material=rainbow", rev)                                            # (the order is the rule, as documented)
+
+    def test_uses_builds_showpieces(self):
+        ops = plan_ops("-P", "marquee")
+        self.assertEqual(ops[0].split(":")[0], "arc")
+        self.assertIn("material=gold", ops[-1])
+        rv = plan_ops("-P", "reveal")
+        self.assertTrue(rv[-1].startswith("motion:path=pop+hold+spin"))
+        self.assertIn("material=chrome", rv[-1])
+        import bidet
+        ps = dict(presets())
+        a = bidet.Preset("a", uses=["b"])
+        b = bidet.Preset("b", uses=["a"])
+        ps.update(a=a, b=b)
+        with self.assertRaises(bif.BifError):
+            bidet.expand(["a"], ps)                                                       # round in a circle
+        with self.assertRaises(bif.BifError):
+            bidet.expand(["nonesuch"], ps)
+        with self.assertRaises(bif.BifError):
+            bidet.check_preset(bidet.Preset("c", uses=["nonesuch"]), dict(ps, c=bidet.Preset("c", uses=["nonesuch"])))
+
+    def test_flags_win_over_presets(self):
+        self.assertTrue(plan_ops("-P", "popout", "--spin")[-1].startswith("spin:"))        # asked for: replaces the preset's motion
+        self.assertEqual(plan_ops("-P", "popout", "--3d")[-1].split(":")[0], "extrude")    # --3d: a still
+        self.assertIn("material=gold", plan_ops("-P", "popout", "--material", "gold")[-1])
+        self.assertIn("depth=0.5", plan_ops("-P", "chrome", "--depth", "0.5")[-1])
+        self.assertIn("view=10+20+0", plan_ops("-P", "chrome", "--view", "10,20,0")[-1])
+
+    def test_bad_solid_or_motion_is_reported_with_the_preset_name(self):
+        import bidet
+        for kw in (dict(solid=["material"]), dict(solid=["nonesuch=1"]), dict(motion="pop hold"), dict(motion="pop+hold+spin bogus=1")):
+            p = bidet.Preset("bad", **kw)
+            with self.assertRaises(bif.BifError) as cm:
+                bidet.check_preset(p)
+            self.assertIn("bad", str(cm.exception))
+
+    def test_tall_stretch_and_material_check(self):
+        flat = flat_picture()
+        a = bifop.apply(flat, ["extrude:tall=1"], bifop.Notes())
+        b = bifop.apply(flat, ["extrude:tall=1.5"], bifop.Notes())
+        self.assertAlmostEqual(b.unit_aspect, 1.5)
+        r_a, r_b = bifrender.render(a), bifrender.render(b)
+        self.assertAlmostEqual(r_b.H / float(r_a.H), 1.5, delta=0.08)                      # taller, as drawn
+        self.assertAlmostEqual(r_b.W / float(r_a.W), 1.0, delta=0.05)
+        with self.assertRaises(bif.BifError):
+            bifop.apply(flat, ["extrude:tall=0"], bifop.Notes())
+        st = bifop.apply(flat, ["stretch:y=2,x=0.5"], bifop.Notes())
+        self.assertAlmostEqual(st.height, flat.height * 2)
+        self.assertAlmostEqual(st.width, flat.width * 0.5)
+        with self.assertRaises(bif.BifError):
+            bifop.apply(flat, ["stretch:y=-1"], bifop.Notes())
+        for name in ("graphite", "brick", "cobalt", "horizon"):
+            self.assertIn(name, bif3d.MATERIALS)
+
+
+class Gallery(unittest.TestCase):
+    def test_which_presets_are_3d_and_which_move(self):
+        import gallery
+        ps = presets()
+        self.assertTrue(gallery.is_3d("chrome", ps))
+        self.assertFalse(gallery.moves("chrome", ps))
+        self.assertTrue(gallery.moves("popout", ps))
+        self.assertTrue(gallery.moves("reveal", ps))                                     # (through uses)
+        self.assertTrue(gallery.is_3d("marquee", ps))
+        self.assertFalse(gallery.is_3d("arc", ps))
+        self.assertFalse(gallery.is_3d("plain", ps))
+
+    def test_a_tile_of_a_moving_preset_is_its_final_pose_as_a_still(self):
+        import gallery
+        im = Image.open(io.BytesIO(gallery.render("popout", 240, presets())))
+        self.assertGreater(im.size[0], 100)
+        self.assertNotIn("duration", im.info)                                              # a PNG: one picture, not 60 frames
+        g = np.asarray(im.convert("L"))
+        self.assertGreater(float((g != g[0, 0]).mean()), 0.01)
+
+    def test_the_animated_sheet_loops_on_the_master_loop(self):
+        import gallery
+        ps = presets()
+        orig = (gallery.FPS, gallery.LOOP_SECONDS)
+        gallery.FPS, gallery.LOOP_SECONDS = 4, 2                                           # (a quick one)
+        try:
+            tiles = gallery.animated_tiles("turntable", (150, 100), ps)
+            self.assertEqual(len(tiles), 8)
+            self.assertIsNone(gallery.animated_tiles("chrome", (150, 100), ps))             # a still has no frames of its own
+            frames = gallery.animated_sheet(["chrome", "turntable"], ps, tile=(150, 100), columns=2)
+            self.assertEqual(len(frames), 8)
+            a, b = np.asarray(frames[0]), np.asarray(frames[3])
+            self.assertTrue((a[:, :a.shape[1] // 2 - 20] == b[:, :a.shape[1] // 2 - 20]).all())    # the still tile does not change
+            self.assertFalse((a == b).all())                                                 # the moving one does
+            path = os.path.join(tempfile.mkdtemp(), "s.gif")
+            gallery.save_gif(frames, path)
+            self.assertEqual(Image.open(path).n_frames, 8)
+        finally:
+            gallery.FPS, gallery.LOOP_SECONDS = orig
+
+
 class TimeMachine(unittest.TestCase):
     def cfg(self, **kw):
         kw.setdefault("stage_time", 0.2)

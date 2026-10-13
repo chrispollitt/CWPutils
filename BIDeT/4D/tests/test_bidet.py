@@ -57,7 +57,7 @@ class Presets(unittest.TestCase):
         for name, p in PRESETS.items():
             self.assertTrue(p.description, name)
             self.assertIn(p.sample, bidet.SAMPLE_KINDS, name)
-            bidet.check_preset(p)                                       # its flags, operations and sample are valid
+            bidet.check_preset(p, PRESETS)                              # its flags, operations, 3D look, motion and `uses` are valid
         for need in ("plain", "arc", "squeeze", "wave", "matrix", "bold", "sketch", "trace", "contour", "pixels", "huge"):
             self.assertIn(need, PRESETS)
 
