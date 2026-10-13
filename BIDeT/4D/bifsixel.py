@@ -53,11 +53,14 @@ def _rle_rows(bits):
     return [text[bounds[i]:bounds[i + 1]] for i in range(K)]
 
 
-def _sixel_stream(idx, palette, transparent):
+def _sixel_stream(idx, palette, transparent, p2=None):
     """SIXEL bytes for an array of palette indices (uint8; index 0 is the paper, left unpainted
-    when transparent) and the palette, a list of (r, g, b) 0..255."""
+    when transparent) and the palette, a list of (r, g, b) 0..255.  p2: the SIXEL header's "background select" (default:
+    1 for transparent, which leaves unpainted pixels as they were, else 0); `transparent` with p2=0 leaves index 0
+    unpainted but has the terminal fill those pixels with its own background colour (nothing of an earlier picture can
+    show through, and the page is the terminal's exactly)."""
     H, W = idx.shape
-    out = ["\x1bP0;%d;0q\"1;1;%d;%d" % (1 if transparent else 0, W, H)]
+    out = ["\x1bP0;%d;0q\"1;1;%d;%d" % ((1 if transparent else 0) if p2 is None else p2, W, H)]
     for i, c in enumerate(palette):
         out.append("#%d;2;%d;%d;%d" % (i, int(round(c[0] * 100 / 255.0)), int(round(c[1] * 100 / 255.0)),
                                        int(round(c[2] * 100 / 255.0))))

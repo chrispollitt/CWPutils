@@ -393,6 +393,44 @@ class Playback(unittest.TestCase):
         self.assertFalse(bifout.plays(pic, parse(), "png", True))
         self.assertFalse(bifout.plays(still, parse(), "sixel", True))                       # (a still is just drawn)
 
+    def test_transparent_frames_are_not_blended_with_a_page(self):
+        """Windows Terminal does not say its background, so frames go out transparent: a pixel is painted in its own colour if at
+        least half covered, else left clear.  Blending an edge or a shadow with the picture's own (white) page made a pale halo."""
+        alpha = np.array([[1.0, 0.7, 0.3, 0.0]], np.float32)
+        color = np.zeros((1, 4, 3), np.uint8)
+        color[:] = (200, 50, 50)
+        r = bifrender.Rendering(4, 1, 1.0, 1.0, alpha, color, (255.0, 255.0, 255.0), [])
+        pal = bifout.GifPalette([r], transparent=True, size=254)
+        idx = pal.indices(r)[0]
+        rgb = pal.rgb()
+        for k in (0, 1):                                                                  # solid and 70% covered: the colour as it is
+            self.assertTrue(all(abs(a_ - b_) <= 2 for a_, b_ in zip(rgb[idx[k]], (200, 50, 50))), (k, rgb[idx[k]]))
+        self.assertEqual((int(idx[2]), int(idx[3])), (pal.trans, pal.trans))               # 30% and 0%: clear
+        # one colour of ink (line art): the same, by the ramp's top index
+        ink = bifrender.Rendering(4, 1, 1.0, 1.0, alpha, (10, 20, 30), (255.0, 255.0, 255.0), [])
+        p2 = bifout.GifPalette([ink], transparent=True, size=254)
+        i2 = p2.indices(ink)[0]
+        self.assertEqual(tuple(p2.rgb()[i2[1]]), (10, 20, 30))
+        self.assertEqual(int(i2[2]), p2.trans)
+
+    def test_sixel_header_and_unpainted_page_for_each_erase_mode(self):
+        import re
+        pic = self.pic()
+        first, frames, samples = bifout.draw_all(pic, [0, 1], {})
+        for erase, p2 in (("ech", b"\x1bP0;1;0q"), ("bg", b"\x1bP0;0;0q")):
+            six = list(bifout.sixel_frames(iter([first, first]), samples, transparent=True, erase=erase))
+            self.assertTrue(six[0].startswith(p2), (erase, six[0][:12]))
+            self.assertIsNone(re.search(rb"#0[!?-~]", six[0]))                            # index 0 is never painted: the page is not ours
+        opaque = list(bifout.sixel_frames(iter([first]), samples, transparent=False, erase="bg"))
+        self.assertTrue(opaque[0].startswith(b"\x1bP0;0;0q"))                              # (erase only means something for a clear page)
+
+    def test_erasing_covers_every_row_made_room_for_and_only_when_asked(self):
+        for erase, rows_erased in (("ech", 5), ("bg", 0), ("none", 0)):
+            out = io.BytesIO()
+            sent = bifout.play_sixel([b"<A>", b"<B>"], [50, 50], 5, 7, out, loops=1, transparent=True,
+                                     clock=iter([0.0, 0.0, 0.06, 0.2]).__next__, sleep=lambda s: None, erase=erase)
+            self.assertEqual(out.getvalue().count(b"\x1b[7X"), rows_erased * sent, (erase, sent))
+
     def test_cell_size(self):
         self.assertEqual(bifout.cell_size("8x16"), (8, 16))
         import bifterm

@@ -68,9 +68,17 @@ def _padded(pal, size=256):
     return pal
 
 
+def _straight(r):
+    """The colours of a Rendering as they are, not blended with any page: uint8 (H, W, 3)."""
+    return np.ascontiguousarray(np.broadcast_to(r.color_u8(), (r.H, r.W, 3)))
+
+
 class GifPalette(object):
     """The colours of one animation (at most `size`), made from some of its Renderings; and the conversion of any
-    Rendering to indices into them.  Used for GIF (size 256, `transparent`: the last index is "no colour") and for SIXEL."""
+    Rendering to indices into them.  Used for GIF (size 256, `transparent`: the last index is "no colour") and for SIXEL.
+    `transparent`: the page is not known (it is the viewer's, or the terminal's), so nothing is blended with one: a pixel is
+    painted in its own colour if it is at least half covered, else left clear (a soft shadow or an antialiased edge blended
+    with a guessed white page would be a pale halo on a dark terminal)."""
 
     def __init__(self, samples, transparent=False, size=256):
         from PIL import Image
@@ -87,7 +95,12 @@ class GifPalette(object):
         else:
             self.ink = None
             step = max(1, int(np.ceil(np.sqrt(len(samples) * samples[0].W * samples[0].H / float(GIF_SAMPLE_PIXELS)))))
-            mont = np.concatenate([r.flatten()[::step, ::step] for r in samples], axis=0)
+            if transparent:                                                  # the colours of what will be painted, as they are
+                px = [_straight(r)[::step, ::step][(np.clip(r.alpha, 0.0, 1.0) >= 0.5)[::step, ::step]] for r in samples]
+                px = np.concatenate(px) if any(len(p_) for p_ in px) else np.zeros((1, 3), np.uint8)
+                mont = px.reshape(-1, 1, 3)
+            else:
+                mont = np.concatenate([r.flatten()[::step, ::step] for r in samples], axis=0)
             q = Image.fromarray(np.ascontiguousarray(mont), "RGB").quantize(colors=size - 1 if transparent else size, method=0)
             q.putpalette(_padded(q.getpalette(), size))
             self.pimg = q
@@ -105,7 +118,7 @@ class GifPalette(object):
             if self.transparent:
                 return np.where(alpha >= 0.5, self.levels, self.trans).astype(np.uint8)
             return np.rint(alpha * self.levels).astype(np.uint8)
-        rgb = Image.fromarray(np.ascontiguousarray(r.flatten()), "RGB")      # a colour the sample did not have: the nearest
+        rgb = Image.fromarray(_straight(r) if self.transparent else np.ascontiguousarray(r.flatten()), "RGB")      # the nearest colour
         try:
             im = rgb.quantize(palette=self.pimg, dither=0)
         except TypeError:                                                    # (Pillow before 7 cannot turn dithering off)
@@ -282,21 +295,26 @@ def cell_size(opt=None, reply=None, fd=1, env=None):
     return 10, 20
 
 
-def sixel_frames(renders, samples, transparent=False):
+def sixel_frames(renders, samples, transparent=False, erase="ech"):
     """SIXEL bytes of each Rendering, all on one palette (colours do not shimmer between frames; the page is exact).
-    transparent: the page is left unpainted (palette index 0)."""
-    pal = GifPalette(samples, False, size=254)
+    transparent: the page is left unpainted (palette index 0); erase "bg": and the terminal fills those pixels with its own
+    background colour (SIXEL P2=0) instead of leaving what was there (see play_sixel)."""
+    pal = GifPalette(samples, transparent, size=254)
     colours = [tuple(int(v) for v in samples[0].paper)] + pal.rgb()
     for r in renders:
         idx = pal.indices(r).astype(np.int32) + 1
         if transparent:
-            idx[np.clip(r.alpha, 0.0, 1.0) < 0.02] = 0
-        yield bifsixel._sixel_stream(np.minimum(idx, 254).astype(np.uint8), colours, transparent)
+            idx[idx == pal.trans + 1] = 0                                    # "no colour" is index 0, which is left unpainted
+        yield bifsixel._sixel_stream(np.minimum(idx, 254).astype(np.uint8), colours, transparent,
+                                     p2=0 if (transparent and erase == "bg") else None)
 
 
-def play_sixel(sixels, delays_ms, rows, cols, out, loops=0, transparent=False, clock=None, sleep=None):
+def play_sixel(sixels, delays_ms, rows, cols, out, loops=0, transparent=False, clock=None, sleep=None, erase="ech"):
     """Replay encoded SIXEL frames on `out` until Ctrl-C (loops = 0) or that many times.  A terminal that cannot keep up
-    skips frames, it does not slow the motion down.  Returns how many frames it sent."""
+    skips frames, it does not slow the motion down.  Returns how many frames it sent.
+    A transparent frame leaves some pixels unpainted, and those would show the frame before.  erase says how that is
+    prevented: "ech" erases the character cells of the picture before each frame (what bidet3d did); "bg" needs nothing here:
+    the frames were encoded so that the terminal fills those pixels with its background (sixel_frames); "none" does neither."""
     import bisect
     import time
     clock = clock or time.monotonic
@@ -307,8 +325,8 @@ def play_sixel(sixels, delays_ms, rows, cols, out, loops=0, transparent=False, c
         ends.append(t)
     total = ends[-1]
     clear = b""
-    if transparent:                                     # unpainted pixels would show the frame before: erase the picture area first
-        clear = b"\x1b8" + (b"\x1b[%dX\x1b[B" % cols) * (rows - 1)
+    if transparent and erase == "ech":                  # unpainted pixels would show the frame before: erase the picture area first
+        clear = b"\x1b8" + (b"\x1b[%dX\x1b[B" % cols) * (rows - 1) + b"\x1b[%dX" % cols      # (every row that was made room for)
     out.write(b"\n" * rows + b"\x1b[%dA" % rows + b"\x1b7\x1b[?25l")
     start, last, sent = clock(), -1, 0
     try:
@@ -334,7 +352,7 @@ def play_sixel(sixels, delays_ms, rows, cols, out, loops=0, transparent=False, c
 
 
 def play(pic, out, cell, frame=None, transparent=False, speed=1.0, loop=None, fps=None, progress=None, clock=None, sleep=None,
-         **render_opts):
+         erase="ech", **render_opts):
     """Draw every frame of an animated Picture, encode them as SIXEL on one palette, and play them on `out` (a terminal).
     cell: (width, height) of a character cell in pixels.  loop: 0 = until Ctrl-C (default: as the picture says).
     Returns the Rendering of the first frame."""
@@ -342,7 +360,7 @@ def play(pic, out, cell, frame=None, transparent=False, speed=1.0, loop=None, fp
     first, frames, samples = draw_all(pic, [i for i, _ in sched], render_opts)
     sixels = []
     try:
-        for n, six in enumerate(sixel_frames(frames, samples, transparent)):
+        for n, six in enumerate(sixel_frames(frames, samples, transparent, erase)):
             sixels.append(six)
             if progress:
                 progress(n + 1, len(sched))
@@ -352,7 +370,7 @@ def play(pic, out, cell, frame=None, transparent=False, speed=1.0, loop=None, fp
         loop = int((pic.animation or {}).get("loop", 1))
     rows = int(math.ceil(first.H / float(cell[1]))) + 1
     cols = int(math.ceil(first.W / float(cell[0]))) + 1
-    play_sixel(sixels, [d for _, d in sched], rows, cols, out, loop, transparent, clock, sleep)
+    play_sixel(sixels, [d for _, d in sched], rows, cols, out, loop, transparent, clock, sleep, erase)
     return first
 
 
@@ -377,6 +395,10 @@ def build_parser():
     ap.add_argument("--speed", type=float, default=1.0, metavar="F", help="animation: play this many times faster (default 1)")
     ap.add_argument("--fps", type=float, default=None, metavar="N",
                     help="animation: at most this many frames a second (default: the picture's own; fewer = quicker to draw, smaller)")
+    ap.add_argument("--erase", choices=["ech", "bg", "none"], default="ech",
+                    help="animation on a terminal whose colour it did not say (transparent frames): how an earlier frame is kept from "
+                         "showing through: ech = erase the picture's cells first (default), bg = the terminal fills unpainted pixels "
+                         "with its own background (SIXEL P2=0), none.  If frames leave specks or lines behind, try bg")
     ap.add_argument("--cell", metavar="WxH", help="animation on a terminal: the size of a character cell in pixels, if the "
                     "terminal does not say (default: asked, else the window's, else 10x20; also BIDET_CELL)")
     ap.add_argument("--loop", type=int, default=None, metavar="N",
@@ -487,7 +509,7 @@ def main(argv=None):
             reply = ask_terminal(a, fmt, want_cell=animated)
             opts = terminal_options(pic, a, opts, reply)
         if animated:                                             # play it: there is no file to write
-            r = play(pic, sys.stdout.buffer, cell_size(a.cell, reply), progress=progress_on_stderr, **opts)
+            r = play(pic, sys.stdout.buffer, cell_size(a.cell, reply), progress=progress_on_stderr, erase=a.erase, **opts)
             for n in r.notes:
                 sys.stderr.write("bifout: %s\n" % n)
             return

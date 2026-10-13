@@ -471,7 +471,8 @@ def run(plan, data, notes=None):
         reply = bifout.ask_terminal(a, plan.fmt, want_cell=animated)
         opts = bifout.terminal_options(pic, a, opts, reply)
         if animated:                                                                      # play it (there is nothing to write)
-            r = bifout.play(pic, sys.stdout.buffer, bifout.cell_size(a.cell, reply), progress=bifout.progress_on_stderr, **opts)
+            r = bifout.play(pic, sys.stdout.buffer, bifout.cell_size(a.cell, reply), progress=bifout.progress_on_stderr,
+                            erase=a.erase, **opts)
             notes.lines.extend(r.notes)
             return b""
     r = bifout.convert(pic, plan.fmt, buf, **opts)
@@ -558,7 +559,7 @@ def time_machine(args):
     reply = bifout.ask_terminal(a, "sixel", want_cell=True)
     opts = bifout.terminal_options(pic, a, bifout.render_options(a), reply)
     opts["width"] = args.width or fit_width(terminal_pixels(), terminal_columns())
-    bifout.play(pic, sys.stdout.buffer, bifout.cell_size(None, reply), progress=bifout.progress_on_stderr, **opts)
+    bifout.play(pic, sys.stdout.buffer, bifout.cell_size(None, reply), progress=bifout.progress_on_stderr, erase=a.erase, **opts)
     return 0
 
 
