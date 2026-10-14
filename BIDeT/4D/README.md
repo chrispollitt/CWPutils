@@ -4,7 +4,8 @@ Re-architecture of BIDeT3D / unascii into three tools that talk through one file
 command that most people will use.
 Status: 2026-10-12. The format (`BIF-SPEC.md`), `bif.py`, `bifin` (terminal art, text in a font, terminal sessions),
 `bifop` (shapes, colour, 3D, animation, joining), `bifout` (PNG, GIF, SIXEL, live playback) and `bidet` with 50 presets
-exist and are tested; the gallery below shows them. **Setting it up: [`INSTALL.md`](INSTALL.md).** Changing the code:
+exist and are tested; the gallery below shows them. **Setting it up: [`INSTALL.md`](INSTALL.md).** Pipelines with other people's tools (fortune, figlet, cowsay, ffmpeg, git ...):
+[`RECIPES.md`](RECIPES.md). Changing the code:
 [`DEVNOTES.txt`](DEVNOTES.txt). The running state of the work: [`HANDOFF.md`](HANDOFF.md). Where it comes from:
 [`../HISTORY.md`](../HISTORY.md); licence and warranty: [`../LICENSE`](../LICENSE), [`../WARRANTY`](../WARRANTY).
 Man pages: `bidet(1)`, `bifin(1)`, `bifop(1)`, `bifout(1)`. `../3D` (BIDeT3D, with `3D/unascii` and `3D/gfx-conv`) is **legacy**:
@@ -70,6 +71,11 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
    `ticker`, `cpm` (the original: white letters entering from the right edge) and `credits` set them up, and a 3D look scrolls
    too (`bidet -P gold --scroll "GOLD RUSH" -o gold.gif`). It is one `bifop` operation, `scroll`, which takes any flat
    picture: `bifin -f lettering Hello | bifop crop:margin=10 scroll:left,start=enter | bifout -o hello.gif`.
+
+   **Recipes.** `bidet` reads a pipe, so anything that prints is an ingredient: `fortune -s | bidet --scroll`, `git describe
+   --always --dirty | bidet -t -P gold`, `figlet -f big Hi | bidet -P sunset`, a `.vt` replayed as a GIF, a GIF repacked as MP4 or laid
+   along the bottom of a video by `ffmpeg`. [`RECIPES.md`](RECIPES.md) has them all, every one run and looked at, and says what was
+   not tried.
 
    **Terminals: your mileage may vary.** SIXEL support differs from terminal to terminal, and animation puts it under the
    most strain. Playing an animation live has been tested thoroughly only in **mintty**, where it works well. In

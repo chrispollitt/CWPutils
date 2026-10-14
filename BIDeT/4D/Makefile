@@ -17,7 +17,7 @@ MANDIR  = $(DESTDIR)$(PREFIX)/share/man/man1
 TOOLS   = bif bifin bifop bifout bidet
 LIB     = bifrender.py bifsixel.py bifgfx.py bifterm.py bifin_text.py bifin_lettering.py bifin_vt.py bifop_3d.py bifop_join.py bifop_scroll.py bif3d.py timemachine.py fonts.py ttfglyphs.py tonetrace.py
 PYFILES = $(addsuffix .py,$(TOOLS)) $(LIB) gallery.py
-DOCS    = README.md BIF-SPEC.md HANDOFF.md INSTALL.md DEVNOTES.txt
+DOCS    = README.md BIF-SPEC.md HANDOFF.md INSTALL.md DEVNOTES.txt RECIPES.md
 MANPAGES = bidet.1 bifin.1 bifop.1 bifout.1
 # the documents of the whole BIDeT project, one folder up (or beside the Makefile, in an unpacked tarball)
 TOPDIR  = $(if $(wildcard ../LICENSE),..,.)

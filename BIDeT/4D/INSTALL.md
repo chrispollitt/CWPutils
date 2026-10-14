@@ -96,6 +96,8 @@ looked for in the usual places for Windows, Cygwin, WSL, macOS and Linux, and th
   (`figlet` and `toilet` are in most distributions; `banner` is rarer) and draws imitations from a font if not
   (`BIDET_EMULATE=1` forces the imitations).
 - `groff`: `make lint` checks the man pages with it when it is there.
+- `fortune`, `figlet`, `toilet`, `cowsay`, `boxes`, `ffmpeg`, `img2txt` (libcaca), `curl`: ingredients of the pipelines in
+  [`RECIPES.md`](RECIPES.md); none is needed by BIDeT itself.
 - `git`: the pictures in `gallery/` are a separate branch ([7](#7-the-pictures-in-gallery)).
 
 ## 7. The pictures in `gallery/`

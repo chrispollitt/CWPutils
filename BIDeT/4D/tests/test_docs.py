@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Tests that the man pages say what the code does: every operation of bifop and every option of bifin is in its page, the
-pages are well-formed roff, and the Makefile lists them.   python tests/test_docs.py"""
+pages are well-formed roff, and the Makefile lists them; and that RECIPES.md (the book of pipelines with other programs) still
+names real presets, operations and flags.   python tests/test_docs.py"""
 from __future__ import print_function
 
+import io
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -96,6 +99,89 @@ class ManPages(unittest.TestCase):
         for n in ("bifout", "bidet"):
             self.mentions(page(n), "YMMV", "%s.1 has no YMMV note" % n)
             self.mentions(page(n), "mintty", "%s.1 does not say where it was tested" % n)
+
+
+class Recipes(unittest.TestCase):
+    """RECIPES.md, the book of pipelines with other people's tools.  Nothing is run (the other programs may not be installed):
+    every bidet, bifin, bifop and bifout command in it must still parse, every preset and operation it names must exist, and every
+    other program it uses must be in its table of ingredients, so that a renamed flag or preset cannot leave the book wrong."""
+    BUILTINS = ("echo", "printf", "cat", "for", "do", "done", "while", "sleep", "{", "}")
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(ROOT, "RECIPES.md"), encoding="utf-8") as f:
+            cls.text = f.read()
+        cls.presets = bidet.load_presets([os.path.join(ROOT, "presets.ini")])
+        cls.commands = []                                                          # (cmd, args) of every command in a code block
+        for line in cls.text.splitlines():
+            if not re.match(r"^    \S", line) or line.startswith("    producer |"):          # (the template of a recipe is not one)
+                continue
+            lex = shlex.shlex(line, posix=True, punctuation_chars=True)
+            lex.whitespace_split = True
+            seg = []
+            for tok in list(lex) + [";"]:
+                if tok in ("|", ";", "&&", "||"):
+                    while seg and seg[0] in ("do", "then", "{"):
+                        seg = seg[1:]
+                    if seg and seg[0] != "}":
+                        args = seg[1:]
+                        if ">" in args:
+                            args = args[:args.index(">")]                          # (a redirection is not an argument)
+                        cls.commands.append((seg[0], args))
+                    seg = []
+                else:
+                    seg.append(tok)
+
+    def table(self):
+        return self.text.split("## Ingredients")[1].split("## Text as a ticker")[0]
+
+    def parse(self, parser, args, what):
+        saved, sys.stderr = sys.stderr, io.StringIO()
+        try:
+            return parser.parse_args(list(args))
+        except SystemExit:
+            self.fail("%s: RECIPES.md has a command that no longer parses: %s %s (%s)" % (
+                what, what, " ".join(args), sys.stderr.getvalue().strip().splitlines()[-1:]))
+        finally:
+            sys.stderr = saved
+
+    def test_there_are_recipes_to_check(self):
+        names = set(c for c, _a in self.commands)
+        for tool in ("bidet", "bifin", "bifop", "bifout", "fortune", "figlet", "ffmpeg", "git"):
+            self.assertIn(tool, names)
+        self.assertGreater(len([1 for c, _a in self.commands if c == "bidet"]), 20)
+
+    def test_every_bidet_bifin_bifop_and_bifout_command_parses(self):
+        for cmd, args in self.commands:
+            if cmd == "bidet":
+                a = self.parse(bidet.build_parser(), args, "bidet")
+                for name in a.preset or []:
+                    self.assertIn(name, self.presets, "bidet -P %s: no such preset" % name)
+            elif cmd == "bifin":
+                self.parse(bifin.build_parser(), args, "bifin")
+            elif cmd == "bifout":
+                self.parse(bifout.build_parser(), args, "bifout")
+            elif cmd == "bifop":
+                for spec in [x for x in args if not x.startswith("-")]:
+                    name, raw = bifop.parse_spec(spec)
+                    bifop.convert_args(name, raw)
+
+    def test_every_preset_the_text_names_exists(self):
+        for name in re.findall(r"(?<!\[)-P ([A-Za-z][\w-]*)", self.text):                  # (`[-P preset]` in the template is not a name)
+            self.assertIn(name, self.presets, "RECIPES.md mentions -P %s, which is not a preset" % name)
+
+    def test_every_other_program_is_in_the_table_of_ingredients(self):
+        table = self.table()
+        for cmd, _args in self.commands:
+            if cmd in ("bidet", "bifin", "bifop", "bifout") or cmd in self.BUILTINS:
+                continue
+            self.assertIn("`%s`" % cmd, table, "%s is used in RECIPES.md but is not in the table of ingredients" % cmd)
+
+    def test_the_book_is_honest_and_shipped(self):
+        for heading in ("## How these were tested", "## Not tried, and not working", "## Gotchas"):
+            self.assertIn(heading, self.text)
+        with open(os.path.join(ROOT, "Makefile"), encoding="utf-8") as f:
+            self.assertIn("RECIPES.md", re.search(r"^DOCS\s*=\s*(.*)$", f.read(), re.M).group(1).split())
 
 
 if __name__ == "__main__":
