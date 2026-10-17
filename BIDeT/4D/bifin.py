@@ -99,7 +99,7 @@ def build_parser():
     ap.add_argument("file", nargs="?", default="-", help="art file (default: standard input)")
     ap.add_argument("-o", "--output", metavar="FILE", help="write the BIF here (default: standard output)")
     ap.add_argument("-f", "--from", dest="kind", choices=sorted(READERS), help="input kind (default: detected)")
-    ap.add_argument("-m", "--mode", choices=["auto", "lineart", "ansi-block", "block", "line", "tone", "mix"], default="auto",
+    ap.add_argument("-m", "--mode", choices=["auto", "lineart", "ansi-block", "block", "line", "tone", "mix", "mixed", "text"], default="auto",
                     help="lineart: line drawing (cowsay, figlet; picture-style art is outlined); ansi-block: "
                          "block/graphic-character art as the coloured picture it is; auto picks one (default). "
                          "line, tone, mix: force one lineart method")

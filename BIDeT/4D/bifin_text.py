@@ -1836,7 +1836,16 @@ def import_grid(grid, o, info=None):
     cw = max(4, int(o.cell_w))
     cw += cw % 2                                  # half-cell and braille dots need whole pixels
     mode = "block" if o.mode == "ansi-block" else o.mode
-    shade = shade_cells(grid, o.shade)
+    extra_text = info.get("text_cells")           # cells that are prose whatever the character (set by bifin_regions)
+    if mode in ("auto", "mixed"):                 # art of several kinds at once: each kind its own way (bifin_regions)
+        import bifin_regions
+        pl = bifin_regions.plan(grid, o)
+        if pl.mixed:
+            return bifin_regions.import_mixed(grid, o, info, pl)
+        if bifin_regions.TEXT in pl.modes:        # line art with words: the words are set in the font
+            extra_text = pl.cells(bifin_regions.TEXT)
+        mode = "auto"
+    shade = None if mode == "text" else shade_cells(grid, o.shade)
     if mode in ("auto", "lineart"):
         picked, st = classify(grid, shade)
         if mode == "lineart" and picked == "block":
@@ -1866,7 +1875,7 @@ def import_grid(grid, o, info=None):
     pal = info.get("palette")
     if pal is None:
         pal = info["palette"] = _Palette(ink_c, paper_c)
-    cmap = cell_color_map(grid, ink_rgb, paper_c) if use_color and mode in ("line", "mix") else None
+    cmap = cell_color_map(grid, ink_rgb, paper_c) if use_color and mode in ("line", "mix", "text") else None
     dark_art = dark_picture or (mode in ("tone", "mix") and (o.dark if o.dark is not None else grid.has_color()))
 
     rasters = []                                  # _Raster, bottom first
@@ -1921,11 +1930,15 @@ def import_grid(grid, o, info=None):
                 rgb[ys + pad, xs + pad] = np.clip(legible(col, ink_rgb, paper_c) + 0.5, 0, 255).astype(np.uint8)
             rasters.append(_Raster("tone", ink, rgb, 0, 0))
 
-    if mode == "line" or mode == "mix":
+    if mode in ("line", "mix", "text"):
         paths, cache = [], {}
         letters = []                                              # (y, x, char): drawn from the font
         text = word_cells(grid, shade)
-        lifted = bubble_bottoms(grid)
+        if mode == "text":                                        # prose: every character is a letter
+            text = [[True] * grid.cols for _ in range(grid.rows)]
+        elif extra_text:
+            text = [[a or b for a, b in zip(r1, r2)] for r1, r2 in zip(text, extra_text)]
+        lifted = set() if mode == "text" else bubble_bottoms(grid)
         for y in range(grid.rows):
             for x in range(grid.cols):
                 c = grid.ch[y][x]

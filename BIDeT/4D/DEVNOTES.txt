@@ -31,6 +31,7 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
     bif.py               the BIF library: read, write, validate; `bif.py info|check|chunks`
     bifin.py             tool 1: the command line and READERS
     bifin_text.py        terminal art -> BIF (unascii's reader/classifier by line range + a new assembly)
+    bifin_regions.py     art of several kinds at once (text, blocks, line, tone): cut into regions, each drawn its own way
     bifin_lettering.py   a string in a font -> BIF (fonts.py, ttfglyphs.py)
     bifin_vt.py          a terminal session -> an animation (one frame per screen)
     bifop.py             tool 2: the registry and command line; bifop_3d.py, bifop_join.py, bifop_scroll.py register more ops
@@ -64,6 +65,21 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
                  durations_ms, fp, transparent, loop, speed, samples); a format for a terminal is also in TERMINAL_FORMATS
                  (and in PLAYABLE if bifout.play() can play it).  Encoders for the terminal formats live in bifgfx.py, which
                  was ported by copy from ../3D/gfx-conv (tests/test_gfx.py compares the two byte for byte where it is present).
+
+ A kind of region
+                 Mixed art (a motd, a neofetch screen) is cut into regions by bifin_regions.plan(): every cell gets one of
+                 text / block / line / tone / mix (or None if blank).  import_grid then runs the old method of each kind on
+                 a masked COPY of the grid (bifin_regions.masked) with crop off, one shared palette (info["palette"]) and one
+                 cell width (_cell_size: the strictest budget), and import_mixed puts the layers together (a repeated id gets
+                 "-method"), adds ONE cells layer for the whole grid and crops with bifop.op_crop.  A new kind = a mode in
+                 import_grid + a label in plan() + its place in ORDER (bottom first).  Rules that matter: a single-method
+                 picture must come out exactly as before (Plan.mixed is False: tests/test_mixed.py::Samples and the parity
+                 gate), `auto` only; vt animations settle one mode with classify() and are not cut.  What is prose
+                 (text_cells) is a judgement, with the numbers at the top of the module (GAP_*, FLANK, MAX_PUNCT, TINY,
+                 PIXEL_SHARE): an English-looking word has 3 letters or more, a vowel, no run of one character, few case
+                 changes, clean punctuation; shading made of letters (cloudlinux) and fill (@@@, MMM, 888) must fail.
+                 `python bifin_regions.py FILE` prints the map; change a number, run it on the motd files
+                 (tests/test_mixed.py::Motd uses them in place if ../../../Misc/AsciiArt is there) and test_bifin.
 
  A preset        A section in presets.ini.  Keys: description, sample, bifin, bifop, bifout, and for 3D:
                  solid (key=value words), motion (pop+hold+spin hold=2.4), uses (presets applied first).
@@ -100,7 +116,7 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
                     (tests/test_docs.py also checks that bifop.1 names every operation and parameter, and that
                     bifin.1, bifout.1 and bidet.1 name every long option: add a flag or an operation, document it)
  make test-quick    test_bif 37, test_bifout 47, test_bifterm 22, test_bifin 47, test_lettering 40,
-                    test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48, test_scroll 27, test_gfx 30, test_docs 11
+                    test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48, test_scroll 27, test_mixed 44, test_gfx 30, test_docs 11
  make test          those, and a smoke subset of the parity gate (PARITY_QUICK=1: 7 tests, several minutes)
  make test-full     everything, with the full parity matrix (1232 cases, about ten minutes)
 

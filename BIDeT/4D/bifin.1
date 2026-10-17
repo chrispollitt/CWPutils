@@ -76,7 +76,13 @@ redraws line art (cowsay, figlet) as a line drawing, and outlines picture-style 
 .BR ansi\-block " (or " block )
 draws art made of blocks and graphic characters as the coloured picture it is;
 .B auto
-(the default) chooses.
+(the default) chooses, and when the art is of several kinds at once (a message of the day: a logo, a figlet title, a
+picture of half blocks, lines of plain text) it cuts the art into regions and draws each the way that suits it
+(see MIXED ART).
+.B mixed
+asks for exactly that.
+.B text
+sets every character in the font, as a line of prose.
 .BR line ", " tone " and " mix
 force one method of
 .BR lineart :
@@ -189,9 +195,43 @@ argument (default 100); how long the last screen stays (default 1000).
 .TP
 .BI \-\-fps " N" "\fR, " \-\-loop " N"
 At most this many frames a second (default: a frame for every change); how many times it plays, 0 = forever (default).
+.SH MIXED ART
+A screen of
+.BR neofetch ,
+.BR linux_logo
+or a message of the day is rarely one kind of art: a logo drawn with strokes, a title in figlet or toilet, a picture
+of half blocks or shaded characters, and the lines of plain text beside them.  One method for the whole grid
+blurs the text with the picture or traces it as outlines.  So with
+.B \-m auto
+(or
+.BR "\-m mixed" )
+.B bifin
+looks at the cells first.  Lines of words (two words, or a word and a number, with the numbers and punctuation
+between them; not shading made of letters, not a cowsay bubble) are
+.BR text :
+every character is a letter from the font, as sharp outlines.  Cells that are pixels (half blocks, braille, shades,
+a colour behind them) are a
+.BR block
+picture.  The rest is cut into pieces of art that lie close together, and each piece gets
+.BR line ", " tone " or " mix
+as if it stood alone.  The layers are put together on one canvas with one palette (the layers keep their usual ids;
+a second layer of the same kind gets the method as a suffix: strokes, strokes\-mix); the page is black when there
+is a coloured picture or the screen says black behind every cell, as for colour block art; the picture is cut to
+what is drawn.
+.B bifin \-v
+prints the share of each method, and
+.B python bifin_regions.py FILE
+prints the map (T text, B block, L line, N tone, X mix).
+.PP
+Art that is one method, or line art with its words, comes out as before (the words are set in the font even where the
+characters would pass for drawing: the 8 of a kernel version, a #).  A file is only ever cut when the pieces need
+different methods.  The cutting is a judgement of what looks like words: if it is wrong for a file, force a method with
+.BR "\-m line" ", " "\-m tone " "or " "\-m ansi\-block" .
+Animations (\-f vt) are not cut: their mode is chosen once from the fullest screen.
 .SH EXAMPLES
 .nf
 cowsay hi | bifin | bifout \-s            a cow, on the terminal
+bifin motd | bifout \-o motd.png          a message of the day: logo, title, picture and text each in its own way
 bifin art.ans \-o art.bif                 DOS art, kept as a BIF
 bifin \-m ansi\-block art.ans | bifout \-o art.png
 echo Hello | bifin \-f lettering \-\-face impact \-\-size 120 | bifout \-s
