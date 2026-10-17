@@ -228,6 +228,18 @@ class Import(unittest.TestCase):
         self.assertEqual(kinds["text"], "vector")                         # the prose is outlines, not a blur of pixels
         self.assertEqual(kinds["cells"], "cells")
 
+    def test_tone_in_a_mixed_picture_gets_the_arts_polarity_not_the_pages(self):
+        # coloured art is light on dark whatever the page is; given the page's polarity (light), a solid shape was
+        # traced with two outlines instead of one (the green @ robot of motd-android)
+        blob = [u"\x1b[32m" + u"@" * 12 + u"\x1b[m"] * 2 + [u"\x1b[32m" + u"@" * w + u"\x1b[m" for w in (14, 14, 12, 12, 10, 10)]
+        art = u"\n" + u"\n".join(blob) + u"\n\nLinux localhost 4.9.232 Mon Nov 9 04:25:13 UTC 2020 aarch64\n"
+        auto = imp(art, cells=False, tone_fill="off")
+        self.assertEqual(auto.meta["mode"], "mixed")
+        self.assertEqual(auto.meta["polarity"], "dark-on-light")           # (the page is light: no block picture)
+        n = lambda p: len(layer(p, "tone").start) - 1
+        self.assertEqual(n(auto), n(imp(art, cells=False, dark=True, tone_fill="off")))
+        self.assertLess(n(auto), n(imp(art, cells=False, dark=False, tone_fill="off")))
+
     def test_the_page_is_black_for_a_coloured_picture(self):
         pic = imp(picture_and_text())
         self.assertEqual(pic.palette[1]["rgb"], [0, 0, 0])
@@ -308,6 +320,120 @@ class Import(unittest.TestCase):
         pic = imp(picture_and_text(), color="off")
         self.assertEqual(pic.meta["mode"], "mixed")
         self.assertEqual(bif.check(pic)[0], [])
+
+
+def robot(color=u"\x1b[32m"):
+    """A solid logo of @ with two eyes (blank cells), then a line of prose: what motd-android is, in miniature."""
+    rows = [u"   @@@@@@@@@@@@   ", u"  @@@@@@@@@@@@@@  ", u" @@@@  @@@@  @@@@ ", u" @@@@  @@@@  @@@@ ", u" @@@@@@@@@@@@@@@@ ",
+            u" @@@@@@@@@@@@@@@@ ", u" @@@@@@@@@@@@@@@@ ", u"  @@@@@@@@@@@@@@  ", u"   @@@@@@@@@@@@   ", u"     @@@@  @@@@     "]
+    return u"\n".join(color + r + u"\x1b[m" for r in rows) + u"\n\nLinux localhost 4.9.232 Mon Nov 9 04:25:13 UTC 2020 aarch64\n"
+
+
+@unittest.skipIf(not FONT, "no monospace font found")
+class Fill(unittest.TestCase):
+    """A solid logo (all @, mostly M) in mixed art is a solid shape, not its outline."""
+
+    def test_solid_regions(self):
+        g = grid_of(robot())
+        self.assertTrue(R.solid_region(g, [[c == u"@" for c in row] for row in g.ch]))
+        share, n = R.solidity(g, [[c != u" " for c in row] for row in g.ch])
+        self.assertGreater(share, 0.6)
+        with io.open(os.path.join(SAMPLES, "tone80.txt"), "rb") as f:
+            t = grid_of(f.read().decode("utf-8"))
+        self.assertFalse(R.solid_region(t, [[c != u" " for c in row] for row in t.ch]))      # a photograph in characters: no
+
+    def test_the_logo_is_filled_and_has_no_outline(self):
+        pic = imp(robot(), cells=False)
+        self.assertEqual(pic.meta["mode"], "mixed")
+        f = layer(pic, "fill")
+        self.assertIsNotNone(f)
+        self.assertEqual(f.kind, "vector")
+        self.assertIsNone(layer(pic, "tone"))                            # the shape is its own outline
+        self.assertEqual(pic.layers[0].id, "fill")                       # under everything else
+
+    def test_eyes_are_holes(self):
+        f = layer(imp(robot(), cells=False), "fill")
+        groups = f.group.tolist()
+        self.assertGreater(len(groups), len(set(groups)))               # a group has more than one path: the body and its holes
+        self.assertTrue(all(int(v) & 2 for v in f.flags.tolist()))      # even-odd
+
+    def test_bands_of_colour_keep_their_colours(self):
+        rows = []
+        for col in (u"\x1b[31m", u"\x1b[33m", u"\x1b[34m"):
+            rows += [col + u"M" * 18 + u"\x1b[m"] * 3
+        art = u"\n".join(rows) + u"\n\nLinux localhost 4.9.232 Mon Nov 9 04:25:13 UTC 2020 aarch64\n"
+        f = layer(imp(art, cells=False), "fill")
+        self.assertIsNotNone(f)
+        self.assertEqual(len(set(f.fill.tolist())), 3)
+
+    def test_a_diagonal_line_of_cells_stays_a_line(self):
+        # the robot's antennae: single cells touching at corners.  One cell blurs to less than half: they must be joined
+        chain = [u" " * i + u"@" + u" " * (19 - i) for i in range(8)]                 # 8 cells, touching only at corners
+        rows = chain + [u"@" * 20] * 4                                                  # hanging off a block
+        art = u"\n".join(rows) + u"\n\nLinux localhost 4.9.232 Mon Nov 9 04:25:13 UTC 2020 aarch64\n"
+        pic = imp(art, cells=False)
+        f = layer(pic, "fill")
+        self.assertIsNotNone(f)
+        chh, y0 = pic.grid["cell_height"], pic.grid["y"]
+        block_top = y0 + 8 * chh
+        # one shape runs from the chain's first cell into the block: not a heap of beads, not a stump
+        self.assertTrue(any(p[:, 1].min() < y0 + 1.5 * chh and p[:, 1].max() > block_top + 2 * chh for p in f.paths()),
+                        [(round(float(p[:, 1].min())), round(float(p[:, 1].max()))) for p in f.paths()])
+
+    def test_bands_meet_flush_on_the_outside(self):
+        rows = []
+        for col in (u"\x1b[31m", u"\x1b[33m", u"\x1b[34m"):
+            rows += [col + u"M" * 20 + u"\x1b[m"] * 4
+        art = u"\n".join(rows) + u"\n\nLinux localhost 4.9.232 Mon Nov 9 04:25:13 UTC 2020 aarch64\n"
+        pic = imp(art, cells=False)
+        rgb = bifrender.render(pic, scale=1).flatten().astype(int)
+        g = pic.grid
+        page = rgb[0, 0]
+        ink = np.abs(rgb - page).max(2) > 40
+        for k in (1, 2):                                                 # the two junctions between bands
+            y = int(g["y"] + 4 * k * g["cell_height"])
+            lefts = [int(np.nonzero(ink[yy])[0].min()) for yy in range(y - 6, y + 7)]
+            rights = [int(np.nonzero(ink[yy])[0].max()) for yy in range(y - 6, y + 7)]
+            self.assertLessEqual(max(lefts) - min(lefts), 2, lefts)      # no notch where one colour meets the next
+            self.assertLessEqual(max(rights) - min(rights), 2, rights)
+
+    def test_it_draws_solid(self):
+        pic = imp(robot(), cells=False)
+        rgb = bifrender.render(pic, scale=1).flatten()
+        g = pic.grid
+        cy, cx = int(g["y"] + 5.5 * g["cell_height"]), int(g["x"] + 8.5 * g["cell_width"])        # the middle of the body
+        px = rgb[cy, cx]
+        self.assertGreater(int(px[1]), 150)                              # green, not the white of the page
+        self.assertLess(int(px[0]), 80)
+
+    def test_off_gives_the_outline(self):
+        pic = imp(robot(), cells=False, tone_fill="off")
+        self.assertIsNone(layer(pic, "fill"))
+        self.assertIsNotNone(layer(pic, "tone"))
+
+    def test_on_fills_a_picture_that_is_not_mixed(self):
+        solid = u"\n".join([u"@" * 14] * 8) + u"\n"
+        self.assertIsNone(layer(imp(solid, mode="tone", cells=False), "fill"))          # (auto: only in mixed art)
+        self.assertIsNotNone(layer(imp(solid, mode="tone", cells=False, tone_fill="on"), "fill"))
+
+    def test_a_single_method_picture_is_untouched(self):
+        with io.open(os.path.join(SAMPLES, "tone80.txt"), "rb") as f:
+            self.assertIsNone(layer(T.import_text(f.read()), "fill"))
+
+    def test_the_option_is_kept_in_the_file(self):
+        self.assertEqual(imp(robot(), cells=False, tone_fill="on").meta["generator"]["args"]["tone_fill"], "on")
+
+
+class Render(unittest.TestCase):
+    def test_a_one_colour_layer_under_a_many_colour_one(self):
+        # bifrender.compose compared a tuple colour with an array colour (an ambiguous truth value)
+        pic = bif.Picture(40, 40, palette=[{"rgb": [0, 0, 0], "role": "ink"}, {"rgb": [255, 255, 255], "role": "paper"},
+                                           {"rgb": [200, 0, 0]}], background=1)
+        fr = pic.add_frame()
+        fr.layers.append(bif.vector_layer([[(2, 2), (30, 2), (30, 30), (2, 30)]], widths=[0.0], strokes=[0], fills=[2],
+                                          closed=[1], id="a", width=0))
+        fr.layers.append(bif.vector_layer([[(5, 5), (35, 5)], [(5, 9), (35, 9)]], widths=[2.0, 2.0], strokes=[0, 2], id="b", width=2))
+        self.assertEqual(bifrender.render(pic, scale=1).flatten().shape, (40, 40, 3))
 
 
 @unittest.skipIf(not FONT, "no monospace font found")

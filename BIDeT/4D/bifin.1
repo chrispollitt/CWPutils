@@ -153,6 +153,23 @@ Blur in dot pitches (default 0.7; for block art, the softening of the pixels, de
 step that gets an outline (0 to 1, default 0.12); the finest outline feature in dot pitches (default 0.4); the contour lines
 through the shading (default 3, 0 = outlines only).
 .TP
+.BI \-\-tone\-fill " WHEN"
+Tone art that is one solid shape (a logo of
+.B @@@@
+or
+.BR MMMM :
+most of its characters are one character) is drawn as filled vector shapes, one colour for each band of colour, with
+holes where the art has gaps, and no outline (the shape is the outline).
+.I WHEN
+is
+.B auto
+(the default: in mixed art only, so a picture that is one method comes out as it always did),
+.B on
+(every tone picture: only sensible for solid shapes) or
+.BR off
+(outlines only).  The layer is called
+.BR fill .
+.TP
 .B \-\-tone\-raster
 The outlines as a raster layer, not traced vector lines.
 .SS Fonts
@@ -212,7 +229,8 @@ between them; not shading made of letters, not a cowsay bubble) are
 every character is a letter from the font, as sharp outlines.  Cells that are pixels (half blocks, braille, shades,
 a colour behind them) are a
 .BR block
-picture.  The rest is cut into pieces of art that lie close together, and each piece gets
+picture.  The rest is cut into pieces of art that lie close together (a piece that comes out as dense fill with strokes
+among it is split into its fill and its stroke pieces), and each piece gets
 .BR line ", " tone " or " mix
 as if it stood alone.  The layers are put together on one canvas with one palette (the layers keep their usual ids;
 a second layer of the same kind gets the method as a suffix: strokes, strokes\-mix); the page is black when there

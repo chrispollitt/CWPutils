@@ -76,8 +76,8 @@ class Plane(object):
         if blend == "erase":
             self.alpha = a_b * (1.0 - a_s)
             return
-        if (blend == "normal" and isinstance(self.color, tuple) and self.color == top.color
-                and isinstance(top.color, tuple)):
+        if (blend == "normal" and isinstance(self.color, tuple) and isinstance(top.color, tuple)
+                and self.color == top.color):
             self.alpha = a_s + a_b * (1.0 - a_s)
             return
         cb = np.asarray(self.color, np.float32)

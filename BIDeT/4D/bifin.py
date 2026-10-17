@@ -155,6 +155,9 @@ def build_parser():
                     help="at most this many frames a second (default: a frame for every change)")
     an.add_argument("--loop", type=int, default=0, metavar="N", help="how many times it plays, 0 = forever (default)")
     ap.add_argument("--no-outlines", action="store_true", help="letters as a raster layer, as unascii draws them, not vector outlines")
+    ap.add_argument("--tone-fill", choices=["auto", "on", "off"], default="auto",
+                    help="tone: art that is one solid shape (a logo of @@@ or MMM) is drawn filled: auto = when it is part of mixed art "
+                         "(default), on = every tone picture, off = outlines only")
     ap.add_argument("--tone-raster", action="store_true", help="tone: the outlines as a raster layer, as unascii draws them, not traced vector lines")
     ap.add_argument("--encoding", help="input encoding (default: UTF-8, else CP437)")
     ap.add_argument("--cols", type=int, default=0, help="wrap column for .ANS art (default: from SAUCE, else 80 for .ans, else none); "
@@ -180,7 +183,7 @@ def options_of(a):
                    round_lines=not a.no_round, spline=a.spline, shade=a.shade, hatch=a.hatch, text_bold=a.text_bold,
                    smooth=a.smooth, detail=a.detail, scale=a.scale, levels=a.levels, dark=a.dark, invert=a.invert,
                    font=art_font, rows=a.rows, color=a.color, cols=a.cols, crop=not a.no_crop, verbose=a.verbose,
-                   outlines=not a.no_outlines, tone_vectors=not a.tone_raster, cells=not a.no_cells, keep_source=a.keep_source,
+                   outlines=not a.no_outlines, tone_vectors=not a.tone_raster, tone_fill=a.tone_fill, cells=not a.no_cells, keep_source=a.keep_source,
                    name=None if a.file == "-" else a.file, encoding=a.encoding,
                    vt=dict(delay=a.delay, hold=a.hold, fps=a.fps, loop=a.loop),
                    lettering=dict(font=a.face or a.font, size=a.size, spacing=a.spacing, line_height=a.line_height, align=a.align,

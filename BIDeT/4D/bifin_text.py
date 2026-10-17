@@ -1518,6 +1518,7 @@ class Options(object):
     cells = True            # BIF: keep the character grid as a hidden `cells` layer
     keep_source = False     # BIF: store the input bytes in the file (the srce chunk)
     tone_vectors = True     # BIF: tone mode as traced vector lines (False: a raster of them, as unascii draws them)
+    tone_fill = "auto"      # BIF: tone art that is one solid shape (@@@, MMM) is drawn filled: auto = in mixed art (bifin_regions), on | off
     name = None             # BIF: the input's name, for the metadata
 
     def __init__(self, **kw):
@@ -1916,7 +1917,17 @@ def import_grid(grid, o, info=None):
         ix, iy = max(1, int(round(px))), max(1, int(round(py)))
         dark = o.dark if o.dark is not None else grid.has_color()
         P = dot_field(grid, glyphs, only, dark, max(1, cw // ix), max(1, ch // iy))
-        if o.tone_vectors:
+        filled = None
+        if o.tone_fill == "on" or (o.tone_fill == "auto" and info.get("fill_ok")):      # a solid logo: a solid shape
+            import bifin_regions
+            keep = [[c != " " and (only is None or only(c)) for c in row] for row in grid.ch]
+            filled = bifin_regions.fill_layer(grid, keep, glyphs, pad, pal, ink_c, paper_c)
+            if filled:
+                vectors.append((filled[0], filled[1], [0.0] * len(filled[1])))
+                _log(o, "fill: %d shapes (no outlines: the shape is the outline)" % len(filled[1]))
+        if filled:
+            pass
+        elif o.tone_vectors:
             lines = tone_vectors(P, ix, iy, wpx, o, use_color)
             _log(o, "tone: %d traced lines, %d vertices" % (len(lines), sum(len(l[0]) for l in lines)))
             if lines:
@@ -2082,7 +2093,7 @@ def import_grid(grid, o, info=None):
         lay.arrays["xy"] = (lay.arrays["xy"].astype(np.float64) - shift).astype("<f4")
         frame.layers.append(lay)
     # the order the picture is built in: a picture and hatching under, then letters, then strokes on top
-    order = {"picture": 0, "tone": 0, "hatch": 1, "text-mask": 2, "text": 2, "strokes": 3}
+    order = {"fill": -1, "picture": 0, "tone": 0, "hatch": 1, "text-mask": 2, "text": 2, "strokes": 3}
     frame.layers.sort(key=lambda L: order.get(L.id, 9))
     if o.cells and grid.rows and grid.cols:
         frame.layers.append(_cells_layer(grid))

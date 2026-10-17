@@ -78,6 +78,10 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
                  (text_cells) is a judgement, with the numbers at the top of the module (GAP_*, FLANK, MAX_PUNCT, TINY,
                  PIXEL_SHARE): an English-looking word has 3 letters or more, a vowel, no run of one character, few case
                  changes, clean punctuation; shading made of letters (cloudlinux) and fill (@@@, MMM, 888) must fail.
+                 A solid tone / mix piece (one character >= 60% of it: solid_region) is FILLED, not outlined: fill_layer()
+                 draws closed even-odd shapes per colour band under everything and import_grid skips the tone outlines for
+                 it; `--tone-fill auto|on|off` (auto = mixed art only, so single-method pictures and the parity gate are
+                 untouched).  FILL_* are the numbers.
                  `python bifin_regions.py FILE` prints the map; change a number, run it on the motd files
                  (tests/test_mixed.py::Motd uses them in place if ../../../Misc/AsciiArt is there) and test_bifin.
 
@@ -116,7 +120,7 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
                     (tests/test_docs.py also checks that bifop.1 names every operation and parameter, and that
                     bifin.1, bifout.1 and bidet.1 name every long option: add a flag or an operation, document it)
  make test-quick    test_bif 37, test_bifout 47, test_bifterm 22, test_bifin 47, test_lettering 40,
-                    test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48, test_scroll 27, test_mixed 44, test_gfx 30, test_docs 11
+                    test_tonetrace 14, test_bifop 45, test_bidet 38, test_anim 21, test_3d 48, test_scroll 27, test_mixed 57, test_gfx 30, test_docs 11
  make test          those, and a smoke subset of the parity gate (PARITY_QUICK=1: 7 tests, several minutes)
  make test-full     everything, with the full parity matrix (1232 cases, about ten minutes)
 

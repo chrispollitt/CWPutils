@@ -427,7 +427,7 @@ def import_mixed(grid, o, info, pl):
 
     so = copy.copy(o)
     so.cell_w, so.ink, so.paper, so.crop, so.cells, so.keep_source = cw, ink_c, paper_c, False, False, False
-    so.dark = dark if o.dark is None else o.dark
+    so.dark = grid.has_color() if o.dark is None else o.dark       # (the art's polarity, as bifin_text decides it: not the page's)
     so.color = "on" if use_color else "off"
     pics = []
     for m in modes:
@@ -436,6 +436,8 @@ def import_mixed(grid, o, info, pl):
         sinfo = dict(info)
         if m in (LINE, MIX):                             # the line art's words: from the font, whatever the characters
             sinfo["text_cells"] = pl.cells(TEXT)
+        if m in (TONE, MIX):                             # a solid logo (all @, mostly M) is drawn as a solid shape
+            sinfo["fill_ok"] = solid_region(grid, pl.cells(m))
         pics.append((m, T.import_grid(sub, so, sinfo)))
     base = pics[0][1]
     seen = {}
@@ -447,7 +449,7 @@ def import_mixed(grid, o, info, pl):
             if n:
                 L.props["id"] = "%s-%s" % (L.id, m)
             layers.append(L)
-    order = {"picture": 0, "tone": 0, "hatch": 1, "text-mask": 2, "text": 2, "strokes": 3}
+    order = {"fill": -1, "picture": 0, "tone": 0, "hatch": 1, "text-mask": 2, "text": 2, "strokes": 3}
     layers.sort(key=lambda L: order.get(str(L.id).split("-")[0], 9))
     base.frames[0].layers = layers
     base.palette = info["palette"].entries
@@ -465,6 +467,135 @@ def import_mixed(grid, o, info, pl):
         m = 0 if modes == [BLOCK] else int(0.5 * cw)
         bifop.op_crop(base, bifop.Notes(), margin=m, box=None)
     return base
+
+
+# --------------------------------------------------------------------------
+# Fill: a solid logo drawn as a solid shape
+# --------------------------------------------------------------------------
+FILL_SOLID = 0.6        # a tone region is a solid shape when this share of its characters is one character (@@@@, MMMM)
+FILL_MIN_CELLS = 30     # ... and it has at least this many
+FILL_SIGMA = 0.45       # how much the silhouette is rounded, in cells
+FILL_LEVEL = 0.48       # where the blurred ink is cut: under half, so a lone cell (peak about 0.4) still shows
+FILL_JOIN = 1.0         # ink put between two cells that touch only at a corner (a diagonal line of cells stays a line)
+FILL_OVERLAP = 2        # samples one colour band reaches into the next, so there is no seam between them
+FILL_EDGE = 0.25        # cells: how much a band's own edge is rounded (the silhouette is rounded by FILL_SIGMA)
+FILL_UP = 8             # samples per cell when tracing the silhouette
+FILL_WEIGHT = 0.3       # a character with this much ink or more fills its cell (M, @); lighter ones (. : ') fill less
+
+
+def solidity(grid, keep):
+    """The share of the characters of a region that are its commonest character, and how many there are."""
+    counts = {}
+    for y in range(grid.rows):
+        for x in range(grid.cols):
+            if keep[y][x] and grid.ch[y][x] != " ":
+                counts[grid.ch[y][x]] = counts.get(grid.ch[y][x], 0) + 1
+    n = sum(counts.values())
+    return (max(counts.values()) / float(n) if n else 0.0), n
+
+
+def solid_region(grid, keep):
+    share, n = solidity(grid, keep)
+    return n >= FILL_MIN_CELLS and share >= FILL_SOLID
+
+
+def _grow(mask, n):
+    """A boolean mask grown by n samples (4-neighbours)."""
+    out = mask.copy()
+    for _ in range(n):
+        g = out.copy()
+        g[1:] |= out[:-1]
+        g[:-1] |= out[1:]
+        g[:, 1:] |= out[:, :-1]
+        g[:, :-1] |= out[:, 1:]
+        out = g
+    return out
+
+
+def fill_layer(grid, keep, glyphs, pad, pal, ink_c, paper_c):
+    """The cells of `keep` as filled vector shapes, one colour each (a coloured logo keeps its bands): the cells'
+    ink, blurred a little and cut at FILL_LEVEL, as closed paths (holes are even-odd in one group per colour).
+    Returns (layer, paths) in canvas pixels, or None if nothing is there."""
+    import numpy as np
+    import bif
+    import tonetrace
+    rows, cols = grid.rows, grid.cols
+    cw, ch = glyphs.cw, glyphs.ch
+    m, u = 2, FILL_UP
+    ink = np.array(ink_c, np.float32)
+    weight = {}
+    bands = {}
+    for y in range(rows):
+        for x in range(cols):
+            c = grid.ch[y][x]
+            if c == " " or not keep[y][x]:
+                continue
+            w = weight.get(c)
+            if w is None:
+                w = weight[c] = min(1.0, float(glyphs.mask(c).mean()) / FILL_WEIGHT)
+            f = grid.fg[y][x]
+            col = ink if f is None or isinstance(f, str) else np.array(f, np.float32)
+            q = tuple(int(v) for v in np.clip(np.rint(T.legible(col, ink, paper_c) / 17.0) * 17.0, 0, 255))
+            a = bands.get(q)
+            if a is None:
+                a = bands[q] = np.zeros((rows + 2 * m, cols + 2 * m), np.float32)
+            a[y + m, x + m] = max(a[y + m, x + m], w)
+    if not bands:
+        return None
+    names = sorted(bands)
+    occ = [bands[q] for q in names]
+    # A diagonal chain of single cells (the robot's antennae) would blur away: join cells that touch at a corner by
+    # putting some ink in the two empty cells between them.
+    total = sum(occ)
+    up_left, dn_right = (slice(None, -1), slice(None, -1)), (slice(1, None), slice(1, None))
+    up_right, dn_left = (slice(None, -1), slice(1, None)), (slice(1, None), slice(None, -1))
+    for a in occ:
+        new = a.copy()
+        # a pair touching along the main diagonal (up-left, down-right) is joined through up-right and down-left ...
+        # but only where BOTH of those are empty: a corner of a hole (an eye) has an occupied neighbour already
+        isolated = (total[up_right] == 0) & (total[dn_left] == 0)
+        v = np.where(isolated, np.minimum(a[up_left], a[dn_right]) * FILL_JOIN, 0.0)
+        for cells in (up_right, dn_left):
+            new[cells] = np.maximum(new[cells], v)
+        # ... and one along the other diagonal through up-left and down-right
+        isolated = (total[up_left] == 0) & (total[dn_right] == 0)
+        v = np.where(isolated, np.minimum(a[up_right], a[dn_left]) * FILL_JOIN, 0.0)
+        for cells in (up_left, dn_right):
+            new[cells] = np.maximum(new[cells], v)
+        a[:] = new
+    up = [T.blur(np.repeat(np.repeat(a, u, 0), u, 1), FILL_SIGMA * u, FILL_SIGMA * u) for a in occ]
+    U = sum(up)                                              # ink of the whole piece: ONE silhouette, so the bands
+    inside = U > FILL_LEVEL                                  # meet flush on the outside whatever their colours
+    jobs = []                                                # (band number, field to cut, level)
+    if len(names) == 1:
+        jobs.append((0, U, FILL_LEVEL))
+    else:
+        owner = np.argmax(np.stack(up), axis=0)
+        for gi in range(len(names)):
+            mine = inside & (owner == gi)
+            if mine.any():
+                mine = _grow(mine, FILL_OVERLAP) & inside      # a little into the next band: no seam between them
+                jobs.append((gi, T.blur(mine.astype(np.float32), FILL_EDGE * u, FILL_EDGE * u), 0.5))
+    paths, widths, paints, groups = [], [], [], []
+    for gi, F, level in jobs:
+        q = names[gi]
+        paint = 0 if q == tuple(int(v) for v in ink_c) else pal.add(q)
+        for pts, closed in tonetrace.contours(F, level):
+            if len(pts) < 3:
+                continue
+            px = np.stack([pad + ((pts[:, 0] + 0.5) / u - m) * cw, pad + ((pts[:, 1] + 0.5) / u - m) * ch], 1)
+            keep_i = tonetrace.simplify(px, 0.08, index=True)
+            if len(keep_i) < 3:
+                continue
+            paths.append(px[keep_i])
+            widths.append(0.0)
+            paints.append(paint)
+            groups.append(gi)
+    if not paths:
+        return None
+    lay = bif.vector_layer(paths, widths=widths, strokes=paints, fills=paints, closed=[1] * len(paths),
+                           evenodd=[1] * len(paths), groups=groups, id="fill", width=0)
+    return lay, paths
 
 
 def main(argv=None):
