@@ -154,16 +154,23 @@ step that gets an outline (0 to 1, default 0.12); the finest outline feature in 
 through the shading (default 3, 0 = outlines only).
 .TP
 .BI \-\-tone\-fill " WHEN"
-Tone art that is one solid shape (a logo of
+Tone art that is one solid shape is drawn as filled vector shapes, one colour for each band of colour, with
+holes where the art has gaps, and no outline (the shape is the outline).  A shape is solid when most of its characters
+are one character (a logo of
 .B @@@@
 or
-.BR MMMM :
-most of its characters are one character) is drawn as filled vector shapes, one colour for each band of colour, with
-holes where the art has gaps, and no outline (the shape is the outline).
+.BR MMMM ),
+or when every character has a colour of its own choosing and there are at most 8 colours (a wordmark built from every
+letter of the alphabet, as in a CloudLinux logo).  A picture made of shading, whose tone comes from the terminal's
+default colour, is not solid.  A mode forced with
+.B \-m tone
+or
+.B \-m mix
+is never filled automatically: it asks for tone's outlines.
 .I WHEN
 is
 .B auto
-(the default: in mixed art only, so a picture that is one method comes out as it always did),
+(the default: art that is solid, in mixed art or alone),
 .B on
 (every tone picture: only sensible for solid shapes) or
 .BR off

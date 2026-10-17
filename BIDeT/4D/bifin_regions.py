@@ -255,8 +255,10 @@ def text_cells(grid, kind):
 # --------------------------------------------------------------------------
 # Pieces: cells that lie close together
 # --------------------------------------------------------------------------
-def components(mask, gx, gy):
-    """Groups of True cells, a cell joining any other within gx columns and gy rows: [[(y, x), ...], ...]."""
+def components(mask, gx, gy, kind=None):
+    """Groups of True cells, a cell joining any other within gx columns and gy rows: [[(y, x), ...], ...].  kind: the
+    cells' kinds; a pixel and a character join only with one blank between them at most (a picture and a box drawn two
+    blanks away are two things; a frame round blocks, or a few characters inside a picture, are part of it)."""
     rows, cols = len(mask), len(mask[0]) if mask else 0
     seen = [[False] * cols for _ in range(rows)]
     out = []
@@ -273,6 +275,8 @@ def components(mask, gx, gy):
                     srow, mrow = seen[yy], mask[yy]
                     for xx in range(max(0, x - gx), min(cols, x + gx + 1)):
                         if mrow[xx] and not srow[xx]:
+                            if kind is not None and kind[yy][xx] != kind[y][x] and (abs(xx - x) > 2 or abs(yy - y) > 2):
+                                continue                         # (one blank between them still joins: a frame round blocks)
                             srow[xx] = True
                             stack.append((yy, xx))
             out.append(comp)
@@ -310,7 +314,7 @@ def plan(grid, o=None):
             if text[y][x]:
                 labels[y][x] = TEXT
     shade = o.shade if o is not None else "X"
-    for comp in components(art, GAP_ART, GAP_ART_Y):
+    for comp in components(art, GAP_ART, GAP_ART_Y, kind):
         pix = [(y, x) for y, x in comp if kind[y][x] == "p"]
         if len(pix) > PIXEL_SHARE * len(comp):                # a picture (that has a few characters in it)
             for y, x in comp:
@@ -474,13 +478,14 @@ def import_mixed(grid, o, info, pl):
 # --------------------------------------------------------------------------
 FILL_SOLID = 0.6        # a tone region is a solid shape when this share of its characters is one character (@@@@, MMMM)
 FILL_MIN_CELLS = 30     # ... and it has at least this many
+FILL_COLOURS = 8        # ... or, of any characters, it is all in colour and in no more colours than this
 FILL_SIGMA = 0.45       # how much the silhouette is rounded, in cells
 FILL_LEVEL = 0.48       # where the blurred ink is cut: under half, so a lone cell (peak about 0.4) still shows
 FILL_JOIN = 1.0         # ink put between two cells that touch only at a corner (a diagonal line of cells stays a line)
 FILL_OVERLAP = 2        # samples one colour band reaches into the next, so there is no seam between them
 FILL_EDGE = 0.25        # cells: how much a band's own edge is rounded (the silhouette is rounded by FILL_SIGMA)
 FILL_UP = 8             # samples per cell when tracing the silhouette
-FILL_WEIGHT = 0.3       # a character with this much ink or more fills its cell (M, @); lighter ones (. : ') fill less
+FILL_TYPICAL = 0.8      # a character with this share of the median character's ink, or more, fills its cell; lighter ones less
 
 
 def solidity(grid, keep):
@@ -494,9 +499,30 @@ def solidity(grid, keep):
     return (max(counts.values()) / float(n) if n else 0.0), n
 
 
+def colours_of(grid, keep):
+    """The explicit foreground colours of a region's characters, or None if any of them has the terminal's default."""
+    seen = set()
+    for y in range(grid.rows):
+        for x in range(grid.cols):
+            if keep[y][x] and grid.ch[y][x] != " ":
+                f = grid.fg[y][x]
+                if f is None or isinstance(f, str):
+                    return None
+                seen.add(tuple(f))
+    return seen
+
+
 def solid_region(grid, keep):
+    """Is this tone art one solid shape (a logo) rather than a picture made of shading?  Either one character is most
+    of it (@@@@, MMMM, 8888), or it is a few colours' worth of coloured letters (the CloudLinux wordmark, built from
+    every letter there is): a picture in characters has tone, and tone comes from the default colour."""
     share, n = solidity(grid, keep)
-    return n >= FILL_MIN_CELLS and share >= FILL_SOLID
+    if n < FILL_MIN_CELLS:
+        return False
+    if share >= FILL_SOLID:
+        return True
+    seen = colours_of(grid, keep)
+    return seen is not None and 0 < len(seen) <= FILL_COLOURS
 
 
 def _grow(mask, n):
@@ -523,6 +549,23 @@ def fill_layer(grid, keep, glyphs, pad, pal, ink_c, paper_c):
     cw, ch = glyphs.cw, glyphs.ch
     m, u = 2, FILL_UP
     ink = np.array(ink_c, np.float32)
+    # How much a character fills its cell is how much ink its glyph has compared with the piece's typical character
+    # (so the fill does not depend on the font: DejaVu's letters carry a fifth less ink than Consolas's, and a fixed
+    # scale made CloudLinux thin on one and thick on the other).  The typical one fills it.
+    ink_of = {}
+    for y in range(rows):
+        for x in range(cols):
+            c = grid.ch[y][x]
+            if c != " " and keep[y][x] and c not in ink_of:
+                ink_of[c] = float(glyphs.mask(c).mean())
+    counts = {}
+    for y in range(rows):
+        for x in range(cols):
+            c = grid.ch[y][x]
+            if c != " " and keep[y][x]:
+                counts[c] = counts.get(c, 0) + 1
+    cells = sorted(ink_of[c] for c, k in counts.items() for _ in range(k))
+    typical = max(cells[len(cells) // 2] * FILL_TYPICAL, 0.05) if cells else 1.0
     weight = {}
     bands = {}
     for y in range(rows):
@@ -532,7 +575,7 @@ def fill_layer(grid, keep, glyphs, pad, pal, ink_c, paper_c):
                 continue
             w = weight.get(c)
             if w is None:
-                w = weight[c] = min(1.0, float(glyphs.mask(c).mean()) / FILL_WEIGHT)
+                w = weight[c] = min(1.0, ink_of[c] / typical)
             f = grid.fg[y][x]
             col = ink if f is None or isinstance(f, str) else np.array(f, np.float32)
             q = tuple(int(v) for v in np.clip(np.rint(T.legible(col, ink, paper_c) / 17.0) * 17.0, 0, 255))

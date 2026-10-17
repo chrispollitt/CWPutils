@@ -178,6 +178,16 @@ class Plans(unittest.TestCase):
             for x in range(g.cols):
                 self.assertEqual(pl.labels[y][x] is None, R.kind_of(g.ch[y][x], g.bg[y][x]) == "b" or g.ch[y][x] == " " and g.bg[y][x] is None, (y, x))
 
+    def test_a_box_two_blanks_from_a_picture_is_not_part_of_it(self):
+        # motd-cygwin: a half-block picture, two blank columns, then a box of | and _ (line art) with a caption in it
+        pic = half_blocks(10, 8)
+        box = [u" " + u"_" * 22] + [u"|" + u" " * 22 + u"|"] * 3 + [u"|" + u"   /\\  /\\  ( o o )   " + u"|"] + [u"|" + u" " * 22 + u"|"] * 2 + [u"|" + u"_" * 22 + u"|"]
+        art = u"\n".join(p + u"  " + b for p, b in zip(pic, box)) + u"\n"
+        pl = R.plan(grid_of(art), T.Options())
+        self.assertIn(R.BLOCK, pl.modes)
+        self.assertEqual(pl.labels[3][12 + 0], R.LINE)                    # the box's left edge is line art, not part of the picture
+        self.assertEqual(pl.labels[3][0], R.BLOCK)
+
     def test_a_few_characters_in_a_picture_stay_in_it(self):
         pic = [u"\x1b[7m \x1b[7m \x1b[7m \x1b[7m \x1b[7m \x1b[7m \x1b[7m \x1b[7m \x1b[0m",
                u"\x1b[7m \x1b[7m \x1b[7m~\x1b[7m_\x1b[7m \x1b[7m \x1b[7m \x1b[0m",
@@ -397,6 +407,28 @@ class Fill(unittest.TestCase):
             self.assertLessEqual(max(lefts) - min(lefts), 2, lefts)      # no notch where one colour meets the next
             self.assertLessEqual(max(rights) - min(rights), 2, rights)
 
+    def test_the_fill_does_not_depend_on_how_much_ink_the_font_has(self):
+        # DejaVu's glyphs have a fifth less ink than Consolas's: the same art must fill the same
+        import bifin_text
+        rows = [u",tyxfyi`,0!  Of  PHPnIgBm", u"?Pn!::|\"`:mt gHz nH0 ,OBr", u" !Wr  \\Xt  +5yyz>  ,l,", u" IN, \\X? iA!,:(Gl \"m|",
+                u" nP.  \\mt %t  yA`\"m|  ,mc.X_", u"  +Wt  \\mt %i  aA`>m|  ,mc.X|", u"   lNy|,,\\_ :Ot r%^`.>Pz :Gy,``\\Xc"]
+        g = grid_of(u"\n".join(u"\x1b[36m" + r + u"\x1b[m" for r in rows) + u"\n")
+        keep = [[c != u" " for c in row] for row in g.ch]
+        real = bifin_text.Glyphs(12, 24, None)
+
+        class Fainter(object):
+            cw, ch, path = real.cw, real.ch, real.path
+
+            def mask(self, c):
+                return real.mask(c) * 0.8
+
+        pal = bifin_text._Palette((0, 0, 0), (255, 255, 255))
+        a = R.fill_layer(g, keep, real, 12, pal, (0, 0, 0), (255, 255, 255))
+        b = R.fill_layer(g, keep, Fainter(), 12, pal, (0, 0, 0), (255, 255, 255))
+        area = lambda paths: sum(abs(float(np.dot(p[:, 0], np.roll(p[:, 1], 1)) - np.dot(p[:, 1], np.roll(p[:, 0], 1)))) / 2 for p in paths)
+        self.assertEqual(len(a[1]), len(b[1]))
+        self.assertAlmostEqual(area(a[1]) / area(b[1]), 1.0, delta=0.03)
+
     def test_it_draws_solid(self):
         pic = imp(robot(), cells=False)
         rgb = bifrender.render(pic, scale=1).flatten()
@@ -411,10 +443,32 @@ class Fill(unittest.TestCase):
         self.assertIsNone(layer(pic, "fill"))
         self.assertIsNotNone(layer(pic, "tone"))
 
-    def test_on_fills_a_picture_that_is_not_mixed(self):
+    def test_a_solid_picture_that_is_not_mixed_is_filled_too(self):
         solid = u"\n".join([u"@" * 14] * 8) + u"\n"
-        self.assertIsNone(layer(imp(solid, mode="tone", cells=False), "fill"))          # (auto: only in mixed art)
+        self.assertIsNotNone(layer(imp(solid, cells=False), "fill"))
+        self.assertIsNone(layer(imp(solid, cells=False, tone_fill="off"), "fill"))
         self.assertIsNotNone(layer(imp(solid, mode="tone", cells=False, tone_fill="on"), "fill"))
+
+    def test_an_explicit_tone_mode_keeps_its_outlines(self):
+        solid = u"\n\n" + u"\n".join([u"  " + u"@" * 14] * 8) + u"\n\n"          # (a margin round it, so there is an edge to trace)
+        pic = imp(solid, mode="tone", cells=False)                       # (-m tone asks for tone's outlines)
+        self.assertIsNone(layer(pic, "fill"))
+        self.assertIsNotNone(layer(pic, "tone"))
+
+    def test_coloured_letters_make_a_wordmark_but_the_same_letters_in_the_default_colour_do_not(self):
+        # the CloudLinux logo: every letter there is, in one colour; a picture in characters has its tone from the default colour
+        rows = [u",tyxfyi`,0!  Of  PHPnIgBm", u"?Pn!::|\"`:mt gHz nH0 ,OBr", u" !Wr  \\Xt  +5yyz>  ,l,", u" IN, \\X? iA!,:(Gl \"m|",
+                u" nP.  \\mt %t  yA`\"m|  ,mc.X_", u"  +Wt  \\mt %i  aA`>m|  ,mc.X|", u"   lNy|,,\\_ :Ot r%^`.>Pz :Gy,``\\Xc"]
+        col = u"\n".join(u"\x1b[36m" + r + u"\x1b[m" for r in rows) + u"\n"
+        plain = u"\n".join(rows) + u"\n"
+        g = grid_of(col)
+        keep = [[c != u" " for c in row] for row in g.ch]
+        self.assertFalse(R.solidity(g, keep)[0] >= R.FILL_SOLID)         # no one letter dominates
+        self.assertTrue(R.solid_region(g, keep))
+        gp = grid_of(plain)
+        self.assertFalse(R.solid_region(gp, [[c != u" " for c in row] for row in gp.ch]))
+        self.assertIsNotNone(layer(imp(col, cells=False), "fill"))
+        self.assertIsNone(layer(imp(plain, cells=False), "fill"))
 
     def test_a_single_method_picture_is_untouched(self):
         with io.open(os.path.join(SAMPLES, "tone80.txt"), "rb") as f:
@@ -466,7 +520,10 @@ class Motd(unittest.TestCase):
         return R.plan(T.parse(text, 0, rows=24), T.Options())
 
     def test_cygwin_is_a_picture_a_drawing_and_a_caption(self):
-        self.assertEqual(self.modes("cygwin").modes, set([R.BLOCK, R.LINE, R.TEXT]))
+        pl = self.modes("cygwin")
+        self.assertEqual(pl.modes, set([R.BLOCK, R.LINE, R.TEXT]))
+        self.assertEqual(pl.labels[2][52], R.LINE)                       # the box and the figlet in it are line art, not part of the picture
+        self.assertEqual(pl.labels[15][54], R.LINE)                      # (the / of the c of cygwin)
 
     def test_macos_is_a_shaded_logo_swatches_and_text(self):
         self.assertEqual(self.modes("macos").modes, set([R.BLOCK, R.TONE, R.TEXT]))

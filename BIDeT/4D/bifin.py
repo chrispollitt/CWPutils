@@ -156,8 +156,9 @@ def build_parser():
     an.add_argument("--loop", type=int, default=0, metavar="N", help="how many times it plays, 0 = forever (default)")
     ap.add_argument("--no-outlines", action="store_true", help="letters as a raster layer, as unascii draws them, not vector outlines")
     ap.add_argument("--tone-fill", choices=["auto", "on", "off"], default="auto",
-                    help="tone: art that is one solid shape (a logo of @@@ or MMM) is drawn filled: auto = when it is part of mixed art "
-                         "(default), on = every tone picture, off = outlines only")
+                    help="tone: art that is one solid shape (a logo of @@@ or MMM, or a few colours of coloured letters) is drawn "
+                         "filled: auto = such art (default; a picture made of shading keeps its outlines), on = every tone "
+                         "picture, off = outlines only")
     ap.add_argument("--tone-raster", action="store_true", help="tone: the outlines as a raster layer, as unascii draws them, not traced vector lines")
     ap.add_argument("--encoding", help="input encoding (default: UTF-8, else CP437)")
     ap.add_argument("--cols", type=int, default=0, help="wrap column for .ANS art (default: from SAUCE, else 80 for .ans, else none); "

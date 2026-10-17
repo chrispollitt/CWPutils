@@ -1518,7 +1518,7 @@ class Options(object):
     cells = True            # BIF: keep the character grid as a hidden `cells` layer
     keep_source = False     # BIF: store the input bytes in the file (the srce chunk)
     tone_vectors = True     # BIF: tone mode as traced vector lines (False: a raster of them, as unascii draws them)
-    tone_fill = "auto"      # BIF: tone art that is one solid shape (@@@, MMM) is drawn filled: auto = in mixed art (bifin_regions), on | off
+    tone_fill = "auto"      # BIF: tone art that is one solid shape (@@@, MMM) is drawn filled: auto = solid art (bifin_regions.solid_region), on | off
     name = None             # BIF: the input's name, for the metadata
 
     def __init__(self, **kw):
@@ -1918,9 +1918,12 @@ def import_grid(grid, o, info=None):
         dark = o.dark if o.dark is not None else grid.has_color()
         P = dot_field(grid, glyphs, only, dark, max(1, cw // ix), max(1, ch // iy))
         filled = None
-        if o.tone_fill == "on" or (o.tone_fill == "auto" and info.get("fill_ok")):      # a solid logo: a solid shape
-            import bifin_regions
-            keep = [[c != " " and (only is None or only(c)) for c in row] for row in grid.ch]
+        keep = [[c != " " and (only is None or only(c)) for c in row] for row in grid.ch]
+        import bifin_regions
+        fill_ok = info.get("fill_ok")                 # (mixed art has decided for its piece already)
+        if fill_ok is None and o.tone_fill == "auto" and o.mode in ("auto", "mixed"):    # (-m tone asks for tone's outlines)
+            fill_ok = bifin_regions.solid_region(grid, keep)
+        if o.tone_fill == "on" or (o.tone_fill == "auto" and fill_ok):                  # a solid logo: a solid shape
             filled = bifin_regions.fill_layer(grid, keep, glyphs, pad, pal, ink_c, paper_c)
             if filled:
                 vectors.append((filled[0], filled[1], [0.0] * len(filled[1])))
