@@ -26,6 +26,10 @@ colours (OSC 10 and 11), and, behind ssh, key input reaches ncurses programs in 
 mistaken for the Escape key and the rest of the sequence is typed as text. A program on a pty, as it is under mintty
 or in an ssh session, has neither problem.
 
+You do not need \fBwincygterm\fP in mintty, or in any other terminal that already starts Cygwin programs on a pty:
+they are on a pty from the start. It is for Windows Terminal (and other ConPTY-based consoles), where a Cygwin
+program is otherwise handed the console layer.
+
 .SS How it works
 The file contains two halves. The front-end runs on native Windows Python: it puts its console into raw VT mode,
 forwards the bytes typed to the pty, writes what the program prints to the console, and reports window size

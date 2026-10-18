@@ -14,6 +14,7 @@ Why: a Cygwin program started directly in a Windows Terminal tab talks to Cygwin
 (/dev/cons*), which swallows OSC colour queries on their way out (so a program cannot ask the terminal for its
 colours) and, behind ssh, passes key input along in fragments that make ncurses programs print stray text.
 A Cygwin program on a pty (what mintty and ssh give it, /dev/pty*) has neither problem.
+Not needed in mintty or any other terminal that already runs Cygwin programs on a pty.
 
 How: two halves in this one file.  The front-end runs on native Windows Python, puts its console into raw VT mode
 and forwards bytes between the console and a pipe; it also tells the other half when the window is resized.
