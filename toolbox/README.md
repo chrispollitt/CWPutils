@@ -185,6 +185,7 @@ python wincygterm [--root DIR] [--python EXE] [--term TERM] [--login-dir] [--no-
 - Handles window resizes, UTF-8, and hangs up the command if the tab is closed.
 - For a Windows Terminal profile use the full path of the Windows Python and add `--login-dir`.
 - Not winpty: winpty runs a Windows console program inside a Unix pty; this runs a Cygwin program on a pty inside a Windows console.
+- Sets `WINCYGTERM=<version>` for the command; `termprobe` shows it as a `via:` line.
 - Check the result with `termprobe` (`tty` should say `/dev/pty*`, OSC 11 `ANSWERED`).
 - Tested in Windows Terminal 1.24 with a Cygwin 3.7 development snapshot: `bash`, a live `tvmail` session and a live `bidet` animation all work.
 

@@ -340,6 +340,8 @@ def report(label, rows, issues, seen, text, timeout, raw=False, size=None, notes
            "  env:     %s" % environment()]
     if ttyname:
         out.append("  tty:     %s" % ttyname)
+    if os.environ.get("WINCYGTERM"):
+        out.append("  via:     wincygterm %s" % os.environ["WINCYGTERM"])
     if size:
         out.append("  window:  %d rows x %d cols%s" % (size[0], size[1], ", %dx%d px" % (size[2], size[3])
                                                        if size[2] and size[3] else ""))

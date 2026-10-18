@@ -162,10 +162,12 @@ def find_cygwin_python(root):
 
 
 def child_environment(root, term=None, login_dir=False, environ=None):
-    """The environment CMD runs in: Cygwin's bin first on PATH, TERM (and COLORTERM under Windows Terminal) set."""
+    """The environment CMD runs in: Cygwin's bin first on PATH, TERM (and COLORTERM under Windows Terminal) set,
+    and WINCYGTERM=<version> to say who is running it."""
     env = dict(os.environ if environ is None else environ)
     env["PATH"] = os.path.join(root, "bin") + os.pathsep + env.get("PATH", "")
     env["TERM"] = term or env.get("TERM") or "xterm-256color"
+    env["WINCYGTERM"] = VERSION                          # lets termprobe (and you) tell this pty from a native one
     if env.get("WT_SESSION") and not env.get("COLORTERM"):
         env["COLORTERM"] = "truecolor"
     if not login_dir:
@@ -185,6 +187,7 @@ class Win32(object):
     ENABLE_WINDOW_INPUT, ENABLE_VT_INPUT = 0x8, 0x200
     KEY_EVENT, WINDOW_BUFFER_SIZE_EVENT = 0x1, 0x4
     DETACHED_PROCESS = 0x8
+    WAIT_OBJECT_0, WAIT_FAILED = 0, 0xFFFFFFFF
 
     def __init__(self):
         import ctypes
@@ -218,7 +221,13 @@ class Win32(object):
                                   wintypes.DWORD, wintypes.HANDLE]
         k.GetConsoleMode.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
         k.SetConsoleMode.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-        k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k.WaitForMultipleObjects.argtypes = [wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE), wintypes.BOOL,
+                                             wintypes.DWORD]
+        k.WaitForMultipleObjects.restype = wintypes.DWORD
+        k.CreateEventW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
+        k.CreateEventW.restype = wintypes.HANDLE
+        k.SetEvent.argtypes = [wintypes.HANDLE]
+        k.CloseHandle.argtypes = [wintypes.HANDLE]
         k.ReadConsoleInputW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Record), wintypes.DWORD,
                                         ctypes.POINTER(wintypes.DWORD)]
         k.WriteConsoleW.argtypes = [wintypes.HANDLE, wintypes.LPCWSTR, wintypes.DWORD,
@@ -284,6 +293,11 @@ def frontend_main(args):
 
     done = threading.Event()
     wlock = threading.Lock()
+    wake = win.k.CreateEventW(None, True, False, None)      # manual-reset: tells the input loop to look at `done`
+
+    def finish():
+        done.set()
+        win.k.SetEvent(wake)
 
     def send(kind, payload):
         with wlock:
@@ -291,7 +305,7 @@ def frontend_main(args):
                 proc.stdin.write(struct.pack(">cH", kind, len(payload)) + payload)
                 proc.stdin.flush()
             except (OSError, ValueError):
-                done.set()
+                finish()
 
     def pump_output():
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -300,11 +314,14 @@ def frontend_main(args):
             if not data:
                 break
             win.write(hout, decoder.decode(data))
-        done.set()
+        tail = decoder.decode(b"", final=True)                # a cut-off multibyte character at EOF
+        if tail:
+            win.write(hout, tail)
+        finish()
 
     def on_ctrl(kind):                                   # console closed, user logging off, system shutting down
         if kind in (2, 5, 6):
-            done.set()
+            finish()
             time.sleep(1)                                # the process ends when this returns: let the cleanup run
             return True
         return False
@@ -319,10 +336,14 @@ def frontend_main(args):
     pump.start()
     try:
         recs, got = (win.Record * 128)(), win.w.DWORD()
+        handles = (win.w.HANDLE * 2)(hin, wake)
         high, last_size = "", (rows, cols)
         while not done.is_set():
             resized = False
-            if win.k.WaitForSingleObject(hin, 100) == 0:
+            which = win.k.WaitForMultipleObjects(2, handles, False, 500)
+            if which == win.WAIT_FAILED:
+                break
+            if which == win.WAIT_OBJECT_0:
                 if not win.k.ReadConsoleInputW(hin, recs, 128, win.c.byref(got)):
                     break
                 text = ""
@@ -357,6 +378,8 @@ def frontend_main(args):
             win.write(hout, RESET)
         win.k.SetConsoleMode(hin, old_in)
         win.k.SetConsoleMode(hout, old_out)
+        win.k.SetConsoleCtrlHandler(handler, False)
+        win.k.CloseHandle(wake)
     code = proc.wait()
     if args.debug:
         log.close()

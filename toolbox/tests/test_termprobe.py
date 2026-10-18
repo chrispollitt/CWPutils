@@ -137,6 +137,21 @@ class TestAnalyse(unittest.TestCase):
         self.assertNotIn("wincygterm", tp.report("", rows, issues, seen, answered, 1.0, size=SIZE,
                                                  ttyname="/dev/cons0")[0])            # no hint when it worked
 
+    def test_via_line_names_wincygterm_and_its_version(self):
+        text = reply()
+        seen = dict((q.key, 0.01) for q in tp.QUERIES if q.pat.search(text))
+        rows, issues, notes = tp.analyse(text, seen, SIZE)
+        saved = os.environ.pop("WINCYGTERM", None)
+        try:
+            self.assertNotIn("via:", tp.report("", rows, issues, seen, text, 1.0, size=SIZE, ttyname="/dev/pty0")[0])
+            os.environ["WINCYGTERM"] = "1.0"
+            self.assertIn("via:     wincygterm 1.0",
+                          tp.report("", rows, issues, seen, text, 1.0, size=SIZE, ttyname="/dev/pty0")[0])
+        finally:
+            os.environ.pop("WINCYGTERM", None)
+            if saved is not None:
+                os.environ["WINCYGTERM"] = saved
+
     def test_osc_verdict(self):
         self.assertEqual(tp.osc_verdict({"bg": 0.0}, "x"), ("ANSWERED", 0))
         self.assertEqual(tp.osc_verdict({"da1": 0.0}, "x"), ("DROPPED", 1))

@@ -81,6 +81,7 @@ class TestPureFunctions(unittest.TestCase):
         self.assertEqual(env["TERM"], "xterm-256color")
         self.assertEqual(env["COLORTERM"], "truecolor")                         # Windows Terminal does truecolor
         self.assertEqual(env["CHERE_INVOKING"], "1")                            # stay in the current directory
+        self.assertEqual(env["WINCYGTERM"], wct.VERSION)                        # termprobe reports it
         env = wct.child_environment("C:\\cyg", term="vt100", login_dir=True,
                                     environ={"PATH": "P", "TERM": "other", "COLORTERM": "24bit"})
         self.assertEqual((env["TERM"], env["COLORTERM"]), ("vt100", "24bit"))   # given values win
