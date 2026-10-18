@@ -13,10 +13,11 @@ third-party packages are required.
 | [`ghgrep`](#ghgrep) | `grep` that also prints the group/section header a match belongs to |
 | [`tcping`](#tcping) | Time a TCP connect/disconnect and report any welcome banner |
 | [`termprobe`](#termprobe) | Find out what survives the trip between a program and its terminal (colour queries, key and mouse input, ConPTY/ssh damage) |
+| [`wincygterm`](#wincygterm) | Run Cygwin programs on a real pty inside Windows Terminal (fixes OSC colour queries and ncurses input) |
 
 Full details for each tool are in its man page (`cut2.1`, `pullout.1`,
-`rpullout.1`, `ghgrep.1`, `tcping.1`, `termprobe.1`); this file is a
-quick-start summary.
+`rpullout.1`, `ghgrep.1`, `tcping.1`, `termprobe.1`, `wincygterm.1`); this
+file is a quick-start summary.
 
 ## Requirements
 
@@ -153,9 +154,38 @@ termprobe --tvision --label tvmail-repro
 termprobe [--timeout S] [--label TEXT] [--raw] [--input | --tvision] [--no-vt-input]
 ```
 
-- Two verdicts: `OSC 11` (`ANSWERED` / `DROPPED` / `SILENT`) and `NEGOTIATION` (`CLEAN` / `MANGLED`, with the reasons).
+- Two verdicts: `OSC 11` (`ANSWERED` / `DROPPED` / `SILENT`) and `NEGOTIATION` (`CLEAN` / `MANGLED`, with the reasons); things worth knowing that are not faults (win32-input-mode being on) are printed as `note:` lines. It prints the tty name, and on a Cygwin console (`/dev/cons*`) a dropped OSC 11 comes with a hint to use `wincygterm`, mintty or ssh.
 - `--input`: interactive keyboard and mouse fidelity test; `--tvision`: the same after setting the terminal up as tvision does.
 - Exit status 0 clean, 1 a problem found, 2 no terminal. Works on POSIX (incl. Cygwin, mintty, WSL) and native Windows Python.
+
+## wincygterm
+
+Windows only. A Cygwin program started directly in a Windows Terminal tab
+runs on Cygwin's console layer (`/dev/cons*`), which swallows OSC colour
+queries (so programs cannot learn the terminal's colours) and, behind ssh,
+lets key input reach ncurses programs in fragments that show up as stray text.
+`wincygterm` runs the command on a real Cygwin pty (`/dev/pty*`) instead, as
+mintty and ssh do, while staying in your Windows Terminal tab.
+
+Run it with a **native Windows** Python (not Cygwin's). It is two halves in one
+file: a Windows front-end that forwards bytes between the console and a pipe,
+and a helper, run by Cygwin's Python, that puts the command on the pty.
+
+```bash
+python wincygterm --login-dir                  # bash -l on a pty, in the Cygwin home
+python wincygterm -- /bin/zsh                  # another command
+python wincygterm --profile                    # print a Windows Terminal profile command line
+```
+
+```
+python wincygterm [--root DIR] [--python EXE] [--term TERM] [--login-dir] [--no-reset] [--debug FILE] [--] [CMD [ARG...]]
+```
+
+- Finds Cygwin by `--root`, `$CYGWIN_ROOT`, the registry, then the usual places.
+- Handles window resizes, UTF-8, and hangs up the command if the tab is closed.
+- For a Windows Terminal profile use the full path of the Windows Python and add `--login-dir`.
+- Not winpty: winpty runs a Windows console program inside a Unix pty; this runs a Cygwin program on a pty inside a Windows console.
+- Check the result with `termprobe` (`tty` should say `/dev/pty*`, OSC 11 `ANSWERED`).
 
 ## Testing
 

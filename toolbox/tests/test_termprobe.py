@@ -106,9 +106,36 @@ class TestAnalyse(unittest.TestCase):
         got = issues_for(reply().replace(CLEAN["da1"], ""))
         self.assertTrue(any("DA1 got no reply" in i for i in got), got)
 
-    def test_win32_input_mode_on(self):
-        got = issues_for(reply(mode9001=ESC + "[?9001;1$y"))
-        self.assertTrue(any("win32-input-mode" in i for i in got), got)
+    def test_win32_input_mode_on_is_a_note_not_a_fault(self):
+        text = reply(mode9001=ESC + "[?9001;1$y")
+        seen = dict((q.key, 0.01) for q in tp.QUERIES if q.pat.search(text))
+        _, issues, notes = tp.analyse(text, seen, SIZE)
+        self.assertEqual(issues, [])
+        self.assertTrue(any("win32-input-mode" in n and "--tvision" in n for n in notes), notes)
+        self.assertEqual(tp.analyse(reply(), seen, SIZE)[2], [])               # off: nothing to say
+
+    def test_report_prints_the_note_and_keeps_the_verdict_clean(self):
+        text = reply(mode9001=ESC + "[?9001;1$y")
+        seen = dict((q.key, 0.01) for q in tp.QUERIES if q.pat.search(text))
+        rows, issues, notes = tp.analyse(text, seen, SIZE)
+        msg, code = tp.report("", rows, issues, seen, text, 1.0, size=SIZE, notes=notes, ttyname="/dev/pty3")
+        self.assertEqual(code, 0, msg)
+        self.assertIn("NEGOTIATION: CLEAN", msg)
+        self.assertIn("note: win32-input-mode", msg)
+        self.assertIn("tty:     /dev/pty3", msg)
+
+    def test_cygwin_console_gets_a_hint_when_osc_is_dropped(self):
+        text = reply(fg="", bg="")
+        seen = dict((q.key, 0.01) for q in tp.QUERIES if q.pat.search(text))
+        rows, issues, notes = tp.analyse(text, seen, SIZE)
+        on_console = tp.report("", rows, issues, seen, text, 1.0, size=SIZE, ttyname="/dev/cons0")[0]
+        self.assertIn("wincygterm", on_console)
+        self.assertNotIn("wincygterm", tp.report("", rows, issues, seen, text, 1.0, size=SIZE, ttyname="/dev/pty0")[0])
+        answered = reply()
+        seen = dict((q.key, 0.01) for q in tp.QUERIES if q.pat.search(answered))
+        rows, issues, notes = tp.analyse(answered, seen, SIZE)
+        self.assertNotIn("wincygterm", tp.report("", rows, issues, seen, answered, 1.0, size=SIZE,
+                                                 ttyname="/dev/cons0")[0])            # no hint when it worked
 
     def test_osc_verdict(self):
         self.assertEqual(tp.osc_verdict({"bg": 0.0}, "x"), ("ANSWERED", 0))

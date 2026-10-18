@@ -1,0 +1,93 @@
+.TH WINCYGTERM 1 "October 2026" "wincygterm 1.0" "User Commands"
+.SH NAME
+wincygterm \- run Cygwin programs on a real pty inside Windows Terminal
+
+.SH SYNOPSIS
+.B python wincygterm
+[\-\-root DIR] [\-\-python EXE] [\-\-term TERM] [\-\-login\-dir] [\-\-no\-reset] [\-\-debug FILE]
+[\-\-] [\fICMD\fP [\fIARG\fP...]]
+.br
+.B python wincygterm
+\-\-profile
+.br
+.B python wincygterm
+\-\-version
+
+.SH DESCRIPTION
+.B wincygterm
+runs \fICMD\fP (default \fB/bin/bash \-l\fP) on a real Cygwin pty (\fI/dev/pty*\fP) inside the console it is
+started in, typically a Windows Terminal tab. It must be run with a
+.B native Windows
+Python, not Cygwin's.
+
+A Cygwin program started directly in a Windows Terminal tab talks to Cygwin's own console layer
+(\fI/dev/cons*\fP). That layer swallows OSC strings on their way out, so a program cannot ask the terminal for its
+colours (OSC 10 and 11), and, behind ssh, key input reaches ncurses programs in fragments, so that a lone ESC is
+mistaken for the Escape key and the rest of the sequence is typed as text. A program on a pty, as it is under mintty
+or in an ssh session, has neither problem.
+
+.SS How it works
+The file contains two halves. The front-end runs on native Windows Python: it puts its console into raw VT mode,
+forwards the bytes typed to the pty, writes what the program prints to the console, and reports window size
+changes. Nothing Cygwin sits on the console, so Windows Terminal's answers to queries reach the program. The helper
+(started by the front-end with the hidden option \fB\-\-helper\fP, on Cygwin's Python, detached from the console)
+starts \fICMD\fP on a Cygwin pty and relays bytes between that pty and the front-end through pipes.
+
+This is the opposite of winpty, which lets a Windows console program run inside a Unix pty.
+
+.SH OPTIONS
+.TP
+.BI \-\-root " DIR"
+The Cygwin root directory, the one holding \fIbin\\cygwin1.dll\fP. Default: \fB$CYGWIN_ROOT\fP, then the registry,
+then \fIC:\\cygwin64\fP, \fIC:\\cygwin\fP, \fID:\\cygwin64\fP, \fID:\\cygwin\fP.
+.TP
+.BI \-\-python " EXE"
+The Cygwin Python (3) to run the pty helper with. Default: the newest \fIpython3.N.exe\fP in \fIDIR\\bin\fP.
+.TP
+.BI \-\-term " TERM"
+\fBTERM\fP for \fICMD\fP. Default: the current \fBTERM\fP, else \fBxterm\-256color\fP. Under Windows Terminal
+\fBCOLORTERM=truecolor\fP is also set unless it is already set.
+.TP
+.B \-\-login\-dir
+Start in the home directory. By default \fICMD\fP starts in the current directory (\fBCHERE_INVOKING=1\fP is set
+for \fI/etc/profile\fP), which is right for a command, and wrong for a Windows Terminal profile that should land in
+the Cygwin home: use this option there.
+.TP
+.B \-\-no\-reset
+When the command ends, \fBwincygterm\fP turns mouse reporting, bracketed paste, kitty keyboard modes and
+modifyOtherKeys off, restores attributes and shows the cursor, in case the program died without doing so. This
+option skips that.
+.TP
+.BI \-\-debug " FILE"
+Write the helper's standard error to \fIFILE\fP.
+.TP
+.B \-\-profile
+Print a command line for a Windows Terminal profile and exit.
+.TP
+.B \-\-version
+Print the version and exit.
+
+.SH EXIT STATUS
+That of \fICMD\fP (128 plus the signal number if it was killed). 2 if Cygwin, its Python or a console cannot be
+found, or if it is run on Cygwin or Linux.
+
+.SH WINDOWS TERMINAL PROFILE
+Add a profile whose command line is the output of \fBpython wincygterm \-\-profile\fP, for instance:
+.PP
+.nf
+"C:\\Python311\\python.exe" "D:\\cygwin\\usr\\local\\bin\\wincygterm" \-\-root "D:\\cygwin" \-\-login\-dir
+.fi
+.PP
+Use the full path of the Windows Python: the path of a profile may differ from that of your shell, and Cygwin's
+\fIbin\fP on it could make a bare \fBpython\fP mean the wrong one. After \fBmake install\fP in Cygwin the file
+is under the Cygwin root, e.g. \fIusr\\local\\bin\\wincygterm\fP.
+
+.SH LIMITATIONS
+Keys reach the program as the plain characters and VT sequences the console produces. A program that asks for
+win32\-input\-mode (tvision does) gets plain keys, which it also understands, instead of key records.
+Windows programs started from the shell (\fBpwsh\fP, \fBpython.exe\fP) depend on Cygwin's own handling of native
+programs on a pty. Start\-up needs two Python processes and takes a moment longer than a plain shell.
+
+.SH SEE ALSO
+.BR termprobe (1),
+.BR tcping (1)

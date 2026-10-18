@@ -1,0 +1,395 @@
+#!/usr/bin/env python3
+"""
+wincygterm - run Cygwin programs on a real pty inside Windows Terminal.
+
+Usage (with a NATIVE Windows Python, not Cygwin's):
+    python wincygterm [--root DIR] [--python EXE] [--term TERM] [--login-dir]
+                      [--debug FILE] [--no-reset] [--] [CMD [ARG...]]
+    python wincygterm --profile        print a Windows Terminal profile command line
+    python wincygterm --version
+
+CMD defaults to `/bin/bash -l`.
+
+Why: a Cygwin program started directly in a Windows Terminal tab talks to Cygwin's own console layer
+(/dev/cons*), which swallows OSC colour queries on their way out (so a program cannot ask the terminal for its
+colours) and, behind ssh, passes key input along in fragments that make ncurses programs print stray text.
+A Cygwin program on a pty (what mintty and ssh give it, /dev/pty*) has neither problem.
+
+How: two halves in this one file.  The front-end runs on native Windows Python, puts its console into raw VT mode
+and forwards bytes between the console and a pipe; it also tells the other half when the window is resized.
+Nothing Cygwin sits on the console, so Windows Terminal's answers get through.  The helper (`--helper`, started by
+the front-end, running on Cygwin's Python and detached from the console) runs CMD on a Cygwin pty and relays bytes
+between that pty and the pipe.  Compare winpty, which goes the other way: it lets a Windows console program run
+inside a Unix pty.
+
+Windows only for the front-end; Python 3.8+ and the standard library only; Cygwin needs python3 installed.
+"""
+import argparse
+import os
+import struct
+import subprocess
+import sys
+
+VERSION = "1.0"
+HELPER_FLAG = "--helper"
+RESET = ("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l"     # mouse reporting off
+         "\x1b[?2004l"                                        # bracketed paste off
+         "\x1b[<u\x1b[>4m"                                    # kitty keyboard / modifyOtherKeys back
+         "\x1b[0m\x1b[?25h")                                  # attributes, cursor visible
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The helper: Cygwin side.
+# ---------------------------------------------------------------------------------------------------------------
+
+def helper_main(argv):
+    """argv: ROWS COLS CMD [ARG...].  stdin: frames  type(1) length(2, big endian) payload  with 'D' = data for the
+    pty, 'R' = resize (rows, cols as two big-endian 16-bit numbers).  stdout: what CMD writes to the pty.
+    Exits with CMD's status (128+signal if it was killed)."""
+    import fcntl
+    import pty
+    import select
+    import signal
+    import termios
+
+    def set_size(fd, rows, cols):
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+    def write_all(fd, data):
+        while data:
+            data = data[os.write(fd, data):]
+
+    rows, cols, cmd = int(argv[0]), int(argv[1]), argv[2:]
+    pid, master = pty.fork()
+    if pid == 0:
+        try:
+            os.execvp(cmd[0], cmd)
+        except OSError as e:
+            sys.stderr.write("wincygterm: cannot run %s: %s\n" % (cmd[0], e))
+            os._exit(127)
+    set_size(master, rows, cols)
+    buf, stdin_open = b"", True
+    while True:
+        try:
+            ready = select.select([master] + ([0] if stdin_open else []), [], [])[0]
+        except InterruptedError:
+            continue
+        if master in ready:
+            try:
+                data = os.read(master, 65536)
+            except OSError:
+                data = b""
+            if not data:
+                break                                    # CMD closed the pty: it is over
+            write_all(1, data)
+        if 0 in ready:
+            data = os.read(0, 65536)
+            if not data:                                 # the front-end went away: hang up on CMD
+                stdin_open = False
+                try:
+                    os.kill(pid, signal.SIGHUP)
+                except OSError:
+                    pass
+                continue
+            buf += data
+            while len(buf) >= 3:
+                kind, length = buf[0:1], struct.unpack(">H", buf[1:3])[0]
+                if len(buf) < 3 + length:
+                    break
+                payload, buf = buf[3:3 + length], buf[3 + length:]
+                if kind == b"D":
+                    write_all(master, payload)
+                elif kind == b"R" and length == 4:
+                    set_size(master, *struct.unpack(">HH", payload))     # the tty driver sends SIGWINCH itself
+    try:
+        _, status = os.waitpid(pid, 0)
+    except OSError:
+        return 1
+    return 128 + os.WTERMSIG(status) if os.WIFSIGNALED(status) else os.WEXITSTATUS(status)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The front-end: Windows side.
+# ---------------------------------------------------------------------------------------------------------------
+
+def cygwin_path(path):
+    """C:\\a\\b -> /cygdrive/c/a/b (the default Cygwin mount prefix)."""
+    path = os.path.abspath(path)
+    if len(path) > 1 and path[1] == ":":
+        path = "/cygdrive/" + path[0].lower() + path[2:]
+    return path.replace("\\", "/")
+
+
+def registry_roots():
+    """Cygwin installation directories recorded in the registry."""
+    try:
+        import winreg
+    except ImportError:
+        return []
+    found = []
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        for sub in (r"SOFTWARE\Cygwin\setup", r"SOFTWARE\WOW6432Node\Cygwin\setup"):
+            try:
+                with winreg.OpenKey(hive, sub) as key:
+                    found.append(winreg.QueryValueEx(key, "rootdir")[0])
+            except OSError:
+                pass
+    return found
+
+
+COMMON_ROOTS = (r"C:\cygwin64", r"C:\cygwin", r"D:\cygwin64", r"D:\cygwin")
+
+
+def find_root(given=None, environ=None):
+    """The Cygwin root directory (the one with bin\\cygwin1.dll), or None."""
+    environ = os.environ if environ is None else environ
+    for c in ([given] if given else []) + [environ.get("CYGWIN_ROOT", "")] + registry_roots() + list(COMMON_ROOTS):
+        if c and os.path.isfile(os.path.join(c, "bin", "cygwin1.dll")):
+            return c
+    return None
+
+
+def find_cygwin_python(root):
+    """The newest bin\\python3.N.exe under `root`, or None."""
+    bindir = os.path.join(root, "bin")
+    try:
+        names = os.listdir(bindir)
+    except OSError:
+        return None
+    found = sorted((n for n in names if n.startswith("python3.") and n.endswith(".exe") and n[8:-4].isdigit()),
+                   key=lambda n: int(n[8:-4]), reverse=True)
+    return os.path.join(bindir, found[0]) if found else None
+
+
+def child_environment(root, term=None, login_dir=False, environ=None):
+    """The environment CMD runs in: Cygwin's bin first on PATH, TERM (and COLORTERM under Windows Terminal) set."""
+    env = dict(os.environ if environ is None else environ)
+    env["PATH"] = os.path.join(root, "bin") + os.pathsep + env.get("PATH", "")
+    env["TERM"] = term or env.get("TERM") or "xterm-256color"
+    if env.get("WT_SESSION") and not env.get("COLORTERM"):
+        env["COLORTERM"] = "truecolor"
+    if not login_dir:
+        env["CHERE_INVOKING"] = "1"                      # /etc/profile: stay in the current directory
+    return env
+
+
+def profile_line(root=None):
+    """The command line for a Windows Terminal profile that runs this tool."""
+    line = '"%s" "%s"' % (sys.executable, os.path.abspath(__file__))
+    return line + ((' --root "%s"' % root) if root else "") + " --login-dir"
+
+
+class Win32(object):
+    """The little of kernel32 the front-end needs."""
+    ENABLE_PROCESSED_OUTPUT, ENABLE_VT_PROCESSING, DISABLE_NEWLINE_AUTO_RETURN = 0x1, 0x4, 0x8
+    ENABLE_WINDOW_INPUT, ENABLE_VT_INPUT = 0x8, 0x200
+    KEY_EVENT, WINDOW_BUFFER_SIZE_EVENT = 0x1, 0x4
+    DETACHED_PROCESS = 0x8
+
+    def __init__(self):
+        import ctypes
+        from ctypes import wintypes
+        self.c, self.w = ctypes, wintypes
+
+        class KeyEvent(ctypes.Structure):
+            _fields_ = [("down", wintypes.BOOL), ("repeat", wintypes.WORD), ("vk", wintypes.WORD),
+                        ("scan", wintypes.WORD), ("char", wintypes.WCHAR), ("state", wintypes.DWORD)]
+
+        class SizeEvent(ctypes.Structure):
+            _fields_ = [("x", wintypes.SHORT), ("y", wintypes.SHORT)]
+
+        class Record(ctypes.Structure):
+            class U(ctypes.Union):
+                _fields_ = [("key", KeyEvent), ("size", SizeEvent), ("pad", ctypes.c_byte * 16)]
+            _anonymous_ = ("u",)
+            _fields_ = [("type", wintypes.WORD), ("u", U)]
+
+        class Info(ctypes.Structure):
+            _fields_ = [("sx", wintypes.SHORT), ("sy", wintypes.SHORT), ("cx", wintypes.SHORT),
+                        ("cy", wintypes.SHORT), ("attr", wintypes.WORD), ("left", wintypes.SHORT),
+                        ("top", wintypes.SHORT), ("right", wintypes.SHORT), ("bottom", wintypes.SHORT),
+                        ("mx", wintypes.SHORT), ("my", wintypes.SHORT)]
+
+        self.Record, self.Info = Record, Info
+        self.Handler = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+        k = self.k = ctypes.WinDLL("kernel32", use_last_error=True)
+        k.CreateFileW.restype = wintypes.HANDLE
+        k.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                                  wintypes.DWORD, wintypes.HANDLE]
+        k.GetConsoleMode.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        k.SetConsoleMode.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k.ReadConsoleInputW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Record), wintypes.DWORD,
+                                        ctypes.POINTER(wintypes.DWORD)]
+        k.WriteConsoleW.argtypes = [wintypes.HANDLE, wintypes.LPCWSTR, wintypes.DWORD,
+                                    ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+        k.GetConsoleScreenBufferInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(Info)]
+        k.FlushConsoleInputBuffer.argtypes = [wintypes.HANDLE]
+        k.SetConsoleCtrlHandler.argtypes = [self.Handler, wintypes.BOOL]
+
+    def open_console(self):
+        """-> (hin, hout, old_in_mode, old_out_mode), or None if there is no console."""
+        bad = self.w.HANDLE(-1).value
+        hin = self.k.CreateFileW("CONIN$", 0xC0000000, 3, None, 3, 0, None)
+        hout = self.k.CreateFileW("CONOUT$", 0xC0000000, 3, None, 3, 0, None)
+        old_in, old_out = self.w.DWORD(), self.w.DWORD()
+        if hin in (None, bad) or hout in (None, bad) or not (
+                self.k.GetConsoleMode(hin, self.c.byref(old_in)) and self.k.GetConsoleMode(hout, self.c.byref(old_out))):
+            return None
+        return hin, hout, old_in.value, old_out.value
+
+    def window_size(self, hout):
+        info = self.Info()
+        if not self.k.GetConsoleScreenBufferInfo(hout, self.c.byref(info)):
+            return 24, 80
+        return info.bottom - info.top + 1, info.right - info.left + 1
+
+    def write(self, hout, text):
+        n = self.w.DWORD()
+        for i in range(0, len(text), 8192):
+            chunk = text[i:i + 8192]
+            self.k.WriteConsoleW(hout, chunk, len(chunk), self.c.byref(n), None)
+
+
+def frontend_main(args):
+    import codecs
+    import threading
+    import time
+
+    root = find_root(args.root)
+    if not root:
+        sys.stderr.write("wincygterm: cannot find Cygwin (use --root C:\\cygwin or set CYGWIN_ROOT)\n")
+        return 2
+    cygpy = args.python or find_cygwin_python(root)
+    if not cygpy or not os.path.isfile(cygpy):
+        sys.stderr.write("wincygterm: no Cygwin python3 in %s\\bin (install Cygwin's python3, or use --python)\n" % root)
+        return 2
+    win = Win32()
+    console = win.open_console()
+    if console is None:
+        sys.stderr.write("wincygterm: no console (run it in Windows Terminal or a console window)\n")
+        return 2
+    hin, hout, old_in, old_out = console
+    cmd = args.cmd or ["/bin/bash", "-l"]
+    rows, cols = win.window_size(hout)
+    log = open(args.debug, "w") if args.debug else subprocess.DEVNULL
+    try:
+        proc = subprocess.Popen(
+            [cygpy, cygwin_path(os.path.abspath(__file__)), HELPER_FLAG, str(rows), str(cols)] + cmd,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
+            env=child_environment(root, args.term, args.login_dir), creationflags=win.DETACHED_PROCESS)
+    except OSError as e:
+        sys.stderr.write("wincygterm: cannot start %s: %s\n" % (cygpy, e))
+        return 2
+
+    done = threading.Event()
+    wlock = threading.Lock()
+
+    def send(kind, payload):
+        with wlock:
+            try:
+                proc.stdin.write(struct.pack(">cH", kind, len(payload)) + payload)
+                proc.stdin.flush()
+            except (OSError, ValueError):
+                done.set()
+
+    def pump_output():
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        while True:
+            data = proc.stdout.read1(65536)
+            if not data:
+                break
+            win.write(hout, decoder.decode(data))
+        done.set()
+
+    def on_ctrl(kind):                                   # console closed, user logging off, system shutting down
+        if kind in (2, 5, 6):
+            done.set()
+            time.sleep(1)                                # the process ends when this returns: let the cleanup run
+            return True
+        return False
+
+    handler = win.Handler(on_ctrl)
+    win.k.SetConsoleCtrlHandler(handler, True)
+    win.k.SetConsoleMode(hin, win.ENABLE_VT_INPUT | win.ENABLE_WINDOW_INPUT)        # raw: no line input, echo, Ctrl-C
+    win.k.SetConsoleMode(hout, old_out | win.ENABLE_PROCESSED_OUTPUT | win.ENABLE_VT_PROCESSING
+                         | win.DISABLE_NEWLINE_AUTO_RETURN)
+    win.k.FlushConsoleInputBuffer(hin)
+    pump = threading.Thread(target=pump_output, daemon=True)
+    pump.start()
+    try:
+        recs, got = (win.Record * 128)(), win.w.DWORD()
+        high, last_size = "", (rows, cols)
+        while not done.is_set():
+            resized = False
+            if win.k.WaitForSingleObject(hin, 100) == 0:
+                if not win.k.ReadConsoleInputW(hin, recs, 128, win.c.byref(got)):
+                    break
+                text = ""
+                for i in range(got.value):
+                    r = recs[i]
+                    if r.type == win.KEY_EVENT and r.key.down and r.key.char != "\0":
+                        ch = r.key.char
+                        if "\ud800" <= ch < "\udc00":
+                            high = ch                    # first half of a surrogate pair
+                            continue
+                        if "\udc00" <= ch < "\ue000" and high:
+                            ch = chr(0x10000 + ((ord(high) - 0xD800) << 10) + (ord(ch) - 0xDC00))
+                        high = ""
+                        text += ch * max(r.key.repeat, 1)
+                    elif r.type == win.WINDOW_BUFFER_SIZE_EVENT:
+                        resized = True
+                data = text.encode("utf-8", "replace")
+                for i in range(0, len(data), 60000):
+                    send(b"D", data[i:i + 60000])
+            if resized or last_size != win.window_size(hout):       # events can be missed: look on idle ticks too
+                size = win.window_size(hout)
+                if size != last_size:
+                    last_size = size
+                    send(b"R", struct.pack(">HH", *size))
+    finally:
+        try:
+            proc.stdin.close()
+        except OSError:
+            pass
+        pump.join(2)
+        if not args.no_reset:
+            win.write(hout, RESET)
+        win.k.SetConsoleMode(hin, old_in)
+        win.k.SetConsoleMode(hout, old_out)
+    code = proc.wait()
+    if args.debug:
+        log.close()
+    return code
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == HELPER_FLAG:
+        return helper_main(argv[1:])
+    ap = argparse.ArgumentParser(prog="wincygterm",
+                                 description="Run a Cygwin command on a real pty inside this Windows console.")
+    ap.add_argument("--root", help="Cygwin root directory (default: $CYGWIN_ROOT, the registry, the usual places)")
+    ap.add_argument("--python", help="the Cygwin python3 executable to use for the pty helper (default: the newest "
+                                     "python3.N.exe in <root>\\bin)")
+    ap.add_argument("--term", help="TERM for the command (default: $TERM, else xterm-256color)")
+    ap.add_argument("--login-dir", action="store_true", help="start in the home directory, not the current one")
+    ap.add_argument("--no-reset", action="store_true",
+                    help="do not turn mouse reporting, bracketed paste &c off when the command ends")
+    ap.add_argument("--debug", metavar="FILE", help="write the helper's stderr to FILE")
+    ap.add_argument("--profile", action="store_true", help="print a Windows Terminal profile command line and exit")
+    ap.add_argument("--version", action="version", version="wincygterm " + VERSION)
+    ap.add_argument("cmd", nargs="*", help="command to run (default: /bin/bash -l)")
+    args = ap.parse_args(argv)
+    if args.profile:
+        print(profile_line(find_root(args.root) if args.root is None else args.root))
+        return 0
+    if os.name != "nt":
+        sys.stderr.write("wincygterm: run this with a native Windows Python (it is the Windows half of a pair); on "
+                         "Cygwin or Linux there is nothing to do - you already have a pty.\n")
+        return 2
+    return frontend_main(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

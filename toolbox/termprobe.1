@@ -54,8 +54,16 @@ Two verdicts are printed.
 .B NEGOTIATION
 \fBCLEAN\fP: every reply that came is whole, single and consistent.
 \fBMANGLED\fP: a query was answered twice (two layers both replied), bytes came back that are no known reply
-(garbage that would land on a program's screen), the size disagrees with the real window, DA1 is conhost's
-canned \(lq1;0\(rq, or win32\-input\-mode is switched on.
+(garbage that would land on a program's screen), the size disagrees with the real window, or DA1 is conhost's
+canned \(lq1;0\(rq.
+
+Things worth knowing that are not faults are printed as "note:" lines and do not change the verdict or the exit
+status; for example win32\-input\-mode being on, which Windows Terminal and ConPTY normally have: it matters only
+if the key records arrive damaged (test that with \fB\-\-tvision\fP). The tty's device name is printed too, and when
+a dropped OSC 11 happens on a Cygwin console (\fI/dev/cons*\fP) the verdict says what to do:
+run the program under
+.BR wincygterm (1),
+in mintty, or over ssh.
 
 .SH OPTIONS
 .TP
@@ -116,4 +124,5 @@ Cygwin's own console (\fI/dev/cons*\fP) swallows OSC strings on their way out, s
 the terminal there; mintty and ssh sessions, which have a pty, are other paths.
 
 .SH SEE ALSO
+.BR wincygterm (1),
 .BR tcping (1)

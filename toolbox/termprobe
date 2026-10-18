@@ -21,7 +21,9 @@ and then checks what came back, not just whether something did.  Two verdicts:
   NEGOTIATION   CLEAN  every reply that came is whole, single and consistent
                 MANGLED  replies doubled (two layers both answered), bytes that are no known reply (garbage that would
                          land on a TUI's screen), a size that disagrees with the real window, a DA1 that is conhost's
-                         canned "1;0", or win32-input-mode switched on (keys then arrive as CSI ... _ sequences)
+                         canned "1;0".  Worth knowing but not a fault, so only printed as a "note:": win32-input-mode
+                         (9001) being on, which Windows Terminal / ConPTY normally have.  On a Cygwin console
+                         (/dev/cons*) a dropped OSC 11 gets a hint to use wincygterm, mintty or ssh.
 
 A terminal that does not know a query stays quiet; that is listed as "no reply", not as a fault.  It waits the whole
 timeout unless every query has been answered: ConPTY answers DA1 itself, at once, while the other queries have to go
@@ -135,6 +137,13 @@ class PosixTty(object):
             return ""
         return os.read(self.fd, 256).decode("latin1")
 
+    def name(self):
+        """The tty's device name (/dev/pty0, /dev/cons0, ...), or ''."""
+        try:
+            return os.ttyname(self.fd)
+        except OSError:
+            return ""
+
     def size(self):
         """(rows, cols, xpixel, ypixel) of the window, or None."""
         try:
@@ -225,6 +234,9 @@ class WindowsConsole(object):
             return rec.key.char
         return ""                                                              # focus / mouse / resize: not a reply
 
+    def name(self):
+        return "Windows console (CONIN$/CONOUT$)"
+
     def size(self):
         info = self.Info()
         if not self.k.GetConsoleScreenBufferInfo(self.hout, self.c.byref(info)):
@@ -274,9 +286,10 @@ def probe(tty, timeout):
 
 
 def analyse(text, seen, size):
-    """-> (rows, issues): rows = [(query, dt or None, shown text, count)], issues = [str] for the negotiation verdict."""
+    """-> (rows, issues, notes): rows = [(query, dt or None, shown text, count)]; issues = [str] that make the
+    negotiation verdict MANGLED; notes = [str] worth knowing that are not faults."""
     ctx = {"size": size}
-    rows, issues, rest = [], [], text
+    rows, issues, notes, rest = [], [], [], text
     for q in QUERIES:
         found = list(q.pat.finditer(text))
         rest = q.pat.sub("", rest)
@@ -297,9 +310,10 @@ def analyse(text, seen, size):
     elif got["da1"].group(1) == "1;0":
         issues.append("DA1 is conhost's canned '1;0': the real terminal's capabilities are hidden from the program")
     if "mode9001" in got and got["mode9001"].group(1) in ("1", "3"):
-        issues.append("win32-input-mode (9001) is ON: keys and mouse arrive as CSI ... _ records, a plain TUI "
-                      "will see garbage or drop input")
-    return rows, issues
+        notes.append("win32-input-mode (9001) is on, as Windows Terminal / ConPTY normally have it: a program that "
+                     "does not ask for the key records gets plain keys, and one that does (tvision) decodes them. "
+                     "It only matters if they arrive damaged - test with --tvision")
+    return rows, issues, notes
 
 
 def environment():
@@ -315,11 +329,17 @@ def osc_verdict(seen, text):
     return ("DROPPED", 1) if seen or text else ("SILENT", 1)
 
 
-def report(label, rows, issues, seen, text, timeout, raw=False, size=None):
+CYGWIN_CONSOLE_HINT = (" This is Cygwin's own console (/dev/cons*), which swallows OSC queries on their way out: "
+                       "run the program under wincygterm, in mintty, or over ssh instead.")
+
+
+def report(label, rows, issues, seen, text, timeout, raw=False, size=None, notes=(), ttyname=""):
     out = ["termprobe%s" % (" [%s]" % label if label else ""),
            "  python:  %s %s, %s, os.name=%s" % (platform.python_implementation(), platform.python_version(),
                                                  platform.platform(), os.name),
            "  env:     %s" % environment()]
+    if ttyname:
+        out.append("  tty:     %s" % ttyname)
     if size:
         out.append("  window:  %d rows x %d cols%s" % (size[0], size[1], ", %dx%d px" % (size[2], size[3])
                                                        if size[2] and size[3] else ""))
@@ -339,12 +359,15 @@ def report(label, rows, issues, seen, text, timeout, raw=False, size=None):
            "DROPPED": "something answered but not the OSC colour query: the terminal ignores it, or an intermediary "
                       "(ConPTY, ssh, Cygwin's console layer, a multiplexer) ate it.",
            "SILENT": "no reply of any kind: the reply path may be dead, or every query was eaten."}[name]
+    if name == "DROPPED" and ttyname.startswith("/dev/cons"):
+        why += CYGWIN_CONSOLE_HINT
     out.append("  OSC 11:      %s - %s" % (name, why))
     if issues:
         out.append("  NEGOTIATION: MANGLED")
         out.extend("    - " + i for i in issues)
     else:
         out.append("  NEGOTIATION: CLEAN - every reply that came is whole, single and consistent.")
+    out.extend("  note: " + n for n in notes)
     return "\n".join(out), (code or (1 if issues else 0))
 
 
@@ -458,8 +481,8 @@ def main(argv=None):
     try:
         size = tty.size()
         text, seen = probe(tty, args.timeout)
-        rows, issues = analyse(text, seen, size)
-        msg, code = report(args.label, rows, issues, seen, text, args.timeout, args.raw, size)
+        rows, issues, notes = analyse(text, seen, size)
+        msg, code = report(args.label, rows, issues, seen, text, args.timeout, args.raw, size, notes, tty.name())
         print(msg)
         if args.input or args.tvision:
             lines, ok = input_test(tty, tvision=args.tvision)
