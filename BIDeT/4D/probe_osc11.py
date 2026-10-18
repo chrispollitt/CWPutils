@@ -74,9 +74,10 @@ class WindowsConsole(object):
     ENABLE_VT_INPUT = 0x200
     KEY_EVENT = 0x1
 
-    def __init__(self):
+    def __init__(self, vt_input=True):
         import ctypes
         from ctypes import wintypes
+        self.vt_input = vt_input
         self.c = ctypes
         self.w = wintypes
         k = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -115,7 +116,7 @@ class WindowsConsole(object):
         if not (k.GetConsoleMode(self.hin, ctypes.byref(self._old_in))
                 and k.GetConsoleMode(self.hout, ctypes.byref(self._old_out))):
             raise OSError("not a console")
-        k.SetConsoleMode(self.hin, self.ENABLE_VT_INPUT)                       # no line input, no echo, no processing
+        k.SetConsoleMode(self.hin, self.ENABLE_VT_INPUT if self.vt_input else 0)   # no line input, no echo, no processing
         k.SetConsoleMode(self.hout, self._old_out.value | self.ENABLE_PROCESSED_OUTPUT | self.ENABLE_VT_PROCESSING)
         k.FlushConsoleInputBuffer(self.hin)
 
@@ -143,10 +144,10 @@ class WindowsConsole(object):
             self.k.CloseHandle(self.hout)
 
 
-def open_tty():
-    """The controlling terminal, or None."""
+def open_tty(vt_input=True):
+    """The controlling terminal, or None.  vt_input=False (native Windows only) leaves ENABLE_VIRTUAL_TERMINAL_INPUT off."""
     try:
-        return PosixTty() if os.name == "posix" else WindowsConsole()
+        return PosixTty() if os.name == "posix" else WindowsConsole(vt_input)
     except Exception:
         return None
 
@@ -225,8 +226,10 @@ def main(argv=None):
     ap.add_argument("--timeout", type=float, default=2.0, help="seconds to wait for the replies (default 2.0)")
     ap.add_argument("--label", default="", help="a name for this run, to tell the outputs apart")
     ap.add_argument("--raw", action="store_true", help="also show every byte that came back")
+    ap.add_argument("--no-vt-input", action="store_true",
+                    help="native Windows only: do not set ENABLE_VIRTUAL_TERMINAL_INPUT (how a program that reads key events sees it)")
     args = ap.parse_args(argv)
-    tty = open_tty()
+    tty = open_tty(not args.no_vt_input)
     if tty is None:
         print("probe_osc11: NO TTY - there is no terminal to ask (is this a pipe, cron, or a Windows Python run "
               "from a pty such as mintty? run it from a Cygwin/MSYS Python there instead)", file=sys.stderr)

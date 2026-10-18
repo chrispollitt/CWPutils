@@ -50,7 +50,7 @@ class Parsers(unittest.TestCase):
     def test_a_whole_reply(self):
         r = bifterm.parse(OSC_BG + "\x1b[6;18;9t" + DA1_SIXEL)
         self.assertEqual((r.sixel, r.bg, r.cell), (True, (30, 32, 36), (9.0, 18.0)))
-        r = bifterm.parse(DA1_PLAIN)                                                      # Windows Terminal: no OSC 11
+        r = bifterm.parse(DA1_PLAIN)                                                      # a terminal (or Cygwin's console) with no OSC 11 reply
         self.assertEqual((r.sixel, r.bg, r.cell), (False, None, None))
         self.assertEqual(bifterm.parse(""), bifterm.NOTHING)
 
@@ -68,6 +68,44 @@ class Asking(unittest.TestCase):
     def test_no_terminal_no_answers(self):
         self.assertEqual(bifterm.query(env={"BIDET_NO_QUERY": "1"}), bifterm.NOTHING)
         self.assertEqual(bifterm.query(env={"TERM": "yaft-256color"}).sixel, True if os.name == "posix" else None)
+
+    def test_cygwins_own_console_is_recognised(self):
+        self.assertTrue(bifterm.cygwin_console("/dev/cons0", platform="cygwin"))
+        self.assertFalse(bifterm.cygwin_console("/dev/pty0", platform="cygwin"))           # mintty, ssh: a pty
+        self.assertFalse(bifterm.cygwin_console("/dev/cons0", platform="linux"))
+        self.assertFalse(bifterm.cygwin_console("", platform="cygwin"))
+        self.assertFalse(bifterm.cygwin_console(None, platform="cygwin"))
+
+    def test_the_cygwin_console_warning_comes_once(self):
+        import io
+        import shutil
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        try:
+            env = {"BIDET_CACHE": os.path.join(tmp, "cache")}
+            first, second = io.StringIO(), io.StringIO()
+            self.assertTrue(bifterm.warn_once(env, first))
+            self.assertIn("Cygwin", first.getvalue())
+            self.assertIn("mintty", first.getvalue())
+            self.assertFalse(bifterm.warn_once(env, second))                                 # the marker file is there
+            self.assertEqual(second.getvalue(), "")
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_an_unwritable_cache_still_warns_and_never_raises(self):
+        import io
+        import shutil
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        try:
+            blocker = os.path.join(tmp, "file")
+            with open(blocker, "w") as f:
+                f.write("x")
+            out = io.StringIO()
+            self.assertTrue(bifterm.warn_once({"BIDET_CACHE": os.path.join(blocker, "sub")}, out))
+            self.assertIn("Cygwin", out.getvalue())
+        finally:
+            shutil.rmtree(tmp)
 
     @unittest.skipUnless(os.name == "posix", "needs select() on pipes")
     def test_the_exchange_stops_at_the_da1_reply(self):

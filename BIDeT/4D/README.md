@@ -79,8 +79,13 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
 
    **Terminals: your mileage may vary.** SIXEL support differs from terminal to terminal, and animation puts it under the
    most strain. Playing an animation live has been tested thoroughly only in **mintty**, where it works well. In
-   **Windows Terminal**, which does not report its background colour, animations show noise and leftover pixels of
-   earlier frames (soft shadows are not drawn there; `--erase bg` was tried and is worse, not better); other terminals
+   **Windows Terminal**, when the tools do not know its background colour, animations show noise and leftover pixels of
+   earlier frames (soft shadows are not drawn there; `--erase bg` was tried and is worse, not better). That is the case
+   for **Cygwin's own console** (a Windows Terminal tab running `bash` directly): Cygwin swallows the colour question
+   (OSC 11) that Windows Terminal would answer, so `bifout` assumes a dark page and says so once. Workarounds: mintty, or
+   log in from a PowerShell tab with Windows' own client, `C:\Windows\System32\OpenSSH\ssh.exe MACHINE-NAME`, so the shell
+   is a pty (or make that the command line of a Windows Terminal profile); animations are then clean, tested on two
+   machines (see [INSTALL.md](INSTALL.md#4-terminals-and-sixel)). Other terminals
    (WezTerm, foot, `xterm -ti vt340`, mlterm, iTerm2 ...) have not been tried by the author. The dependable way to see an
    animation anywhere is a GIF: `bidet -P popout "Hello" -o hello.gif`. The man pages `bidet(1)` and `bifout(1)` say the same.
 
