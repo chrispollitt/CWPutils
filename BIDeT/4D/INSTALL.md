@@ -93,7 +93,7 @@ again). Give the colour yourself with `-b '#RRGGBB'`, or use one of these:
   --login-dir` in a Windows Terminal tab, or make the output of `python wincygterm --profile` the *Command line* of a
   profile. The shell has a pty (`/dev/pty0`), no ssh and no `sshd` are needed, and the colour question gets through
   (`termprobe` there says `ANSWERED`; checked with Windows Terminal 1.24 and a Cygwin 3.7 development snapshot).
-  Animations were not replayed under it, but what made them noisy, not knowing the colour, is gone; or
+  A live animation (`bidet` animate) played clean there, as did `tvmail`; or
 - run in **mintty**, which is a pty and answers; or
 - the clunky workaround, tested on two Windows 11 machines with Windows Terminal 1.24 and Cygwin 3.6.11: do not use the
   Cygwin tab. Open a **PowerShell** tab and log in to the same machine with *Windows'* OpenSSH client, which needs the

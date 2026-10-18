@@ -169,7 +169,7 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
    Better workaround, found later: wincygterm (CWPutils/toolbox).  A native Windows Python front-end keeps the
    console raw and forwards bytes; a helper on Cygwin's Python runs bash on a Cygwin pty.  In a Windows Terminal tab
    `tty` is /dev/pty0 and termprobe says ANSWERED in ~50 ms (2026-10-18, Windows Terminal 1.24, Cygwin
-   3.7.0-0.590 development snapshot); tvmail works there.  No ssh, no sshd.  Not yet replayed: a live animation.
+   3.7.0-0.590 development snapshot); tvmail works there.  No ssh, no sshd.  A live bidet animation played clean there (tested by the author).
  * A terminal that gives its background gets OPAQUE frames on that exact colour.  One that does not (the Cygwin console)
    gets TRANSPARENT frames: a pixel is painted in its own colour if at least half covered, else left clear.  Blending an edge
    or a shadow with a guessed page made a pale halo on a dark terminal (fixed).  Soft shadows are not drawn there.

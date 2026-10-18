@@ -82,6 +82,10 @@ Use the full path of the Windows Python: the path of a profile may differ from t
 \fIbin\fP on it could make a bare \fBpython\fP mean the wrong one. After \fBmake install\fP in Cygwin the file
 is under the Cygwin root, e.g. \fIusr\\local\\bin\\wincygterm\fP.
 
+.SH TESTED
+In Windows Terminal 1.24, with a Cygwin 3.7 development snapshot: an interactive \fBbash\fP, the colour query
+(checked with \fBtermprobe\fP), a live \fBtvmail\fP session and a live \fBbidet\fP animation.
+
 .SH LIMITATIONS
 Keys reach the program as the plain characters and VT sequences the console produces. A program that asks for
 win32\-input\-mode (tvision does) gets plain keys, which it also understands, instead of key records.
