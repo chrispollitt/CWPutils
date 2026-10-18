@@ -1,0 +1,119 @@
+.TH TERMPROBE 1 "October 2026" "termprobe 1.0" "User Commands"
+.SH NAME
+termprobe \- find out what survives the trip between a program and its terminal
+
+.SH SYNOPSIS
+.B termprobe
+[\-\-timeout SECONDS] [\-\-label TEXT] [\-\-raw] [\-\-input | \-\-tvision] [\-\-no\-vt\-input]
+
+.SH DESCRIPTION
+.B termprobe
+asks the controlling terminal, in one burst, the questions a capability\-negotiating full\-screen program
+(tvision, notcurses, vim, ...) asks, and then checks what came back \- not just whether something did.
+Run it in every terminal, shell and ssh combination you care about and compare the answers: the terminal
+emulator, ConPTY, Cygwin's console layer, ssh and a multiplexer can each answer, rewrite, delay, split or
+swallow what passes through them.
+
+It talks to the controlling terminal (\fI/dev/tty\fP on POSIX systems: Linux, WSL, macOS, Cygwin, MSYS,
+mintty; \fICONIN$\fP and \fICONOUT$\fP with native Windows Python), so it works with standard input and output
+redirected. Run it on the machine where the program under test runs, after the ssh hop, not before it.
+
+.SS Queries
+.TP
+OSC 10, OSC 11
+Foreground and background colour.
+.TP
+DA1, DA2, XTVERSION
+Who the terminal says it is.
+.TP
+CSI 18t, 14t, 16t
+Size in characters, size in pixels, size of one cell.
+.TP
+CSI 6n
+Cursor position.
+.TP
+kitty keyboard, modifyOtherKeys
+Which key encodings the terminal supports.
+.TP
+DECRQM 1000, 1006, 2004, 2026, 9001
+Mouse, SGR mouse, bracketed paste, synchronized output, win32\-input\-mode.
+
+.PP
+A terminal that does not know a query stays quiet; that is listed as "no reply", not as a fault. The whole
+timeout is waited unless every query has been answered: ConPTY answers DA1 itself, at once, while the other
+queries have to travel to the terminal and back, so DA1 arriving first proves nothing.
+
+.SS Verdicts
+Two verdicts are printed.
+.TP
+.B OSC 11
+\fBANSWERED\fP: the colour reply came back.
+\fBDROPPED\fP: something answered, but not the colour query (ignored, or eaten on the way).
+\fBSILENT\fP: nothing came back at all.
+.TP
+.B NEGOTIATION
+\fBCLEAN\fP: every reply that came is whole, single and consistent.
+\fBMANGLED\fP: a query was answered twice (two layers both replied), bytes came back that are no known reply
+(garbage that would land on a program's screen), the size disagrees with the real window, DA1 is conhost's
+canned \(lq1;0\(rq, or win32\-input\-mode is switched on.
+
+.SH OPTIONS
+.TP
+.BI \-\-timeout " SECONDS"
+How long to wait for the replies (default 2.0).
+.TP
+.BI \-\-label " TEXT"
+A name for this run, shown in the output, to tell runs apart.
+.TP
+.B \-\-raw
+Also show every byte that came back.
+.TP
+.B \-\-input
+Also test keyboard and mouse fidelity, interactively: SGR mouse reporting is turned on and you are asked to type
+\fIabcdefghij\fP, click three times and press Up, Down, Left, Right. Dropped keystrokes, missing clicks,
+stray bytes and win32\-input\-mode records are reported.
+.TP
+.B \-\-tvision
+Like \fB\-\-input\fP, but the terminal is first set up as tvision sets it up at startup (win32\-input\-mode,
+kitty keys, modifyOtherKeys, mouse) and the win32\-input\-mode key records are decoded. Records that were cut in
+two across reads are counted, together with the time the rest took.
+.TP
+.B \-\-no\-vt\-input
+Native Windows only: leave ENABLE_VIRTUAL_TERMINAL_INPUT off, as for a program that reads key events.
+
+.SH EXIT STATUS
+.TP
+.B 0
+Everything clean.
+.TP
+.B 1
+A problem was found (OSC 11 dropped or silent, negotiation mangled, or the input test failed).
+.TP
+.B 2
+There is no terminal to ask.
+
+.SH EXAMPLES
+Compare a few ways of reaching the same machine:
+.PP
+.nf
+termprobe \-\-label mintty
+ssh \-tt host termprobe \-\-label ssh
+termprobe \-\-tvision \-\-label tvmail\-repro
+.fi
+
+.SH NOTES
+A program that waits only a few milliseconds for the rest of a key sequence takes a lone ESC for the Escape key.
+Over some paths (Windows Terminal with win32\-input\-mode, through ssh and a Cygwin pty), key records arrive cut
+in two with the rest 16 to 33 ms behind; ncurses by default waits 10 ms (ESCDELAY and its read timeout), so the
+remainder is typed as text, for example
+.BR [68;32;100;1;0;1_ .
+\fB\-\-tvision\fP reproduces exactly that and measures the gap.
+
+A program can turn win32\-input\-mode on itself, so sending ESC [ ? 9001 l beforehand does not help for such a
+program.
+
+Cygwin's own console (\fI/dev/cons*\fP) swallows OSC strings on their way out, so an OSC query never reaches
+the terminal there; mintty and ssh sessions, which have a pty, are other paths.
+
+.SH SEE ALSO
+.BR tcping (1)

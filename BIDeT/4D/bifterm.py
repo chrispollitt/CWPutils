@@ -9,11 +9,16 @@
 
 First "what are you?" (DA1) alone: a terminal that does not list SIXEL is asked nothing more.  The others are
 then asked for the background colour and the cell size in one go, ending with DA1 again: it comes back last, so
-it marks the end of the answers, and a terminal that ignores OSC 11 (Windows Terminal) costs no waiting.  Only
+it marks the end of the answers, and a terminal that ignores OSC 11 costs no waiting.  Only
 a terminal that does not answer at all costs `timeout` seconds.  The conversation is with the controlling
 terminal (/dev/tty), not stdin / stdout, so it works in `bifin | bifout -s` and when the output is piped.
 POSIX only (Linux, WSL, macOS, Cygwin, mintty); elsewhere nothing is asked and callers go on without answers.
 BIDET_NO_QUERY=1 turns asking off.  `python bifterm.py` shows what your terminal says.
+
+Cygwin's own console (a tab that runs bash directly: Windows Terminal, conhost; the tty is /dev/cons*) swallows OSC
+strings on their way out, so an OSC 11 query never reaches the terminal, which would have answered it (measured
+with Windows Terminal 1.24: a native Windows program in the same tab gets the colour; mintty and ssh sessions are
+other paths).  There only DA1 is asked, and the user is told once (see `warn_once`).
 
 The parsers (parse_da1, parse_osc11, parse_cell) are plain functions so they can be tested without a terminal.
 Python 3.7+.
@@ -72,6 +77,44 @@ def luminance(rgb):
     return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255.0
 
 
+def cygwin_console(ttyname, platform=None):
+    """Is `ttyname` (os.ttyname of the tty) Cygwin's own console, which eats OSC queries?"""
+    return (sys.platform if platform is None else platform) == "cygwin" and (ttyname or "").startswith("/dev/cons")
+
+
+def warn_once(env=None, stream=None):
+    """Tell the user, on stderr and once ever (a marker file beside the font cache), that Cygwin's console hides the
+    terminal's colour.  Returns True if it printed.  Never raises."""
+    env = os.environ if env is None else env
+    base = env.get("BIDET_CACHE") or os.path.join(env.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache"), "bidet")
+    marker = os.path.join(base, "cygwin-console-warned")
+    try:
+        if os.path.exists(marker):
+            return False
+    except OSError:
+        return False
+    (stream or sys.stderr).write(
+        "bifterm: Cygwin's console swallows the query for the terminal's background colour, so a dark one is assumed.\n"
+        "         Give the colour yourself (-b '#RRGGBB', --dark / --light in bidet), run in mintty, or ssh in from a\n"
+        "         PowerShell tab with Windows' ssh.exe (see INSTALL.md, Terminals).  Said once;\n"
+        "         delete %s to see this again.\n" % marker)
+    try:
+        if not os.path.isdir(base):
+            os.makedirs(base)
+        with open(marker, "w") as f:
+            f.write("bifterm told the user that Cygwin's console eats OSC 11\n")
+    except OSError:
+        pass
+    return True
+
+
+def _ttyname(fd):
+    try:
+        return os.ttyname(fd)
+    except OSError:
+        return ""
+
+
 def exchange(rfd, wfd, seq, timeout=1.0, tail=0.25):
     """Write `seq` to wfd and read what comes back from rfd, until a DA1 reply has arrived or `timeout` seconds
     pass (then `tail` more for a straggler that began).  Returns the text."""
@@ -111,6 +154,10 @@ def query(want_bg=True, want_cell=True, timeout=1.0, debug=False, env=None):
     except Exception:
         os.close(fd)
         return NOTHING
+    if (want_bg or want_cell) and cygwin_console(_ttyname(fd)):
+        if want_bg:
+            warn_once(env)
+        want_bg = want_cell = False                          # asked anyway they would be eaten: DA1 alone still works
     texts = []
     try:
         tty.setcbreak(fd, termios.TCSANOW)

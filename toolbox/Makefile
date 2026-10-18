@@ -1,6 +1,6 @@
 # CWPutils/toolbox - Makefile for a set of standalone Python 3 CLI utilities.
 #
-# All tools (cut2, pullout, rpullout, ghgrep, tcping) are dependency-free
+# All tools (cut2, pullout, rpullout, ghgrep, tcping, termprobe) are dependency-free
 # Python 3 scripts, so "build" is just making sure they are executable
 # and syntactically valid; there is nothing to compile.
 
@@ -10,8 +10,8 @@ BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man/man1
 SUDO =
 
-BINS     = cut2 pullout rpullout ghgrep tcping
-MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1 tcping.1
+BINS     = cut2 pullout rpullout ghgrep tcping termprobe
+MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1 tcping.1 termprobe.1
 
 # Default target
 all: build

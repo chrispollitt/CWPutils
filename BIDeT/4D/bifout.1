@@ -163,13 +163,30 @@ has been tested thoroughly only in mintty, where it works well.
 .B Your mileage may vary
 (YMMV) in other terminals.
 .PP
-In Windows Terminal, which does not report its background colour, animations show noise and leftover pixels of earlier frames.
+In Windows Terminal, when its background colour is not known, animations show noise and leftover pixels of earlier frames.
 Soft shadows are not drawn there, since the page is unknown.
 .B \-\-erase bg
 was tried and is worse, not better.  Other terminals (WezTerm, foot, xterm \-ti vt340, mlterm, iTerm2 ...) have not been tried
 by the author.  Until a terminal's own SIXEL handling improves, the dependable way to see an animation is to write it as a
 GIF with
 .BR "\-o FILE.gif" .
+.PP
+Cygwin's own console (the tty is /dev/cons0: a Windows Terminal tab that runs bash directly) swallows the OSC 11 query for the
+background colour, although Windows Terminal itself answers it.  There
+.B bifout
+asks only whether SIXEL is available (DA1), assumes a dark page, and prints a note once on stderr (the marker file is
+.I cygwin\-console\-warned
+in
+.I $BIDET_CACHE
+or
+.IR ~/.cache/bidet ).
+Ways round it: mintty (a pty); a colour given with
+.BR "\-b #RRGGBB" ;
+or, clunky but tested with Windows Terminal 1.24 and Cygwin 3.6, a PowerShell tab that logs in to the machine with Windows' own
+OpenSSH client
+.RB ( "C:\eWindows\eSystem32\eOpenSSH\essh.exe MACHINE" ),
+which needs the Cygwin sshd running there: the shell is then a pty, the query is answered and animations play without the noise.
+It also works as the command line of a Windows Terminal profile.  Tested on two machines.
 .SH ENVIRONMENT
 .TP
 .B BIDET_NO_QUERY

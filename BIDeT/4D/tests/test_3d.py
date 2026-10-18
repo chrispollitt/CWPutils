@@ -398,7 +398,7 @@ class Playback(unittest.TestCase):
         self.assertFalse(bifout.plays(still, parse(), "sixel", True))                       # (a still is just drawn)
 
     def test_transparent_frames_are_not_blended_with_a_page(self):
-        """Windows Terminal does not say its background, so frames go out transparent: a pixel is painted in its own colour if at
+        """A terminal that does not say its background (Cygwin's console), so frames go out transparent: a pixel is painted in its own colour if at
         least half covered, else left clear.  Blending an edge or a shadow with the picture's own (white) page made a pale halo."""
         alpha = np.array([[1.0, 0.7, 0.3, 0.0]], np.float32)
         color = np.zeros((1, 4, 3), np.uint8)

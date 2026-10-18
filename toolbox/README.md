@@ -12,10 +12,11 @@ third-party packages are required.
 | [`rpullout`](#rpullout) | Like `pullout`, but finds the *last* match before an after-context regex |
 | [`ghgrep`](#ghgrep) | `grep` that also prints the group/section header a match belongs to |
 | [`tcping`](#tcping) | Time a TCP connect/disconnect and report any welcome banner |
+| [`termprobe`](#termprobe) | Find out what survives the trip between a program and its terminal (colour queries, key and mouse input, ConPTY/ssh damage) |
 
 Full details for each tool are in its man page (`cut2.1`, `pullout.1`,
-`rpullout.1`, `ghgrep.1`, `tcping.1`); this file is a quick-start
-summary.
+`rpullout.1`, `ghgrep.1`, `tcping.1`, `termprobe.1`); this file is a
+quick-start summary.
 
 ## Requirements
 
@@ -132,6 +133,29 @@ tcping [-w TIMEOUT] [-b BANNER_WAIT] [--no-banner] HOST PORT
 - `-w, --timeout SECONDS`: connect timeout (default 5).
 - `-b, --banner-wait SECONDS`: how long to wait for an unsolicited banner (default 1).
 - `--no-banner`: skip the banner check; close the socket immediately on connect.
+
+## termprobe
+
+Asks the controlling terminal what a capability-negotiating TUI asks (colours
+with OSC 10/11, DA1/DA2, window and cell size, cursor position, kitty keys,
+mouse and win32-input-mode state) and checks that the replies are whole,
+single and consistent - then, with `--tvision`, replays tvision's startup and
+tests keyboard and mouse input, counting key records cut in two on the way.
+Run it in each terminal / shell / ssh combination and compare.
+
+```bash
+termprobe --label mintty
+ssh -tt host termprobe --label via-ssh
+termprobe --tvision --label tvmail-repro
+```
+
+```
+termprobe [--timeout S] [--label TEXT] [--raw] [--input | --tvision] [--no-vt-input]
+```
+
+- Two verdicts: `OSC 11` (`ANSWERED` / `DROPPED` / `SILENT`) and `NEGOTIATION` (`CLEAN` / `MANGLED`, with the reasons).
+- `--input`: interactive keyboard and mouse fidelity test; `--tvision`: the same after setting the terminal up as tvision does.
+- Exit status 0 clean, 1 a problem found, 2 no terminal. Works on POSIX (incl. Cygwin, mintty, WSL) and native Windows Python.
 
 ## Testing
 

@@ -127,6 +127,13 @@ protocol if that is what it is, else coloured text, which plays an animation too
 to terminal, and animation puts it under the most strain.  It has been tested thoroughly only in mintty, where it works well.
 .B Your mileage may vary
 (YMMV) in other terminals, including Windows Terminal, where animations show noise and leftover pixels of earlier frames.
+Cygwin's own console (a Windows Terminal tab that runs bash directly) swallows the terminal's background-colour query, so a dark
+page is assumed and a note is printed once; use mintty, give
+.B \-b
+a colour, or log in from a PowerShell tab with Windows' ssh
+.RB ( "C:\eWindows\eSystem32\eOpenSSH\essh.exe MACHINE" )
+so the shell is a pty (this can be the command line of a Windows Terminal profile); animations are then clean.  See
+.BR bifout (1).
 The dependable way to see an animation is a GIF:
 .BR "bidet \-P popout Hello \-o hello.gif" .
 See

@@ -77,10 +77,32 @@ is checked: a terminal that says it has no SIXEL gets an error, not garbage. `py
 text you can `cat` anywhere.
 
 **Your mileage may vary.** SIXEL support differs from terminal to terminal, and animation puts it under the most
-strain. Live pictures are well tested in **mintty** only. In **Windows Terminal**, which does not report its
-background colour, animations show noise and leftover pixels of earlier frames. WezTerm, foot, `xterm -ti vt340`,
+strain. Live pictures are well tested in **mintty** only. In **Windows Terminal**, when the tools do not know its
+background colour, animations show noise and leftover pixels of earlier frames; when it does know it (see the Cygwin
+note below) a spinning 3D animation played clean. WezTerm, foot, `xterm -ti vt340`,
 mlterm and iTerm2 have not been tried by the author. Files are the dependable way: `-o x.png`, and `-o x.gif` for
 an animation.
+
+**Cygwin in Windows Terminal: the background colour is not found.** Windows Terminal itself answers the colour
+question (OSC 11), but Cygwin's own console, the tty (`/dev/cons0`) of a tab that starts `bash` directly, swallows the
+question on its way out. There `bifout` asks SIXEL support only (that works), assumes a dark background, and says so
+once on stderr (delete `~/.cache/bidet/cygwin-console-warned`, or the same file under `$BIDET_CACHE`, to see the note
+again). Give the colour yourself with `-b '#RRGGBB'`, or use one of these:
+
+- run in **mintty**, which is a pty and answers; or
+- the clunky workaround, tested on two Windows 11 machines with Windows Terminal 1.24 and Cygwin 3.6.11: do not use the
+  Cygwin tab. Open a **PowerShell** tab and log in to the same machine with *Windows'* OpenSSH client, which needs the
+  Cygwin `sshd` running there:
+
+      C:\Windows\System32\OpenSSH\ssh.exe MACHINE-NAME
+
+  The shell you land in has a pty (`/dev/pty0`) and the colour question gets through (`termprobe` there says
+  `ANSWERED`, in about 50 ms), and animations played live show no noise. Tried with the machine's own name;
+  `localhost` was not retried with this client. To make it permanent, give Windows Terminal a profile whose
+  *Command line* is `c:\windows\system32\openssh\ssh.exe MACHINE-NAME` (Settings, Add a new profile, e.g. named
+  "Cygwin"): every tab of it is then such a login.
+
+`termprobe` (CWPutils/toolbox) shows what a given way of reaching the terminal does with the question.
 
 ## 5. Fonts
 

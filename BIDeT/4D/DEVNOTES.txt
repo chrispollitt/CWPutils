@@ -156,14 +156,24 @@ is for users; BIF-SPEC.md is the file format.  Counts and dates below are as of
  * Asking: DA1 first and alone (a terminal without SIXEL is asked nothing else); then OSC 11 (background) and CSI 16 t
    (cell size) with a second DA1 as the end mark.  Silence counts as "no SIXEL" unless --force.  The conversation is with
    /dev/tty, so it works in a pipe.  POSIX only; elsewhere nothing is asked.
- * A terminal that gives its background gets OPAQUE frames on that exact colour.  One that does not (Windows Terminal)
+ * Cygwin's own console (tty /dev/cons*) swallows OSC strings on output, so an OSC 11 query never reaches Windows Terminal,
+   which does answer it (measured 2026-10-17, Windows Terminal 1.24, Cygwin 3.6.11; native Windows Python in the same tab
+   gets the colour in a few ms, Cygwin Python gets DA1 only, for TERM=cygwin and xterm-256color alike; setting the colour
+   with OSC 11 works from native Python and not from Cygwin).  bifterm.query() asks DA1 only there and warns once
+   (bifterm.cygwin_console, warn_once).  Workaround that was tested: a PowerShell tab, Windows' own
+   C:\Windows\System32\OpenSSH\ssh.exe to the machine (name, not localhost), Cygwin sshd gives a /dev/pty: termprobe says
+   ANSWERED in ~50 ms, and a live spin animation showed NO noise (so the noise was the unknown colour: transparent
+   frames), on cmdesktop and cmlaptop; the user's Windows Terminal profile "Cygwin" has the command line
+   c:\windows\system32\openssh\ssh.exe cmlaptop.  An earlier ssh to ::1 failed (the client used then was not recorded; probably Cygwin's ssh in the
+   Cygwin console).  termprobe is the tool for telling these paths apart.
+ * A terminal that gives its background gets OPAQUE frames on that exact colour.  One that does not (the Cygwin console)
    gets TRANSPARENT frames: a pixel is painted in its own colour if at least half covered, else left clear.  Blending an edge
    or a shadow with a guessed page made a pale halo on a dark terminal (fixed).  Soft shadows are not drawn there.
  * Playing: all frames are drawn and encoded once on one shared palette of 254 colours, 253 when the page is transparent (no dithering, so still areas do
    not shimmer; it bands smooth gradients), then replayed on a steady clock, skipping frames if the terminal is slow.
    --erase ech (erase the picture's cells first) is the default; bg (SIXEL P2=0) and none exist.
- * mintty: works well, the only terminal tested thoroughly.  Windows Terminal: noise and stale pixels in animations; --erase bg
-   made it worse.  Others (WezTerm, foot, xterm, mlterm, iTerm2): not tried.  The documents say YMMV.
+ * mintty: works well, the only terminal tested thoroughly.  Windows Terminal: noise and stale pixels in animations (seen with the colour unknown, i.e. the Cygwin console; with the
+   colour known via the ssh workaround above: no noise); --erase bg made it worse.  Others (WezTerm, foot, xterm, mlterm, iTerm2): not tried.  The documents say YMMV.
 
 
 6. NUMBERS AND DECISIONS WORTH KNOWING
