@@ -180,13 +180,15 @@ in
 .I $BIDET_CACHE
 or
 .IR ~/.cache/bidet ).
-Ways round it: mintty (a pty); a colour given with
+Ways round it: mintty (a pty); wincygterm (in CWPutils/toolbox), which runs bash on a pty inside a Windows Terminal tab
+(a native Windows Python runs it, e.g. as the command line of a profile, and the query is then answered); a colour given with
 .BR "\-b #RRGGBB" ;
 or, clunky but tested with Windows Terminal 1.24 and Cygwin 3.6, a PowerShell tab that logs in to the machine with Windows' own
 OpenSSH client
 .RB ( "C:\eWindows\eSystem32\eOpenSSH\essh.exe MACHINE" ),
 which needs the Cygwin sshd running there: the shell is then a pty, the query is answered and animations play without the noise.
-It also works as the command line of a Windows Terminal profile.  Tested on two machines.
+It also works as the command line of a Windows Terminal profile.  Tested on two machines.  The query being answered
+under wincygterm was checked with termprobe; a live animation there has not been replayed.
 .SH ENVIRONMENT
 .TP
 .B BIDET_NO_QUERY

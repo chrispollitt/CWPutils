@@ -82,7 +82,8 @@ it gets no new features or fixes. 4D does not depend on it: the parity tests use
    **Windows Terminal**, when the tools do not know its background colour, animations show noise and leftover pixels of
    earlier frames (soft shadows are not drawn there; `--erase bg` was tried and is worse, not better). That is the case
    for **Cygwin's own console** (a Windows Terminal tab running `bash` directly): Cygwin swallows the colour question
-   (OSC 11) that Windows Terminal would answer, so `bifout` assumes a dark page and says so once. Workarounds: mintty, or
+   (OSC 11) that Windows Terminal would answer, so `bifout` assumes a dark page and says so once. Workarounds: mintty; `wincygterm`
+   (CWPutils/toolbox), which runs `bash` on a pty inside a Windows Terminal tab so the colour is found; or
    log in from a PowerShell tab with Windows' own client, `C:\Windows\System32\OpenSSH\ssh.exe MACHINE-NAME`, so the shell
    is a pty (or make that the command line of a Windows Terminal profile); animations are then clean, tested on two
    machines (see [INSTALL.md](INSTALL.md#4-terminals-and-sixel)). Other terminals

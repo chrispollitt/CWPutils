@@ -95,8 +95,9 @@ def warn_once(env=None, stream=None):
         return False
     (stream or sys.stderr).write(
         "bifterm: Cygwin's console swallows the query for the terminal's background colour, so a dark one is assumed.\n"
-        "         Give the colour yourself (-b '#RRGGBB', --dark / --light in bidet), run in mintty, or ssh in from a\n"
-        "         PowerShell tab with Windows' ssh.exe (see INSTALL.md, Terminals).  Said once;\n"
+        "         Give the colour yourself (-b '#RRGGBB', --dark / --light in bidet), run in mintty, run bash on a pty\n"
+        "         with wincygterm (CWPutils/toolbox), or ssh in from a PowerShell tab with Windows' ssh.exe (see\n"
+        "         INSTALL.md, Terminals).  Said once;\n"
         "         delete %s to see this again.\n" % marker)
     try:
         if not os.path.isdir(base):

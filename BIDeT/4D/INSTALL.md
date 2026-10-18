@@ -89,6 +89,11 @@ question on its way out. There `bifout` asks SIXEL support only (that works), as
 once on stderr (delete `~/.cache/bidet/cygwin-console-warned`, or the same file under `$BIDET_CACHE`, to see the note
 again). Give the colour yourself with `-b '#RRGGBB'`, or use one of these:
 
+- run `bash` on a pty with **wincygterm** (CWPutils/toolbox; it needs a native Windows Python): `python wincygterm
+  --login-dir` in a Windows Terminal tab, or make the output of `python wincygterm --profile` the *Command line* of a
+  profile. The shell has a pty (`/dev/pty0`), no ssh and no `sshd` are needed, and the colour question gets through
+  (`termprobe` there says `ANSWERED`; checked with Windows Terminal 1.24 and a Cygwin 3.7 development snapshot).
+  Animations were not replayed under it, but what made them noisy, not knowing the colour, is gone; or
 - run in **mintty**, which is a pty and answers; or
 - the clunky workaround, tested on two Windows 11 machines with Windows Terminal 1.24 and Cygwin 3.6.11: do not use the
   Cygwin tab. Open a **PowerShell** tab and log in to the same machine with *Windows'* OpenSSH client, which needs the

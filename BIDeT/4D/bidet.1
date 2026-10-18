@@ -128,7 +128,7 @@ to terminal, and animation puts it under the most strain.  It has been tested th
 .B Your mileage may vary
 (YMMV) in other terminals, including Windows Terminal, where animations show noise and leftover pixels of earlier frames.
 Cygwin's own console (a Windows Terminal tab that runs bash directly) swallows the terminal's background-colour query, so a dark
-page is assumed and a note is printed once; use mintty, give
+page is assumed and a note is printed once; use mintty, run bash on a pty with wincygterm (CWPutils/toolbox), give
 .B \-b
 a colour, or log in from a PowerShell tab with Windows' ssh
 .RB ( "C:\eWindows\eSystem32\eOpenSSH\essh.exe MACHINE" )

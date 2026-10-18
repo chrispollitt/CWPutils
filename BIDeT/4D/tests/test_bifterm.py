@@ -87,6 +87,7 @@ class Asking(unittest.TestCase):
             self.assertTrue(bifterm.warn_once(env, first))
             self.assertIn("Cygwin", first.getvalue())
             self.assertIn("mintty", first.getvalue())
+            self.assertIn("wincygterm", first.getvalue())
             self.assertFalse(bifterm.warn_once(env, second))                                 # the marker file is there
             self.assertEqual(second.getvalue(), "")
         finally:
