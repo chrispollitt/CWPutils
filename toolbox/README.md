@@ -211,13 +211,28 @@ fixperms -w ~/github/myproject                        # group-writable (775/664)
 ```
 
 ```
-fixperms [-n] [-v] [-d] [-u USER] [-g GROUP] [-w] [-x] [-f] PATH...
+fixperms [-n] [-v] [-d] [-u USER] [-g GROUP] [-w] [-x] [-f] [-r FILE]... [-R] PATH...
+fixperms --list-rules
 ```
 
-- Modes become 755 for directories and 644 for files; files keep x for everyone if any x bit was set or they start with `#!`, `MZ` (exe/dll/pyd, which Cygwin needs x on to load) or ELF magic. `-x` ignores old x bits and goes by content alone; `-w` adds group write.
+- Where no rule says otherwise, modes become 755 for directories and 644 for files; files keep x for everyone if any x bit was set or they start with `#!`, `MZ` (exe/dll/pyd, which Cygwin needs x on to load) or ELF magic. `-x` ignores old x bits and goes by content alone; `-w` adds group write (in a home: wherever the group can already read).
 - `-d` / `--no-recurse` fixes only the named paths; `-n` / `--dry-run` changes nothing; `-v` lists changes (`-vv` also unchanged entries).
 - Taking ownership of Administrators-owned files usually needs an elevated shell: `fixperms` reports those, fixes everything else, and prints the command to rerun elevated.
 - Refuses `/`, the Cygwin root, drive roots and top-level directories such as `/usr` without `-f`. Exit status 0 all fixed, 1 something not fixed, 2 usage error.
+
+Places that need other modes or owners are handled by a rule table. The first
+match wins, `--list-rules` prints the table, and `-v` says which rule each
+change came from. Built in:
+
+- `~/.ssh` 700, keys and `config` 600, `*.pub` and `known_hosts` 644; `~/.gnupg`, `~/.getmail` 700/600; credential files (`~/.netrc`, `~/.authinfo*`, `~/.git-credentials`, `~/.msmtprc`, `~/.pgpass`, ...) 600.
+- Anywhere else in a home: `=`, i.e. keep the mode but drop write for group and others, so private files such as `mbox` are never loosened. A home's contents go to the account the `/home/NAME` directory belongs to, not to whoever runs the command.
+- `/var/mail` and `/var/spool/mail` stay 1777 and keep their owner, and each mailbox becomes 600 and is owned by the account it is named after. `/tmp`, `/var/tmp` and `/var/log` stay 1777 and their contents keep their owners. sshd's host keys are 600 (`.pub` 644) and `/var/empty` is 755, all keeping their owners.
+
+Add your own in `~/.config/fixperms/rules` or with `--rules FILE`, one per
+line: `PATTERN DIR-MODE FILE-MODE OWNER`. The mode is `-` (default), `=`
+(keep, never loosen) or octal. The owner is `user`, `keep`, `home`, `base`
+or an account name. For example `/srv/www/** 775 664 www`. `--no-rules`
+turns the table off.
 
 ## Testing
 

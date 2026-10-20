@@ -6,6 +6,9 @@ with no rights, a mask, a grant to the owner's group, a default ACL that gives n
 what fixperms makes of it.  Needs getfacl/setfacl and a file system with ACLs, so it runs on Cygwin and on
 Linux with the acl tools; elsewhere it is skipped.  Taking ownership from another account needs an elevated
 shell and is not covered beyond the failure path (chown to an account we cannot give files to).
+
+The rule table is tested with rules files whose patterns point into the scratch tree; the built-in rules for
+real places (~/.ssh, /var/mail, ...) are only checked for being listed, and for /tmp, where the scratch trees are.
 """
 
 import os
@@ -27,8 +30,11 @@ DIR_MESS = (f"u::r-x,u:{UID}:---,g::---,g:{GID}:rwx,m::rwx,o::r-x,"
 FILE_MESS = f"u::r--,u:{UID}:---,g::---,g:{GID}:rwx,m::rw-,o::r--"
 
 
-def run(args):
-    return subprocess.run(["bash", script_path("fixperms")] + list(args), capture_output=True, text=True)
+def run(args, rules=False):
+    """Run fixperms.  The scratch trees live under the temp directory, which the built-in rules treat
+    specially (/tmp keeps its modes), so the rules are off unless a test asks for them."""
+    extra = [] if rules else ["--no-rules"]
+    return subprocess.run(["bash", script_path("fixperms")] + extra + list(args), capture_output=True, text=True)
 
 
 def getfacl(path):
@@ -181,6 +187,121 @@ class FixpermsTest(unittest.TestCase):
         self.assertIn("elevated", r.stderr)
         # It did not touch the ACL of a file it could not take over.
         self.assertIn("mask::rw-", getfacl(self.files["plain"]))
+
+
+@unittest.skipUnless(HAVE_ACL, "needs getfacl/setfacl on a POSIX system")
+class RulesTest(unittest.TestCase):
+    def setUp(self):
+        self.base = tempfile.mkdtemp(prefix="fixperms-rules-")
+        self.me = subprocess.run(["id", "-un"], capture_output=True, text=True).stdout.strip()
+
+    def tearDown(self):
+        subprocess.run(["chmod", "-R", "u+rwx", self.base], capture_output=True)
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def make(self, rel, content=b"x\n", acl="u::rwx,g::rwx,o::rwx"):
+        """Create a file (or a directory, if rel ends in /) under base with a loose ACL."""
+        p = os.path.join(self.base, rel.rstrip("/"))
+        os.makedirs(p if rel.endswith("/") else os.path.dirname(p), exist_ok=True)
+        if not rel.endswith("/"):
+            with open(p, "wb") as f:
+                f.write(content)
+        subprocess.run(["setfacl", "-s", acl, p], check=True)
+        return p
+
+    def rules(self, text):
+        path = os.path.join(self.base, "rules")
+        with open(path, "w") as f:
+            f.write(text.replace("BASE", self.base))
+        return path
+
+    def test_rule_modes(self):
+        d = self.make("tree/secret/")
+        key = self.make("tree/secret/key")
+        pub = self.make("tree/secret/key.pub")
+        script = self.make("tree/secret/hook", b"#!/bin/sh\n")
+        other = self.make("tree/other.txt")
+        rf = self.rules("BASE/tree/secret/*.pub  700  644  user\n"
+                        "BASE/tree/secret       700  -    user\n"
+                        "BASE/tree/secret/**    700  600  user\n")
+        r = run(["-R", "--rules", rf, "-v", os.path.join(self.base, "tree")], rules=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(mode(d), "700")
+        self.assertEqual(mode(key), "600")  # its old x bits do not count under a rule
+        self.assertEqual(mode(pub), "644")
+        self.assertEqual(mode(script), "700")  # #! adds x where the rule mode has r
+        self.assertEqual(mode(other), "755")  # no rule: the default, keeping x
+        self.assertIn("(rule BASE/tree/secret/**)".replace("BASE", self.base), r.stdout)
+
+    def test_keep_mode_never_loosens(self):
+        private = self.make("tree/private", acl="u::rw-,g::---,o::---")
+        loose = self.make("tree/loose", acl="u::r--,g::rw-,o::rw-")
+        masked = self.make("tree/masked")
+        if sys.platform == "cygwin":
+            # Cygwin's own group "chris" is the same SID as the user, so its rights would show as the owner's.
+            os.chown(masked, -1, 545)  # Users
+        subprocess.run(["setfacl", "-s", "u::rw-,g::rwx,m::---,o::---", masked], check=True)
+        rf = self.rules("BASE/tree/**  =  =  user\n")
+        r = run(["-R", "--rules", rf, os.path.join(self.base, "tree")], rules=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(mode(private), "600")
+        self.assertEqual(mode(loose), "644")  # write taken from group and others, rw for the owner
+        self.assertEqual(mode(masked), "600")  # the group's rights were masked off
+
+    def test_group_write_under_keep_rule(self):
+        private = self.make("tree/private", acl="u::rw-,g::---,o::---")
+        shared = self.make("tree/shared", acl="u::rw-,g::r--,o::r--")
+        rf = self.rules("BASE/tree/**  =  =  user\n")
+        run(["-R", "--rules", rf, "-w", os.path.join(self.base, "tree")], rules=True)
+        self.assertEqual(mode(private), "600")  # -w does not open up a private file
+        self.assertEqual(mode(shared), "664")
+
+    def test_world_writable_dir_gets_tight_defaults(self):
+        spool = self.make("spool/")
+        rf = self.rules("BASE/spool  1777  -  user\n")
+        r = run(["-R", "--rules", rf, spool], rules=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(mode(spool), "1777")
+        acl = getfacl(spool)
+        self.assertIn("other::rwx", acl)
+        self.assertIn("default:other::r-x", acl)
+
+    def test_base_owner(self):
+        mine = self.make(f"spool/{self.me}")
+        nobody = self.make("spool/no-such-account-xyz")
+        rf = self.rules("BASE/spool/*  -  600  base\n")
+        r = run(["-R", "--rules", rf, "-v", os.path.join(self.base, "spool")], rules=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(mode(mine), "600")
+        self.assertEqual(mode(nobody), "600")
+        self.assertEqual(os.lstat(nobody).st_uid, UID)  # no such account: owner left alone
+        self.assertFalse([l for l in r.stdout.splitlines() if l.startswith("fix ") and "owner " in l])
+
+    def test_bad_rules(self):
+        for text in ["relative/path - - user\n", "/x 99 - user\n", "/x - -\n", "/x - - no-such-account-xyz\n"]:
+            r = run(["--rules", self.rules(text), "--list-rules"], rules=True)
+            self.assertEqual(r.returncode, 2, text)
+
+    def test_list_rules(self):
+        rf = self.rules("/srv/www/**  -  -  user  # comment\n")
+        r = run(["--rules", rf, "--list-rules"], rules=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lines = r.stdout.splitlines()
+        self.assertIn("/srv/www/**", lines[1])  # rules files come first
+        self.assertIn("~/.ssh", r.stdout)
+        self.assertIn("/var/mail/*", r.stdout)
+        r = run(["--no-rules", "--list-rules"], rules=True)
+        self.assertIn("no rules", r.stdout)
+
+    def test_builtin_tmp_rule_keeps_modes(self):
+        if not os.path.abspath(self.base).startswith("/tmp/"):
+            self.skipTest("temp directory is not under /tmp")
+        private = self.make("tree/private", acl="u::rw-,g::---,o::---")
+        loose = self.make("tree/loose", acl="u::rw-,g::rw-,o::rw-")
+        r = run([os.path.join(self.base, "tree")], rules=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(mode(private), "600")
+        self.assertEqual(mode(loose), "644")
 
 
 if __name__ == "__main__":

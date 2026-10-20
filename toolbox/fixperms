@@ -12,6 +12,10 @@
 #      up as a trailing '+' in ls -l;
 #   3. falls back to "icacls /reset" + chmod for anything setfacl cannot set.
 #
+# Places that need other modes or owners (~/.ssh, ~/.gnupg, credential files,
+# /var/mail, /tmp, sshd's host keys, other users' homes) are handled by a rule
+# table: see BUILTIN_RULES below, --list-rules, and the user rules file.
+#
 # A file counts as executable if any x bit was set or it starts with "#!",
 # "MZ" (a Windows exe/dll, which Cygwin needs x on to load) or "\177ELF".
 #
@@ -20,9 +24,9 @@
 
 set -u
 export LC_ALL=C
-shopt -s nullglob dotglob
+shopt -s nullglob dotglob extglob
 
-VERSION=1.0
+VERSION=1.1
 PROG=${0##*/}
 ORIG_ARGS=("$@")
 
@@ -37,11 +41,16 @@ owns them and a non-elevated Cygwin shell can use them.
   -d, --no-recurse       fix only the named PATHs, not what is under them
   -u, --user USER        owner to set (default: the invoking user)
   -g, --group GROUP      group to set (default: the invoking user's group)
-  -w, --group-write      give the group write access (775/664, not 755/644)
+  -w, --group-write      give the group write access (775/664, not 755/644;
+                         under an "=" rule, where the group can read)
   -x, --exec-by-content  ignore existing x bits; set x only on files that
                          start with #!, MZ or ELF magic
   -f, --force            allow /, the Cygwin root, drive roots and top-level
                          directories such as /usr
+  -r, --rules FILE       read extra rules from FILE (repeatable; checked
+                         before the user rules file and the built-in ones)
+  -R, --no-rules         ignore the built-in rules and the user rules file
+  -l, --list-rules       print the rules in force, first match first, and exit
   -h, --help             show this help and exit
   -V, --version          show the version and exit
 
@@ -58,8 +67,9 @@ die_usage() {
 # ---------------------------------------------------------------- options
 
 dry_run=0 verbose=0 recurse=1 force=0 group_write=0 exec_by_content=0
+use_rules=1 list_rules=0
 opt_user='' opt_group=''
-paths=()
+paths=() rule_files=()
 
 while (($#)); do
     arg=$1
@@ -72,15 +82,22 @@ while (($#)); do
     -w|--group-write) group_write=1 ;;
     -x|--exec-by-content) exec_by_content=1 ;;
     -f|--force) force=1 ;;
+    -R|--no-rules) use_rules=0 ;;
+    -l|--list-rules) list_rules=1 ;;
     -h|--help) usage; exit 0 ;;
     -V|--version) echo "$PROG $VERSION"; exit 0 ;;
-    -u|--user|-g|--group)
+    -u|--user|-g|--group|-r|--rules)
         (($#)) || die_usage "option '$arg' requires an argument"
-        case $arg in -u|--user) opt_user=$1 ;; *) opt_group=$1 ;; esac
+        case $arg in
+        -u|--user) opt_user=$1 ;;
+        -g|--group) opt_group=$1 ;;
+        *) rule_files+=("$1") ;;
+        esac
         shift ;;
     --user=*) opt_user=${arg#*=} ;;
     --group=*) opt_group=${arg#*=} ;;
-    -[nvdwxfhV][nvdwxfhV]*)
+    --rules=*) rule_files+=("${arg#*=}") ;;
+    -[nvdwxfhVRl][nvdwxfhVRl]*)
         # Bundled flags such as -nv: split into single flags.
         flags=()
         for ((j = 1; j < ${#arg}; j++)); do flags+=("-${arg:j:1}"); done
@@ -89,7 +106,7 @@ while (($#)); do
     *) paths+=("$arg") ;;
     esac
 done
-((${#paths[@]})) || die_usage "no PATH given"
+((${#paths[@]} || list_rules)) || die_usage "no PATH given"
 ((dry_run && !verbose)) && verbose=1
 
 # ---------------------------------------------------------------- environment
@@ -130,6 +147,201 @@ elif [[ -n $opt_user ]]; then
 else
     T_GID=$(id -g) T_GROUP=$(id -gn)
 fi
+T_HOME=$(getent passwd -- "$T_USER" 2>/dev/null | cut -d: -f6)
+T_HOME=${T_HOME%/}
+
+# ---------------------------------------------------------------- rules
+#
+# Each rule is: PATTERN DIR-MODE FILE-MODE OWNER.  The first rule whose
+# PATTERN matches an entry's absolute path decides its mode and owner; entries
+# no rule matches get the defaults (755/644, the invoking user).
+#
+# PATTERN  An absolute path glob.  * and ? stay within one path component,
+#          ** matches across them, and a leading ~ means any home directory
+#          (/home/NAME, and the target user's home wherever it is).  Matched
+#          case-insensitively on Cygwin.
+# MODE     - the default (755/644, with x for executables),
+#          = keep the current mode, minus write for group and others
+#            (and never less for the group than for others); the owner
+#            always gets rw (rwx on a directory), and a file with
+#            executable content gets x where it has r.  Never loosens.
+#          or octal: 700, 600, 1777 ...  Executable files get x added
+#          wherever the mode has r (600 -> 700).  Setuid/setgid/sticky bits
+#          in a rule are added to any the entry already has.
+# OWNER    user   the invoking user (or --user/--group)
+#          keep   leave owner and group alone (service files, shared dirs)
+#          home   the account the /home/NAME directory belongs to; the
+#                 invoking user inside their own home or when --user is given
+#          base   the account named by the file's own name (/var/mail/NAME)
+#          NAME   that account
+#          home and base leave owner and group alone if there is no such
+#          account.
+
+BUILTIN_RULES='
+# PATTERN                       DIR   FILE  OWNER
+~/.ssh                          700   -     home
+~/.ssh/**.pub                   700   644   home
+~/.ssh/known_hosts*             700   644   home
+~/.ssh/**                       700   600   home
+~/.gnupg                        700   -     home
+~/.gnupg/**                     700   600   home
+~/.getmail                      700   -     home
+~/.getmail/**                   700   600   home
+~/.aws/credentials              -     600   home
+~/.kube/config                  -     600   home
+~/.docker/config.json           -     600   home
+~/.netrc                        -     600   home
+~/.authinfo*                    -     600   home
+~/.git-credentials              -     600   home
+~/.msmtprc                      -     600   home
+~/.fetchmailrc                  -     600   home
+~/.pgpass                       -     600   home
+~/.my.cnf                       -     600   home
+~/.Xauthority                   -     600   home
+~                               =     -     home
+~/**                            =     =     home
+/var/mail                       1777  -     keep
+/var/mail/*                     -     600   base
+/var/spool/mail                 1777  -     keep
+/var/spool/mail/*               -     600   base
+/tmp                            1777  -     keep
+/tmp/**                         =     =     keep
+/var/tmp                        1777  -     keep
+/var/tmp/**                     =     =     keep
+/var/log                        1777  -     keep
+/var/log/**                     =     =     keep
+/var/empty                      755   -     keep
+/etc/ssh_host_*_key             -     600   keep
+/etc/ssh_host_*_key.pub         -     644   keep
+/etc/ssh/ssh_host_*_key         -     600   keep
+/etc/ssh/ssh_host_*_key.pub     -     644   keep
+/etc/sshd_config                -     644   keep
+/etc/ssh/sshd_config            -     644   keep
+'
+USER_RULES=${XDG_CONFIG_HOME:-${T_HOME:-$HOME}/.config}/fixperms/rules
+
+R_PAT=() R_DM=() R_FM=() R_OWN=() R_SRC=()
+
+# Accounts by name: uid, gid and group name, looked up once each.
+declare -A A_UID=() A_GID=() A_GN=()
+lookup_acct() {  # lookup_acct NAME: true, with AU AG AGN set, if NAME exists
+    local n=$1 ent _n _x _u _g
+    if [[ -z ${A_UID[$n]+x} ]]; then
+        A_UID[$n]=
+        if ent=$(getent passwd -- "$n" 2>/dev/null) && [[ -n $ent ]]; then
+            IFS=: read -r _n _x _u _g _ <<<"$ent"
+            A_UID[$n]=$_u A_GID[$n]=$_g
+            A_GN[$n]=$(id -gn -- "$n" 2>/dev/null) || A_GN[$n]=$_g
+        fi
+    fi
+    AU=${A_UID[$n]} AG=${A_GID[$n]:-} AGN=${A_GN[$n]:-}
+    [[ -n $AU ]]
+}
+
+# Turn a rule glob into an extglob: ** -> *, * -> *([!/]), ? -> [!/].
+glob_to_pat() {
+    local g=$1
+    g=${g//\*\*/$'\1'}
+    g=${g//\*/'*([!/])'}
+    g=${g//\?/'[!/]'}
+    REPLY=${g//$'\1'/*}
+}
+
+add_rule() {  # add_rule SOURCE PATTERN DIR FILE OWNER
+    local src=$1 pat=$2 dm=$3 fm=$4 own=$5
+    # shellcheck disable=SC2088  # a literal ~, not a home to expand
+    [[ $pat == /* || $pat == '~' || $pat == '~/'* ]] ||
+        { echo "$PROG: $src: pattern must be absolute or start with ~: $pat" >&2; exit 2; }
+    [[ $dm =~ ^(-|=|[0-7]{3,4})$ && $fm =~ ^(-|=|[0-7]{3,4})$ ]] ||
+        { echo "$PROG: $src: bad mode in rule for $pat (use -, = or octal)" >&2; exit 2; }
+    case $own in
+    user|keep|home|base) ;;
+    *) lookup_acct "$own" || { echo "$PROG: $src: unknown account '$own' in rule for $pat" >&2; exit 2; } ;;
+    esac
+    if [[ $pat == '~'* ]]; then
+        glob_to_pat "${pat:1}"
+        R_PAT+=("/home/+([!/])$REPLY") R_DM+=("$dm") R_FM+=("$fm") R_OWN+=("$own") R_SRC+=("$src: $pat")
+        # The target user's home, if it is somewhere other than /home.
+        if [[ -n $T_HOME && $T_HOME != /home/+([!/]) ]]; then
+            R_PAT+=("$T_HOME$REPLY") R_DM+=("$dm") R_FM+=("$fm") R_OWN+=("$own") R_SRC+=("$src: $pat")
+        fi
+    else
+        glob_to_pat "$pat"
+        R_PAT+=("$REPLY") R_DM+=("$dm") R_FM+=("$fm") R_OWN+=("$own") R_SRC+=("$src: $pat")
+    fi
+}
+
+load_rules() {  # load_rules SOURCE-NAME < rules text
+    local line pat dm fm own extra n=0
+    while IFS= read -r line; do
+        ((n++))
+        line=${line%%#*}
+        pat='' dm='' fm='' own='' extra=''
+        read -r pat dm fm own extra <<<"$line"
+        [[ -z $pat ]] && continue
+        [[ -n $own && -z $extra ]] ||
+            { echo "$PROG: $1:$n: want PATTERN DIR-MODE FILE-MODE OWNER" >&2; exit 2; }
+        add_rule "$1:$n" "$pat" "$dm" "$fm" "$own"
+    done
+}
+
+for f in "${rule_files[@]}"; do
+    [[ -r $f ]] || die_usage "cannot read rules file '$f'"
+    # shellcheck disable=SC2094  # load_rules only reads
+    load_rules "$f" <"$f"
+done
+if ((use_rules)); then
+    # shellcheck disable=SC2094
+    [[ -r $USER_RULES ]] && load_rules "$USER_RULES" <"$USER_RULES"
+    load_rules builtin <<<"$BUILTIN_RULES"
+fi
+
+if ((list_rules)); then
+    printf '%-44s %-5s %-5s %s\n' "# RULE (first match wins)" DIR FILE OWNER
+    for ((j = 0; j < ${#R_PAT[@]}; j++)); do
+        printf '%-44s %-5s %-5s %s\n' "${R_SRC[j]}" "${R_DM[j]}" "${R_FM[j]}" "${R_OWN[j]}"
+    done
+    ((${#R_PAT[@]})) || echo "# (no rules: every entry gets 755/644 and the invoking user)"
+    exit 0
+fi
+
+# Index of the first rule matching absolute path $1 in RI, or -1.
+match_rule() {
+    local j
+    RI=-1
+    ((CYGWIN)) && shopt -s nocasematch
+    for ((j = 0; j < ${#R_PAT[@]}; j++)); do
+        # shellcheck disable=SC2053  # the pattern is meant to match as a glob
+        if [[ $1 == ${R_PAT[j]} ]]; then RI=$j; break; fi
+    done
+    ((CYGWIN)) && shopt -u nocasematch
+    return 0
+}
+
+# Owner for OWNER token $1 at absolute path $2: OU OG OUN OGN, or OU='' to
+# leave the owner and group alone.
+resolve_owner() {
+    local tok=$1 abs=$2 name=''
+    OU='' OG='' OUN='' OGN=''
+    case $tok in
+    keep) return 0 ;;
+    user) ;;
+    home)
+        if [[ -z $opt_user && $abs != "$T_HOME" && $abs != "$T_HOME"/* &&
+              $abs == /home/+([!/])?(/*) ]]; then
+            name=${abs#/home/}
+            name=${name%%/*}
+        fi ;;
+    base) name=${abs##*/} ;;
+    *) name=$tok ;;
+    esac
+    if [[ -z $name ]]; then
+        OU=$T_UID OG=$T_GID OUN=$T_USER OGN=$T_GROUP
+    elif lookup_acct "$name"; then
+        OU=$AU OG=$AG OUN=$name OGN=$AGN
+    fi
+    return 0
+}
 
 # ---------------------------------------------------------------- helpers
 
@@ -154,10 +366,17 @@ PERM=(--- --x -w- -wx r-- r-x rw- rwx)
 
 # The canonical form of the ACL that setfacl -s gives for MODE (3 octal
 # digits), as getfacl -c prints it with the lines joined by commas.
+# A world-writable directory (/tmp, /var/mail) gets default entries without
+# write for group and others, so that what is created in it is not.
 acl_for() {  # acl_for dir|file MODE
     local u=${PERM[${2:0:1}]} g=${PERM[${2:1:1}]} o=${PERM[${2:2:1}]}
     REPLY="user::$u,group::$g,other::$o"
-    [[ $1 == dir ]] && REPLY+=",default:user::$u,default:group::$g,default:other::$o"
+    if [[ $1 == dir ]]; then
+        if ((${2:2:1} & 2)); then
+            g=${PERM[${2:1:1} & 5]} o=${PERM[${2:2:1} & 5]}
+        fi
+        REPLY+=",default:user::$u,default:group::$g,default:other::$o"
+    fi
     return 0
 }
 
@@ -170,10 +389,37 @@ setfacl_spec() {  # setfacl_spec dir|file MODE
     REPLY=${REPLY//other:/o:}
 }
 
-# MODE with x added for everyone: 644 -> 755, 4664 -> 4775.
-add_x() {
-    local m=$1 n=${#1}
-    printf -v REPLY '%s%d%d%d' "${m:0:n-3}" $((${m:n-3:1} | 1)) $((${m:n-2:1} | 1)) $((${m:n-1:1} | 1))
+# MODE (3 digits) with x added wherever there is r: 644 -> 755, 600 -> 700.
+add_rx() {
+    local m=$1 d out='' k
+    for ((k = 0; k < 3; k++)); do
+        d=${m:k:1}
+        ((d & 4)) && d=$((d | 1))
+        out+="$d"
+    done
+    REPLY=$out
+}
+
+# The "=" mode: the current one (from the ACL's base entries when there are
+# any, as the group bits ls shows may really be the mask), minus write for
+# group and others, the group at least as much as others, and never less than
+# rw (rwx for a directory) for the owner.
+keep_mode() {  # keep_mode dir|file MODE ACL
+    local m=$2 acl=",$3," e s d u='' g='' o='' mask=7
+    for e in user group other mask; do
+        [[ $acl == *",$e::"???","* ]] || continue
+        s=${acl#*",$e::"}
+        s=${s:0:3} d=0
+        [[ $s == r?? ]] && ((d += 4))
+        [[ $s == ?w? ]] && ((d += 2))
+        [[ $s == ??x ]] && ((d += 1))
+        case $e in user) u=$d ;; group) g=$d ;; other) o=$d ;; mask) mask=$d ;; esac
+    done
+    u=${u:-${m:0:1}} g=${g:-${m:1:1}} o=${o:-${m:2:1}}
+    g=$((g & mask))   # the group's effective rights
+    if [[ $1 == dir ]]; then u=7; else u=$((u | 6)); fi
+    g=$(((g | o) & 5)) o=$((o & 5))
+    REPLY=$u$g$o
 }
 
 has_exec_magic() {  # true if the file starts with #!, MZ or \177ELF
@@ -277,9 +523,10 @@ getfacl_batch() {
 # Check and fix a batch of paths that all exist.  Directories among them that
 # should be descended into are appended to SUBDIRS (relative to ROOT_DEV).
 process_batch() {
-    local -a items=("$@") kind=() tmode=() later=()
+    local -a items=("$@") kind=() tmode=() towner=() later=()
     local -a acl_paths=() acl_idx=()
-    local i n=$# p u g a dev un gn ls ftype special cur_acl want own_change msg
+    local i n=$# p u g a dev un gn ls ftype special cur_special cur_acl want own_change msg
+    local abs tok otok rule exe base
     local -a why
     stat_batch "$@"
     local -a st=("${ST[@]}")
@@ -320,15 +567,27 @@ process_batch() {
         [[ ${kind[i]} == bad ]] && continue
         p=${items[i]}
         IFS=$'\t' read -r u g a dev un gn ls ftype <<<"${st[i]}"
+        abs=$ABS_ROOT${p:${#OPERAND}}
+        match_rule "$abs"
+        if ((RI >= 0)); then
+            [[ ${kind[i]} == dir ]] && tok=${R_DM[RI]} || tok=${R_FM[RI]}
+            otok=${R_OWN[RI]} rule=" (rule ${R_SRC[RI]#*: })"
+        else
+            tok=- otok=user rule=
+        fi
+        resolve_owner "$otok" "$abs"
         why=()
         own_change=0
-        if [[ $u != "$T_UID" ]]; then
-            why+=("owner $un -> $T_USER")
-            own_change=1
-        fi
-        if [[ $g != "$T_GID" ]]; then
-            why+=("group $gn -> $T_GROUP")
-            own_change=1
+        if [[ -n $OU ]]; then
+            towner[i]=$OU:$OG
+            if [[ $u != "$OU" ]]; then
+                why+=("owner $un -> $OUN")
+                own_change=1
+            fi
+            if [[ $g != "$OG" ]]; then
+                why+=("group $gn -> $OGN")
+                own_change=1
+            fi
         fi
 
         case ${kind[i]} in
@@ -337,7 +596,7 @@ process_batch() {
             # neither setfacl nor chmod is applied to links or special files.
             if [[ ${kind[i]} == link ]]; then ((n_links++)); else ((n_skipped++)); fi
             if ((own_change)); then
-                vsay 1 "${DRY:+would }fix ${kind[i]} ${p}: ${why[*]}"
+                vsay 1 "${DRY:+would }fix ${kind[i]} ${p}: ${why[*]}$rule"
                 do_chown+=("$i")
             else
                 vsay 2 "ok (${kind[i]}, owner only) $p"
@@ -346,39 +605,72 @@ process_batch() {
             continue ;;
         esac
 
-        # Target mode.  a holds 3 or 4 octal digits; keep any special bits.
-        special=
-        ((${#a} == 4)) && special=${a:0:1}
+        # Target mode.  a holds 3 or 4 octal digits; special bits are kept,
+        # plus any a rule adds.
+        cur_acl=${acls[i]:-}
+        cur_special=0
+        ((${#a} == 4)) && cur_special=${a:0:1}
+        special=$cur_special
         a=${a: -3}
-        local exe=0 base
-        if [[ ${kind[i]} == dir ]]; then
-            base=755
-        else
-            if ((!exec_by_content)) && [[ $a == *[1357]* ]]; then
-                exe=1
-            elif [[ -r $p ]]; then
-                has_exec_magic "$p" && exe=1
-            else
-                later+=("$i")   # unreadable: look at its first bytes once fixed
+        exe=0
+        if [[ $tok == = ]]; then
+            keep_mode "${kind[i]}" "$a" "$cur_acl"
+            base=$REPLY
+            # -w: group write wherever the group can already read.
+            if ((group_write && ${base:1:1} & 4)); then
+                base=${base:0:1}$((${base:1:1} | 2))${base:2:1}
             fi
-            ((exe)) && base=755 || base=644
+            if [[ ${kind[i]} == file && $base != *[1357]* ]]; then
+                if [[ -r $p ]]; then
+                    if has_exec_magic "$p"; then
+                        add_rx "$base"
+                        base=$REPLY
+                    fi
+                else
+                    later+=("$i")
+                fi
+            fi
+        else
+            if [[ $tok == - ]]; then
+                [[ ${kind[i]} == dir ]] && base=755 || base=644
+            else
+                base=${tok: -3}
+                ((${#tok} == 4)) && special=$((special | ${tok:0:1}))
+            fi
+            if [[ ${kind[i]} == file ]]; then
+                # An explicit rule mode states what the file should be, so
+                # only its content can make it executable, not old x bits.
+                if ((!exec_by_content)) && [[ $tok == - && $a == *[1357]* ]]; then
+                    exe=1
+                elif [[ -r $p ]]; then
+                    has_exec_magic "$p" && exe=1
+                else
+                    later+=("$i")   # unreadable: look at its first bytes once fixed
+                fi
+                if ((exe)); then
+                    add_rx "$base"
+                    base=$REPLY
+                fi
+            fi
+            if [[ $tok == - ]] && ((group_write)); then
+                base=${base:0:1}$((${base:1:1} | 2))${base:2:1}
+            fi
         fi
-        ((group_write)) && base=${base:0:1}$((${base:1:1} | 2))${base:2:1}
-        tmode[i]=$special$base
+        tmode[i]=$base
+        ((special)) && tmode[i]=$special$base
         acl_for "${kind[i]}" "$base"
         want=$REPLY
-        cur_acl=${acls[i]:-}
-        if [[ $cur_acl != "$want" ]] || ((own_change)); then
-            if [[ $cur_acl != "$want" ]]; then
+        if [[ $cur_acl != "$want" ]] || ((own_change || special != cur_special)); then
+            if [[ $cur_acl != "$want" ]] || ((special != cur_special)); then
                 if [[ $cur_acl == *user:?*:* || $cur_acl == *group:?*:* || $cur_acl == *mask::* || -z $cur_acl ]]; then
-                    why+=("mode $ls+ -> $base (ACL cleaned)")
+                    why+=("mode $ls+ -> ${tmode[i]} (ACL cleaned)")
                 else
-                    why+=("mode $ls -> $base")
+                    why+=("mode $ls -> ${tmode[i]}")
                 fi
             fi
             if ((verbose)); then
                 printf -v msg '; %s' "${why[@]}"
-                say "${DRY:+would }fix $p: ${msg:2}"
+                say "${DRY:+would }fix $p: ${msg:2}$rule"
             fi
             ((own_change)) && do_chown+=("$i")
             do_acl+=("$i")
@@ -396,13 +688,15 @@ process_batch() {
         fi
     done
 
-    # Predict failures in dry-run mode: a different owner needs an elevated
-    # shell unless we are elevated (or it is the owner we already are).
+    # Predict failures in dry-run mode: taking a file from another account, or
+    # giving one to another account, needs an elevated shell.
     if ((dry_run)); then
         for i in "${do_chown[@]}"; do
             IFS=$'\t' read -r u _ <<<"${st[i]}"
             if ((!ELEVATED)) && [[ $u != "$MY_UID" ]]; then
                 fail "${items[i]}" "owned by another account: changing it needs an elevated shell" elev
+            elif ((!ELEVATED)) && [[ ${towner[i]%%:*} != "$MY_UID" ]]; then
+                fail "${items[i]}" "giving it to another account needs an elevated shell" elev
             fi
         done
         local k
@@ -418,18 +712,22 @@ process_batch() {
         return
     fi
 
-    # 1. chown everything that needs it, in one go.
-    declare -A chown_bad=()
-    BATCH=()
-    for i in "${do_chown[@]}"; do BATCH+=("${items[i]}"); done
-    apply chown -h "$T_UID:$T_GID"
-    for p in "${BAD[@]}"; do
-        chown_bad[$p]=1
-        if ((!ELEVATED)); then
-            fail "$p" "chown: ${BAD_ERR[$p]} - needs an elevated shell" elev
-        else
-            fail "$p" "chown: ${BAD_ERR[$p]}"
-        fi
+    # 1. chown everything that needs it, one call per new owner.
+    declare -A chown_bad=() by_owner=()
+    local k kk mm
+    for i in "${do_chown[@]}"; do by_owner[${towner[i]}]+="$i "; done
+    for k in "${!by_owner[@]}"; do
+        BATCH=()
+        for i in ${by_owner[$k]}; do BATCH+=("${items[i]}"); done
+        apply chown -h "$k"
+        for p in "${BAD[@]}"; do
+            chown_bad[$p]=1
+            if ((!ELEVATED)); then
+                fail "$p" "chown: ${BAD_ERR[$p]} - needs an elevated shell" elev
+            else
+                fail "$p" "chown: ${BAD_ERR[$p]}"
+            fi
+        done
     done
     for i in "${do_chown[@]}"; do
         p=${items[i]}
@@ -439,7 +737,6 @@ process_batch() {
     done
 
     # 2. setfacl -s, one call per (kind, mode); icacls + chmod as the fallback.
-    local k kk mm
     for k in "${!by_spec[@]}"; do
         kk=${k% *} mm=${k#* }
         BATCH=()
@@ -483,11 +780,11 @@ process_batch() {
         [[ -n ${FAIL_MSG[$p]+x} ]] && continue
         if has_exec_magic "$p"; then
             local xm
-            add_x "${tmode[i]}"
+            add_rx "${tmode[i]: -3}"
             xm=$REPLY
-            setfacl_spec file "${xm: -3}"
+            setfacl_spec file "$xm"
             if setfacl -s "$REPLY" -- "$p" 2>/dev/null; then
-                vsay 1 "  executable content, mode -> ${xm: -3}: $p"
+                vsay 1 "  executable content, mode -> $xm: $p"
             else
                 fail "$p" "could not add execute permission"
             fi
@@ -543,6 +840,13 @@ for p in "${paths[@]}"; do
         continue
     fi
     ROOT_DEV=$(stat -c %d -- "$p" 2>/dev/null)
+    # The operand's absolute path (symlinks in it not resolved), in Cygwin's
+    # own spelling (/var/mail, not D:/cygwin/var/mail), for matching rules.
+    OPERAND=$p
+    ABS_ROOT=$(realpath -s -- "$p")
+    ((CYGWIN)) && ABS_ROOT=$(cygpath -u -- "$(cygpath -m -- "$ABS_ROOT")")
+    ABS_ROOT=${ABS_ROOT%/}
+    [[ $p == / ]] && OPERAND=
     SUBDIRS=()
     process_batch "$p"
     if ((recurse)) && ((${#SUBDIRS[@]})); then

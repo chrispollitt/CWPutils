@@ -1,12 +1,16 @@
-.TH FIXPERMS 1 "October 2026" "fixperms 1.0" "User Commands"
+.TH FIXPERMS 1 "October 2026" "fixperms 1.1" "User Commands"
 .SH NAME
 fixperms \- repair owner, mode and ACL of files created from an elevated Cygwin shell
 
 .SH SYNOPSIS
 .B fixperms
-[\-n] [\-v] [\-d] [\-u USER] [\-g GROUP] [\-w] [\-x] [\-f]
+[\-n] [\-v] [\-d] [\-u USER] [\-g GROUP] [\-w] [\-x] [\-f] [\-r FILE]... [\-R]
 .I path
 \&...
+.br
+.B fixperms
+[\-r FILE]... [\-R]
+.B \-\-list\-rules
 
 .SH DESCRIPTION
 Files and directories created from an elevated ("Run as administrator") Cygwin shell \- a
@@ -14,7 +18,7 @@ Files and directories created from an elevated ("Run as administrator") Cygwin s
 into
 .IR /usr/local ,
 a build in a project directory, anything under
-.I ~/.local
+.I \(ti/.local
 \- often come out owned by the Administrators group, with Windows ACLs that a normal, non-elevated
 session cannot read or write: "Permission denied" on
 .BR ls ,
@@ -62,6 +66,15 @@ to the inherited one with
 .B "icacls /reset"
 and then sets the mode with
 .BR chmod .
+.PP
+That is the default. Places that need other modes or another owner \-
+.IR \(ti/.ssh ,
+credential files,
+.IR /var/mail ,
+.IR /tmp ,
+other people's home directories \- are handled by rules; see
+.B RULES
+below.
 .PP
 Entries whose owner, group and ACL are already right are left alone, so a second run changes nothing.
 Directories are fixed before they are listed, so a directory the user cannot even open is fixed first and
@@ -116,6 +129,118 @@ It never follows a symbolic link (a link's own owner is changed with
 nothing else), and does not descend into a directory on another file system. Paths may contain spaces and
 any other characters.
 
+.SH RULES
+Each entry's absolute path is matched against a table of rules; the first rule that matches decides the
+entry's mode and owner, and entries that no rule matches get the defaults above. Rules come from, in order:
+each
+.B \-\-rules
+file, the user rules file
+.I \(ti/.config/fixperms/rules
+(or
+.IR $XDG_CONFIG_HOME/fixperms/rules ),
+and the built-in table.
+.B \-\-list\-rules
+prints the table in force;
+.B \-\-no\-rules
+drops the user rules file and the built-in table. With
+.BR \-v ,
+each change says which rule it came from.
+.PP
+A rule is one line of four fields; # starts a comment:
+.RS
+.nf
+PATTERN   DIR-MODE   FILE-MODE   OWNER
+.fi
+.RE
+.TP
+.I PATTERN
+An absolute path glob.
+.B *
+and
+.B ?
+match within one path component,
+.B **
+matches across components, and a leading
+.B \(ti
+stands for any home directory
+.RI ( /home/NAME ,
+and the target user's home if it is elsewhere). On Cygwin the match ignores case, and paths are matched in
+Cygwin's own spelling, so
+.I D:/cygwin/var/mail
+is
+.IR /var/mail .
+.TP
+.IR DIR-MODE ", " FILE-MODE
+The mode for a directory or for anything else that matches.
+.B \-
+means the default (755 or 644);
+.B =
+keeps the current mode, minus write for group and others (with the group's rights read through the ACL
+mask, and the group never given less than others), while the owner always gets rw, or rwx on a directory,
+and a file with executable content gets x where it has r: it never loosens anything. Or an octal mode such
+as 700, 600 or 1777: a file under a rule like this is made executable only by its content (#!, MZ, ELF),
+which adds x where the mode has r (600 becomes 700), not by old x bits. Setuid, setgid and sticky bits in a
+rule are added to those the entry already has. A world-writable directory gets default ACL entries without
+write for group and others, so what is created in it is not world-writable.
+.TP
+.I OWNER
+.B user
+\- the invoking user, or
+.BR \-\-user / \-\-group .
+.B keep
+\- leave owner and group alone.
+.B home
+\- the account the
+.I /home/NAME
+directory is named after (the invoking user in their own home, or when
+.B \-\-user
+is given).
+.B base
+\- the account named by the entry's own name, as in
+.IR /var/mail/NAME .
+Any other word names an account. When
+.B home
+or
+.B base
+finds no such account, owner and group are left alone.
+.PP
+The built-in rules:
+.RS
+.nf
+\(ti/.ssh                       700   \-     home
+\(ti/.ssh/**.pub                700   644   home
+\(ti/.ssh/known_hosts*          700   644   home
+\(ti/.ssh/**                    700   600   home
+\(ti/.gnupg, \(ti/.getmail         700   \-     home
+\(ti/.gnupg/**, \(ti/.getmail/**   700   600   home
+\(ti/.netrc \(ti/.authinfo* \(ti/.git\-credentials \(ti/.msmtprc \(ti/.fetchmailrc
+\(ti/.pgpass \(ti/.my.cnf \(ti/.Xauthority \(ti/.aws/credentials \(ti/.kube/config
+\(ti/.docker/config.json        \-     600   home
+\(ti                            =     \-     home
+\(ti/**                         =     =     home
+/var/mail, /var/spool/mail   1777  \-     keep
+/var/mail/*, /var/spool/mail/*   \-  600   base
+/tmp, /var/tmp, /var/log     1777  \-     keep
+/tmp/**, /var/tmp/**, /var/log/**  =  =  keep
+/var/empty                   755   \-     keep
+/etc/ssh_host_*_key, /etc/ssh/ssh_host_*_key        \-  600  keep
+/etc/ssh_host_*_key.pub, /etc/ssh/ssh_host_*_key.pub \-  644  keep
+/etc/sshd_config, /etc/ssh/sshd_config               \-  644  keep
+.fi
+.RE
+.PP
+So home directories are never loosened (a private
+.I mbox
+stays 600), each one goes to the account it belongs to, OpenSSH's permission checks are satisfied, mailboxes
+stay private to their own users, and shared and service directories keep their owners. A user rules file
+might add:
+.RS
+.nf
+/srv/www/**        775   664   www
+\(ti/bin/**           \-     \-     home
+.fi
+.RE
+
 .SH OPTIONS
 .TP
 .B \-n, \-\-dry\-run
@@ -138,7 +263,9 @@ Group to set, by name or number. Default: the primary group of the invoking user
 .BR \-\-user ).
 .TP
 .B \-w, \-\-group\-write
-Give the group write access: 775 and 664 instead of 755 and 644. Without it, write access for the group
+Give the group write access: 775 and 664 instead of 755 and 644 where no rule gives a mode, and under an
+.B =
+rule (as in home directories) wherever the group can already read. Without it, write access for the group
 and for others is removed.
 .TP
 .B \-x, \-\-exec\-by\-content
@@ -151,6 +278,19 @@ or ELF magic.
 Allow
 .IR / ,
 the Cygwin root, drive roots and top-level directories.
+.TP
+.B \-r, \-\-rules FILE
+Read rules from
+.IR FILE ,
+before the user rules file and the built-in ones. May be given more than once.
+.TP
+.B \-R, \-\-no\-rules
+Ignore the built-in rules and the user rules file
+.RB ( \-\-rules
+files still apply).
+.TP
+.B \-l, \-\-list\-rules
+Print the rules in force, first match first, and exit.
 .TP
 .B \-h, \-\-help
 Show a usage summary and exit.
@@ -190,7 +330,15 @@ See what an elevated pip install did, then fix it from an elevated Cygwin termin
 
 Fix a project directory, leaving it group-writable:
 .RS
-.B fixperms \-w ~/github/myproject
+.B fixperms \-w \(ti/github/myproject
+.RE
+
+Give another user's home back to them, from an elevated shell (see first what would change):
+.RS
+.nf
+.B fixperms \-n /home/miche
+.B fixperms /home/miche
+.fi
 .RE
 
 Fix just one directory entry, not its contents:
@@ -210,7 +358,7 @@ Something could not be fixed (or would need an elevated shell), a path does not 
 refused.
 .TP
 .B 2
-Usage error, or a required tool
+Usage error, a bad rule, or a required tool
 .RB ( stat ,
 .BR chown ,
 .BR chmod ,
@@ -218,6 +366,13 @@ Usage error, or a required tool
 .BR setfacl ,
 .BR realpath )
 is missing.
+
+.SH FILES
+.TP
+.I \(ti/.config/fixperms/rules
+The user rules file
+.RI ( $XDG_CONFIG_HOME/fixperms/rules
+if that is set), read before the built-in rules. The home is the target user's.
 
 .SH NOTES
 Written for Cygwin, where
