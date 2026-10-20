@@ -83,6 +83,7 @@ def convert(data, kind=None, **options):
         raise bif.BifError("the input is already a BIF")
     if kind not in READERS:
         raise bif.BifError("no importer for %s input yet (have: %s)" % (kind, ", ".join(sorted(READERS))))
+    bifdiag.step("bifin")
     with bifdiag.stage("bifin %s" % kind):
         return READERS[kind](data, **options)
 

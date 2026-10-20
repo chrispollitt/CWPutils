@@ -118,8 +118,9 @@ When done, print how long every stage took and the 25 functions that took longes
 .B BIDET_PROFILE=FILE
 also saves the statistics.
 .PP
-While it works, a spinning cursor turns on standard error if that is a terminal, and an animation counts the frames
-it draws; both stop while the terminal is asked something and while an animation plays.
+While it works, a status line on standard error (if that is a terminal) says the stage, with a spinning cursor, and an
+animation counts the frames it draws, with a percent and the time left; the line is rubbed out while the terminal is
+asked something and while an animation plays.
 .PP
 Everything else is in
 .BR "bifout \-\-help" .
@@ -210,7 +211,10 @@ If set, never ask the terminal anything.
 The character cell, as WxH in pixels, for an animation (see \fB\-\-cell\fR).
 .TP
 .B BIDET_NO_SPIN
-If set, no spinning cursor on standard error.
+If set, no status line (and spinning cursor) on standard error.
+.TP
+.B BIDET_THREADS
+How many threads draw 3D frames (default: up to 4); 1 for a clean \fB\-\-profile\fR.
 .TP
 .B BIDET_PROFILE
 With \fB\-\-profile\fR: a file to save the cProfile statistics in (for \fBpython \-m pstats\fR, snakeviz, ...).

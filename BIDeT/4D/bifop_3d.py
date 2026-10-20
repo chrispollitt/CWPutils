@@ -68,7 +68,12 @@ def _frames_for(seconds, fps):
 
 
 def _workers():
-    return max(1, min(4, os.cpu_count() or 1))
+    """Threads that draw the frames: up to 4, or BIDET_THREADS (1 = all on the main thread, for a clean --profile)."""
+    try:
+        n = int(os.environ.get("BIDET_THREADS") or 0)
+    except ValueError:
+        n = 0
+    return n if n > 0 else max(1, min(4, os.cpu_count() or 1))
 
 
 def _lift(pic, notes, name, segments, o):

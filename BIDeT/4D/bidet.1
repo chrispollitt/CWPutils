@@ -108,14 +108,27 @@ lines of every stage; a traceback with an error.
 .TP
 .BR \-\-profile ", " \-\-profiling
 When done, print on standard error how long every stage took (a tree; repeated stages added up) and the 25 functions
-that took longest (Python's cProfile, cumulative time, the main thread only).
+that took longest (Python's cProfile, cumulative time).
 .B BIDET_PROFILE=FILE
-also saves the cProfile statistics there.
+also saves the cProfile statistics there.  The 3D operations draw on up to four threads: before Python 3.12 the list
+leaves them out, from 3.12 on it mixes the threads up (their time shows under threading's wait);
+.B BIDET_THREADS=1
+draws on one thread, for a clean list.  The stage times are right either way.  There is no status line with
+.BR \-\-profile .
 .PP
-While it works, a spinning cursor (|/-\e) turns on standard error if that is a terminal, as bidet3d's did, and an
-animation counts its frames as it draws them.
+While it works, a status line on standard error (if that is a terminal) says what it is doing, with the spinning
+cursor (|/-\e) bidet3d had:
+.RS
+.nf
+bidet: [3/3] bifout gif animation: draw and write frames: drawing frame 12 of 40, 30%, 8 s left |
+.fi
+.RE
+.PP
+the step of the pipeline (bifin, each bifop operation, bifout), the stages open now, and for a counted loop (frames,
+screens) how far it is and, from its pace so far, how long it has left.  There is no percent for the whole run: how
+long each step takes depends too much on the input.  The line is rubbed out at the end.
 .B BIDET_NO_SPIN=1
-turns the spinner off.
+turns it off.
 .TP
 .BI \-\-bifin " FLAGS" "\fR, " \-\-bifop " OPS\fR, " \-\-bifout " FLAGS"
 Extra flags for a stage, as one quoted string (a single flag: \fB\-\-bifout=\-\-erase=bg\fR).

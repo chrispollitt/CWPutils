@@ -156,6 +156,7 @@ def apply(pic, specs, notes=None):
     for spec in specs:
         name, raw = parse_spec(spec) if isinstance(spec, str) else spec
         args = convert_args(name, raw)
+        bifdiag.step("bifop %s" % name)
         with bifdiag.stage("bifop %s" % name):
             OPS[name][0](pic, notes, **args)
         hist = pic.meta.setdefault("history", [])
@@ -726,6 +727,8 @@ def main(argv=None):
         else:
             data = sys.stdin.buffer.read()                           # (bifin's turn: the spinner starts once it has all come)
         bifdiag.start("bifop", debug=a.debug, profile=a.profile)
+        if len(a.ops) > 1:
+            bifdiag.plan(["bifop %s" % parse_spec(s)[0] for s in a.ops])
         with bifdiag.stage("read BIF"):
             pic = bif.loads(data, allow_truncated=a.truncated)
         out = apply(pic, a.ops, notes)

@@ -53,12 +53,13 @@ class Spinner(unittest.TestCase):
     def test_it_turns_on_a_terminal_and_is_rubbed_out_at_the_end(self):
         err = FakeTTY()
         bifdiag.start("bifin", err=err)
-        time.sleep(0.2)
+        with bifdiag.stage("classify"):
+            time.sleep(0.2)
         bifdiag.stop()
         text = err.getvalue()
         for c in "|/-\\":
-            self.assertIn(c + "\b", text)
-        self.assertTrue(text.endswith(" \b"), repr(text[-10:]))
+            self.assertIn("\rbifin: classify " + c + "\x1b[K", text)
+        self.assertTrue(text.endswith("\r\x1b[K"), repr(text[-10:]))
 
     def test_nothing_when_standard_error_is_not_a_terminal(self):
         err = NotATTY()
@@ -94,22 +95,95 @@ class Spinner(unittest.TestCase):
             n = len(err.getvalue())
             time.sleep(0.1)
             self.assertEqual(len(err.getvalue()), n)              # (nothing written while quiet)
-            self.assertTrue(err.getvalue().endswith(" \b"))      # (and the character was rubbed out first)
+            self.assertTrue(err.getvalue().endswith("\r\x1b[K"))  # (and the line was rubbed out first)
         time.sleep(0.1)
         self.assertGreater(len(err.getvalue()), n)                # it turns again
         bifdiag.stop()
 
-    def test_progress_is_one_line_rewritten_and_a_message_starts_a_new_one(self):
-        bifdiag.SPIN_DELAY = 5.0
+    def test_a_message_rubs_the_line_out_first(self):
         err = FakeTTY()
         bifdiag.start("bifout", err=err)
-        bifdiag.progress("drawing frame", 1, 3)
-        bifdiag.progress("drawing frame", 2, 3)
+        time.sleep(0.1)
         bifdiag.say("hello")
-        bifdiag.progress("drawing frame", 3, 3)
+        self.assertTrue(err.getvalue().endswith("\r\x1b[Kbifout: hello\n"), repr(err.getvalue()[-30:]))
         bifdiag.stop()
-        self.assertEqual(err.getvalue(), "\rbifout: drawing frame 1 of 3\rbifout: drawing frame 2 of 3\nbifout: hello\n"
-                                         "\rbifout: drawing frame 3 of 3\n")
+
+    def test_a_long_line_is_cut_to_the_terminal(self):
+        err = FakeTTY()
+        bifdiag.start("bifout", err=err)
+        bifdiag._S.width = 40
+        with bifdiag.stage("x" * 100):
+            time.sleep(0.1)
+        bifdiag.stop()
+        lines = [l for l in err.getvalue().split("\r") if l.startswith("bifout")]
+        self.assertTrue(lines)
+        self.assertTrue(all(len(l.replace("\x1b[K", "")) <= 40 for l in lines), lines)
+
+
+class Status(unittest.TestCase):
+    """What the status line says (status_line() is what the thread draws, without the spinner)."""
+
+    def setUp(self):
+        bifdiag.start("bidet", spin=False, err=NotATTY())
+
+    def tearDown(self):
+        bifdiag.stop(report=False)
+
+    def test_the_stages_open_now(self):
+        self.assertEqual(bifdiag.status_line(), "bidet: working")
+        with bifdiag.stage("bifout gif animation"):
+            with bifdiag.stage("draw and write frames"):
+                self.assertEqual(bifdiag.status_line(), "bidet: bifout gif animation: draw and write frames")
+
+    def test_a_counted_loop_has_a_percent_and_then_the_time_left(self):
+        with bifdiag.stage("draw"):
+            bifdiag.progress("drawing frame", 1, 40)
+            t0 = bifdiag._S.loop[4]
+            self.assertEqual(bifdiag.status_line(now=t0), "bidet: draw: drawing frame 1 of 40, 2%")
+            bifdiag.progress("drawing frame", 11, 40)
+            bifdiag._S.loop[6] = t0 + 2.0                          # 10 frames in 2 s since the first: 29 to go = 5.8 s
+            self.assertEqual(bifdiag.loop_text(now=t0 + 2.0), "drawing frame 11 of 40, 27%, 6 s left")
+            self.assertEqual(bifdiag.loop_text(now=t0 + 4.0), "drawing frame 11 of 40, 27%, 4 s left")   # (counts down)
+            self.assertEqual(bifdiag.loop_text(now=t0 + 9.0), "drawing frame 11 of 40, 27%, nearly done")
+            bifdiag._S.loop[6] = t0 + 200.0
+            self.assertEqual(bifdiag.loop_text(now=t0 + 200.0), "drawing frame 11 of 40, 27%, 9 min 40 s left")
+            self.assertEqual(bifdiag.loop_text(now=t0 + 0.1), "drawing frame 11 of 40, 27%")    # (too soon to tell)
+        self.assertEqual(bifdiag.loop_text(), "")                  # (the loop ends with its stage)
+
+    def test_a_narrow_line_loses_the_middle_stages_first(self):
+        bifdiag.plan(["bifin", "bifout"])
+        bifdiag.step("bifout")
+        with bifdiag.stage("bifout gif animation"), bifdiag.stage("mid"), bifdiag.stage("draw and write frames"):
+            bifdiag.progress("drawing frame", 13, 100)
+            self.assertEqual(bifdiag.status_line(room=200),
+                             "bidet: [2/2] bifout gif animation: mid: draw and write frames: drawing frame 13 of 100, 13%")
+            self.assertEqual(bifdiag.status_line(room=70), "bidet: [2/2] bifout gif animation: drawing frame 13 of 100, 13%")
+            self.assertEqual(bifdiag.status_line(room=60), "bidet: [2/2] bifout: drawing frame 13 of 100, 13%")
+            self.assertEqual(bifdiag.status_line(room=40), "bidet: [2/2] bifout: drawing frame 13...")
+
+    def test_the_last_one_ends_the_loop(self):
+        bifdiag.progress("reading screen", 1, 2)
+        bifdiag.progress("reading screen", 2, 2)
+        self.assertEqual(bifdiag.loop_text(), "")
+
+    def test_the_steps_of_a_plan(self):
+        bifdiag.plan(["bifin", "bifop crop", "bifop spin", "bifout"])
+        bifdiag.step("bifin")
+        with bifdiag.stage("bifin text"):
+            with bifdiag.stage("classify"):
+                self.assertEqual(bifdiag.status_line(), "bidet: [1/4] bifin text: classify")
+        bifdiag.step("bifop spin")
+        self.assertEqual(bifdiag.status_line(), "bidet: [3/4] bifop spin")
+        bifdiag.step("bifout")
+        bifdiag.step("bifout")                                     # (the same step again is not a new one)
+        with bifdiag.stage("draw"):
+            bifdiag.progress("drawing frame", 3, 10)
+            self.assertEqual(bifdiag.status_line(), "bidet: [4/4] bifout: draw: drawing frame 3 of 10, 30%")
+
+    def test_bidet_counts_its_pipeline(self):
+        import bidet
+        plan = bidet.make_plan(bidet.build_parser().parse_args(["Hi", "--spin", "-o", "x.gif"]), {})
+        self.assertEqual(bidet.steps(plan), ["bifin", "bifop spin", "bifout"])
 
 
 class Stages(unittest.TestCase):
@@ -162,6 +236,21 @@ class Stages(unittest.TestCase):
         self.assertIn("    frame", text)                                     # (indented under its parent)
         self.assertIn("cumtime", text)
 
+    def test_no_status_line_with_profile(self):
+        err = FakeTTY()
+        bifdiag.start("bidet", profile=True, err=err)              # (its thread would be in the statistics)
+        self.assertIsNone(bifdiag._S.spin)
+        bifdiag.stop()
+
+    def test_bidet_threads(self):
+        import bifop_3d
+        os.environ["BIDET_THREADS"] = "1"
+        try:
+            self.assertEqual(bifop_3d._workers(), 1)
+        finally:
+            del os.environ["BIDET_THREADS"]
+        self.assertGreaterEqual(bifop_3d._workers(), 1)
+
     def test_the_statistics_are_saved_where_bidet_profile_says(self):
         path = os.path.join(tempfile.mkdtemp(), "x.prof")
         os.environ["BIDET_PROFILE"] = path
@@ -172,6 +261,42 @@ class Stages(unittest.TestCase):
             del os.environ["BIDET_PROFILE"]
         import pstats
         pstats.Stats(path)                                                   # (a real statistics file)
+
+
+class RealTerminal(unittest.TestCase):
+    """bidet on a pty, its standard error read by pyte (a terminal emulator), where both exist (Cygwin, Linux)."""
+
+    def test_the_status_line_moves_and_is_gone_at_the_end(self):
+        try:
+            import pty
+            import pyte
+        except ImportError:
+            self.skipTest("needs pty and pyte")
+        master, slave = pty.openpty()
+        out = os.path.join(tempfile.mkdtemp(), "s.gif")
+        env = dict(os.environ, BIDET_NO_QUERY="1", COLUMNS="100")
+        p = subprocess.Popen([sys.executable, os.path.join(ROOT, "bidet.py"), "Hi", "--spin", "--fps", "6", "-o", out],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=slave, env=env, cwd=ROOT)
+        os.close(slave)
+        data = b""
+        while True:
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            data += chunk
+        p.wait()
+        os.close(master)
+        self.assertEqual(p.returncode, 0, data[-500:])
+        text = data.decode("utf-8", "replace")
+        self.assertIn("bidet: [2/3] bifop spin", text)
+        self.assertRegex(text, r"drawing (3D )?frame \d+ of \d+, \d+%")
+        screen = pyte.Screen(100, 5)
+        stream = pyte.Stream(screen)
+        stream.feed(text.replace("\n", "\r\n"))
+        self.assertEqual([l.rstrip() for l in screen.display], [""] * 5)      # (nothing left behind)
 
 
 class CommandLines(unittest.TestCase):

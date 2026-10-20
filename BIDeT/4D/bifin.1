@@ -273,9 +273,11 @@ echo Hello | bifin \-f lettering \-\-face impact \-\-size 120 | bifout \-s
 bifin bambi.vt \-\-delay 25 \-\-hold 3000 | bifout \-o bambi.gif
 .fi
 .SH PROGRESS
-While it works, a spinning cursor turns on standard error (only if that is a terminal, and only after a quarter of a
-second, so a quick run shows nothing); a terminal session counts its screens.  In a pipe each tool starts its spinner
-when its input has arrived, so they take turns.
+While it works, a status line on standard error (only if that is a terminal, and only after a quarter of a second,
+so a quick run shows nothing) says the stage it is in, with a spinning cursor; a terminal session counts its screens,
+with a percent and the time left (see
+.BR bidet (1)).
+In a pipe each tool starts its line when its input has arrived, so they take turns.
 .B BIDET_NO_SPIN=1
 turns it off.
 .SH DIAGNOSTICS

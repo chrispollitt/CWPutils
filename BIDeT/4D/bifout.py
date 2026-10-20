@@ -305,6 +305,7 @@ def convert(pic, fmt, fp, frame=None, transparent=False, speed=1.0, loop=None, f
     fps: at most this many frames a second.  fmt_opts: what the format itself takes (format_options())."""
     if fmt not in WRITERS:
         raise bif.BifError("unknown output format %r (have: %s)" % (fmt, ", ".join(sorted(WRITERS))))
+    bifdiag.step("bifout")
     if fmt in ANIMATED and frame is None and len(pic.frames) > 1:
         with bifdiag.stage("bifout %s animation" % fmt):
             return convert_animation(pic, fmt, fp, transparent, speed, loop, fps, **render_opts)
@@ -607,6 +608,7 @@ def terminal_data(pic, a, fmt, opts, out=None, tty=True):
     writing it.  An animation that the format can play (and tty: standard output is a terminal) is played on `out` here.
     Returns (the Rendering of the first frame, the bytes to write, or None if it was played)."""
     out = out or sys.stdout.buffer
+    bifdiag.step("bifout")
     multi = len(pic.frames) > 1 and a.frame is None
     reply = ask_terminal(a, fmt, want_cell=multi or fmt == "auto")
     asked_for = fmt

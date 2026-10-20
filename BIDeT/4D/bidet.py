@@ -504,6 +504,13 @@ def build_picture(plan, data, notes):
     return pic
 
 
+def steps(plan):
+    """The steps of the plan, as bifdiag counts them: bifin, each bifop operation, bifout."""
+    names = [] if plan.is_bif else ["bifin"]
+    names += ["bifop %s" % (bifop.parse_spec(s)[0] if isinstance(s, str) else s[0]) for s in plan.ops]
+    return names + ([] if plan.fmt == "bif" else ["bifout"])
+
+
 def run(plan, data, notes=None):
     """Draw the plan: the bytes of the result (a PNG, SIXEL or BIF)."""
     notes = notes or bifop.Notes()
@@ -685,6 +692,7 @@ def main(argv=None):
             data = read_input(plan)
         bifdiag.start("bidet", debug=args.debug, profile=args.profile)
         bifdiag.debug("pipeline:", plan.shell())
+        bifdiag.plan(steps(plan))
         blob = run(plan, data, notes)
     except (bif.BifError, ValueError, IOError) as e:
         bifdiag.fail("bidet", e, args.debug)
