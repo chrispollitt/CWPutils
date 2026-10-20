@@ -23,6 +23,7 @@ import sys
 import numpy as np
 
 import bif
+import bifdiag
 import tonetrace
 
 VERSION = "0.1"
@@ -155,12 +156,14 @@ def apply(pic, specs, notes=None):
     for spec in specs:
         name, raw = parse_spec(spec) if isinstance(spec, str) else spec
         args = convert_args(name, raw)
-        OPS[name][0](pic, notes, **args)
+        with bifdiag.stage("bifop %s" % name):
+            OPS[name][0](pic, notes, **args)
         hist = pic.meta.setdefault("history", [])
         if isinstance(hist, list):
             hist.append({"tool": "bifop", "version": VERSION, "op": name,
                          "args": dict((k, raw[k]) for k in sorted(raw))})
-    errors, _w = bif.check(pic)
+    with bifdiag.stage("bifop check"):
+        errors, _w = bif.check(pic)
     if errors:
         raise bif.BifError("the result is not a valid BIF: " + "; ".join(errors[:3]))
     return pic
@@ -703,6 +706,7 @@ def main(argv=None):
     ap.add_argument("-o", "--output", metavar="FILE", help="write here (default: standard output)")
     ap.add_argument("-l", "--list", action="store_true", help="describe the operations and exit")
     ap.add_argument("-t", "--truncated", action="store_true", help="work on what arrived of a file that ends early")
+    bifdiag.add_arguments(ap)
     ap.add_argument("-V", "--version", action="version", version="bifop " + VERSION)
     a = ap.parse_args(argv)
     if a.list:
@@ -717,13 +721,19 @@ def main(argv=None):
     notes = Notes()
     try:
         if a.input:
-            pic = bif.load(a.input, allow_truncated=a.truncated)
+            with open(a.input, "rb") as f:
+                data = f.read()
         else:
-            pic = bif.read(sys.stdin.buffer, allow_truncated=a.truncated)
+            data = sys.stdin.buffer.read()                           # (bifin's turn: the spinner starts once it has all come)
+        bifdiag.start("bifop", debug=a.debug, profile=a.profile)
+        with bifdiag.stage("read BIF"):
+            pic = bif.loads(data, allow_truncated=a.truncated)
         out = apply(pic, a.ops, notes)
-        blob = bif.dumps(out)
+        with bifdiag.stage("write BIF"):
+            blob = bif.dumps(out)
     except (bif.BifError, IOError) as e:
-        sys.exit("bifop: %s" % e)
+        bifdiag.fail("bifop", e, a.debug)
+    bifdiag.stop()
     for line in notes.lines:
         sys.stderr.write("bifop: %s\n" % line)
     if a.output:

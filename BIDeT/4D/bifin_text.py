@@ -41,6 +41,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import bif
+import bifdiag
 
 VERSION = "0.1"
 UNASCII_VERSION = "0.2"                         # the version of unascii the ported sections come from
@@ -1530,7 +1531,10 @@ class Options(object):
 
 def _log(o, *a):
     if o.verbose:
-        sys.stderr.write("bifin: " + " ".join(str(x) for x in a) + "\n")
+        if bifdiag.active():                             # (so that it does not tangle with the spinner)
+            bifdiag.say(*a)
+        else:
+            sys.stderr.write("bifin: " + " ".join(str(x) for x in a) + "\n")
 
 
 
@@ -1840,15 +1844,19 @@ def import_grid(grid, o, info=None):
     extra_text = info.get("text_cells")           # cells that are prose whatever the character (set by bifin_regions)
     if mode in ("auto", "mixed"):                 # art of several kinds at once: each kind its own way (bifin_regions)
         import bifin_regions
-        pl = bifin_regions.plan(grid, o)
+        with bifdiag.stage("regions"):
+            pl = bifin_regions.plan(grid, o)
         if pl.mixed:
-            return bifin_regions.import_mixed(grid, o, info, pl)
+            bifdiag.debug("mixed art:", ", ".join("%s %d cells" % (m, pl.count(m)) for m in sorted(pl.modes)))
+            with bifdiag.stage("mixed art"):
+                return bifin_regions.import_mixed(grid, o, info, pl)
         if bifin_regions.TEXT in pl.modes:        # line art with words: the words are set in the font
             extra_text = pl.cells(bifin_regions.TEXT)
         mode = "auto"
     shade = None if mode == "text" else shade_cells(grid, o.shade)
     if mode in ("auto", "lineart"):
-        picked, st = classify(grid, shade)
+        with bifdiag.stage("classify"):
+            picked, st = classify(grid, shade)
         if mode == "lineart" and picked == "block":
             picked = "tone"                       # asked for lines: outline the picture instead
         _log(o, mode, "->", picked, " ".join("%s=%.2f" % kv for kv in sorted(st.items())))
@@ -2163,5 +2171,7 @@ def import_text(data, **kw):
         cols = sauce["tinfo1"]                                   # an ANSi file says how wide it is
     if not cols and name.endswith(".ans"):
         cols = 80
-    grid = parse(text, cols, rows=o.rows, glyphs=enc in ("cp437", "437") or name.endswith(".ans"))
+    with bifdiag.stage("parse"):
+        grid = parse(text, cols, rows=o.rows, glyphs=enc in ("cp437", "437") or name.endswith(".ans"))
+    bifdiag.debug("%d x %d characters, %s%s" % (grid.cols, grid.rows, enc, ", colour" if grid.has_color() else ""))
     return import_grid(grid, o, {"data": data if isinstance(data, bytes) else None, "encoding": enc, "sauce": sauce})

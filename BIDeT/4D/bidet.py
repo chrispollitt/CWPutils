@@ -32,6 +32,7 @@ import shlex
 import sys
 
 import bif
+import bifdiag
 import bifgfx
 import bifin
 import bifop
@@ -489,7 +490,8 @@ def read_input(plan):
 def build_picture(plan, data, notes):
     """The plan's bifin and bifop stages: the Picture, before it is drawn."""
     if plan.is_bif:
-        pic = bif.loads(data)
+        with bifdiag.stage("read BIF"):
+            pic = bif.loads(data)
     else:
         a = _parse_flags(bifin.build_parser(), plan.bifin, "bifin flags")
         a.file = plan.source or "-"
@@ -507,7 +509,8 @@ def run(plan, data, notes=None):
     notes = notes or bifop.Notes()
     pic = build_picture(plan, data, notes)
     if plan.fmt == "bif":
-        return bif.dumps(pic)
+        with bifdiag.stage("write BIF"):
+            return bif.dumps(pic)
     a = _parse_flags(bifout.build_parser(), plan.bifout, "bifout flags")
     buf = io.BytesIO()
     opts = bifout.render_options(a)
@@ -606,6 +609,7 @@ def build_parser():
     ap.add_argument("--bifop", metavar="OPS", help="extra operations for bifop, as one quoted string")
     ap.add_argument("--bifout", metavar="FLAGS", help="extra flags for bifout, as one quoted string (a single flag: --bifout=--ss=2)")
     ap.add_argument("-v", "--verbose", action="store_true")
+    bifdiag.add_arguments(ap)
     ap.add_argument("-V", "--version", action="version", version="bidet " + VERSION)
     return ap
 
@@ -627,19 +631,24 @@ def time_machine(args):
     tty = sys.stdout.isatty()
     if not args.output and not tty:
         raise bif.BifError("the time machine is an animation: write it with -o FILE.gif, or run it on a SIXEL terminal")
-    pic = timemachine.build(text, cfg, say=(lambda m: sys.stderr.write("bidet: %s\n" % m)) if (args.verbose or tty) else None)
+    bifdiag.start("bidet", debug=args.debug, profile=args.profile)
+    with bifdiag.stage("time machine"):
+        pic = timemachine.build(text, cfg, say=bifdiag.say if (args.verbose or args.debug or tty) else None)
     if args.output and args.output != "-":
         fmt = format_for(args.output)
         if fmt == "bif":
-            bif.save(pic, args.output)
+            with bifdiag.stage("write BIF"):
+                bif.save(pic, args.output)
         else:
             with open(args.output, "wb") as f:
                 bifout.convert(pic, fmt, f, width=args.width)
+        bifdiag.stop()
         return 0
     a = bifout.build_parser().parse_args(["--background", "auto"] + (["-f", args.format] if args.format else []))
     opts = bifout.render_options(a)
     opts["width"] = args.width or fit_width(terminal_pixels(), terminal_columns())
     bifout.show(pic, a, a.format or "auto", opts, tty=True)
+    bifdiag.stop()
     return 0
 
 
@@ -674,9 +683,12 @@ def main(argv=None):
         notes = bifop.Notes()
         if data is None:
             data = read_input(plan)
+        bifdiag.start("bidet", debug=args.debug, profile=args.profile)
+        bifdiag.debug("pipeline:", plan.shell())
         blob = run(plan, data, notes)
     except (bif.BifError, ValueError, IOError) as e:
-        sys.exit("bidet: %s" % e)
+        bifdiag.fail("bidet", e, args.debug)
+    bifdiag.stop()
     for line in notes.lines:
         sys.stderr.write("bidet: %s\n" % line)
     if args.verbose:

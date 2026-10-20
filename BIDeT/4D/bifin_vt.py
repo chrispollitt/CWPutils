@@ -17,6 +17,7 @@ import hashlib
 import os
 
 import bif
+import bifdiag
 import bifin_text as T
 
 MAX_FRAMES = 4000
@@ -114,7 +115,8 @@ def import_vt(data, delay=100, hold=1000, fps=0.0, loop=0, **kw):
     text, enc = T.decode2(data, encoding)
     cols = o.cols or SCREEN_COLS
     rows = o.rows
-    frames = replay(text, rows, cols, int(delay), int(hold), glyphs=enc in ("cp437", "437"))
+    with bifdiag.stage("replay"):
+        frames = replay(text, rows, cols, int(delay), int(hold), glyphs=enc in ("cp437", "437"))
     if fps:
         frames = resample(frames, float(fps))
     if not any(scr for scr, _ in frames):
@@ -124,7 +126,8 @@ def import_vt(data, delay=100, hold=1000, fps=0.0, loop=0, **kw):
     width = max(x for scr, _ in frames for (_y, x) in scr) + 1 if any(scr for scr, _ in frames) else 1
     grids = [T.screen_grid(scr, rows, width, enc in ("cp437", "437")) for scr, _ in frames]
     crop = o.crop
-    o = _settle(grids, o)
+    with bifdiag.stage("settle"):
+        o = _settle(grids, o)
     o.crop = False                                       # (cut once, for all the frames, below)
     T._log(o, "vt: %d steps -> %d pictures of %d x %d characters, mode %s" % (
         sum(1 for _ in _lines(text)), len(frames), width, rows, o.mode))
@@ -132,14 +135,16 @@ def import_vt(data, delay=100, hold=1000, fps=0.0, loop=0, **kw):
 
     info = {}                                            # (import_grid keeps the shared palette here)
     base, cache, out = None, {}, []
-    for (scr, ms), grid in zip(frames, grids):
+    for n, ((scr, ms), grid) in enumerate(zip(frames, grids)):
         key = frozenset(scr.items())
         layers = cache.get(key)
         if layers is None:
-            pic = T.import_grid(grid, o, info)
+            with bifdiag.stage("frame"):
+                pic = T.import_grid(grid, o, info)
             if base is None:
                 base = pic
             layers = cache[key] = pic.frames[0].layers
+        bifdiag.progress("reading screen", n + 1, len(frames))
         f = bif.Frame(duration=int(ms))
         f.layers = [bif.Layer(L.kind, copy.deepcopy(L.props), dict(L.arrays)) for L in layers]
         out.append(f)

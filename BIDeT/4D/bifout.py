@@ -28,6 +28,7 @@ import sys
 import numpy as np
 
 import bif
+import bifdiag
 import bifgfx
 import bifrender
 import bifsixel
@@ -275,20 +276,25 @@ def schedule(pic, fps=None, speed=1.0):
     return out
 
 
-def draw_all(pic, indexes, render_opts):
+def draw_all(pic, indexes, render_opts, progress=None):
     """Draw the frames `indexes` of a picture alike: the page colour is settled by the first, which also fixes the size.
-    Returns (first Rendering, an iterator of all of them one at a time, some of them for choosing a palette)."""
-    first = bifrender.render(pic, frame=indexes[0], **render_opts)
-    opts = dict(render_opts, paper=first.paper)
-    n = len(indexes)
-    k = min(n, GIF_SAMPLES)
-    picks = [0] if k < 2 else sorted(set(int(round(j * (n - 1) / float(k - 1))) for j in range(k)))
-    drawn = dict((p_, first if p_ == 0 else bifrender.render(pic, frame=indexes[p_], **opts)) for p_ in picks)
-    samples = [drawn[p_] for p_ in picks]
+    Returns (first Rendering, an iterator of all of them one at a time, some of them for choosing a palette).
+    progress(done, total): told as each frame of the iterator is drawn."""
+    with bifdiag.stage("draw sample frames"):
+        first = bifrender.render(pic, frame=indexes[0], **render_opts)
+        opts = dict(render_opts, paper=first.paper)
+        n = len(indexes)
+        k = min(n, GIF_SAMPLES)
+        picks = [0] if k < 2 else sorted(set(int(round(j * (n - 1) / float(k - 1))) for j in range(k)))
+        drawn = dict((p_, first if p_ == 0 else bifrender.render(pic, frame=indexes[p_], **opts)) for p_ in picks)
+        samples = [drawn[p_] for p_ in picks]
 
     def frames():
         for p_ in range(n):
-            yield drawn.pop(p_) if p_ in drawn else bifrender.render(pic, frame=indexes[p_], **opts)
+            r = drawn.pop(p_) if p_ in drawn else bifrender.render(pic, frame=indexes[p_], **opts)
+            if progress:
+                progress(p_ + 1, n)
+            yield r
     return first, frames(), samples
 
 
@@ -300,22 +306,28 @@ def convert(pic, fmt, fp, frame=None, transparent=False, speed=1.0, loop=None, f
     if fmt not in WRITERS:
         raise bif.BifError("unknown output format %r (have: %s)" % (fmt, ", ".join(sorted(WRITERS))))
     if fmt in ANIMATED and frame is None and len(pic.frames) > 1:
-        return convert_animation(pic, fmt, fp, transparent, speed, loop, fps, **render_opts)
-    r = bifrender.render(pic, frame=frame or 0, **render_opts)
+        with bifdiag.stage("bifout %s animation" % fmt):
+            return convert_animation(pic, fmt, fp, transparent, speed, loop, fps, **render_opts)
+    with bifdiag.stage("bifout draw"):
+        r = bifrender.render(pic, frame=frame or 0, **render_opts)
+    bifdiag.debug("drew %dx%d px, %.3g x %.3g px per unit" % (r.W, r.H, r.sx, r.sy))
     if frame is None and len(pic.frames) > 1:
         r.notes.append("the picture has %d frames and %s holds one: drew frame 0 (--frame N for another, -o FILE.gif for all%s)"
                        % (len(pic.frames), fmt.upper(), "; on a terminal it is played" if fmt in PLAYABLE else ""))
-    WRITERS[fmt][0](r, fp, transparent, pic=pic, frame=frame or 0, **(fmt_opts or {}))
+    with bifdiag.stage("bifout write %s" % fmt):
+        WRITERS[fmt][0](r, fp, transparent, pic=pic, frame=frame or 0, **(fmt_opts or {}))
     return r
 
 
 def convert_animation(pic, fmt, fp, transparent=False, speed=1.0, loop=None, fps=None, **render_opts):
     """Every frame of a Picture, written as one animation."""
     sched = schedule(pic, fps, speed)
-    first, frames, samples = draw_all(pic, [i for i, _ in sched], render_opts)
+    bifdiag.debug("%d frames of %d to draw" % (len(sched), len(pic.frames)))
+    first, frames, samples = draw_all(pic, [i for i, _ in sched], render_opts, progress=progress_on_stderr)
     if loop is None:
         loop = int((pic.animation or {}).get("loop", 1))
-    ANIMATED[fmt](frames, [d for _, d in sched], fp, transparent, loop, 1.0, samples=samples)
+    with bifdiag.stage("draw and write frames"):
+        ANIMATED[fmt](frames, [d for _, d in sched], fp, transparent, loop, 1.0, samples=samples)
     return first
 
 
@@ -432,15 +444,17 @@ def play(pic, out, cell, frame=None, transparent=False, speed=1.0, loop=None, fp
     else:
         raise bif.BifError("%s cannot play an animation (sixel and ansi can)" % fmt)
     try:
-        for n, frame_bytes in enumerate(enc):
-            encoded.append(frame_bytes)
-            if progress:
-                progress(n + 1, len(sched))
+        with bifdiag.stage("draw and encode frames"):
+            for n, frame_bytes in enumerate(enc):
+                encoded.append(frame_bytes)
+                if progress:
+                    progress(n + 1, len(sched))
     except KeyboardInterrupt:
         return first
     if loop is None:
         loop = int((pic.animation or {}).get("loop", 1))
-    play_sixel(encoded, [d for _, d in sched], rows, cols, out, loop, transparent, clock, sleep, erase)
+    with bifdiag.quiet():                                   # (the terminal is the picture's now)
+        play_sixel(encoded, [d for _, d in sched], rows, cols, out, loop, transparent, clock, sleep, erase)
     return first
 
 
@@ -507,6 +521,7 @@ def build_parser():
                     help="largest picture to draw; bigger is drawn smaller (default %d)" % bifrender.DEFAULT_MAX_PIXELS)
     ap.add_argument("-t", "--truncated", action="store_true", help="draw what arrived of a file that ends early")
     ap.add_argument("-v", "--verbose", action="store_true")
+    bifdiag.add_arguments(ap)
     ap.add_argument("-V", "--version", action="version", version="bifout " + VERSION)
     return ap
 
@@ -534,7 +549,11 @@ def ask_terminal(a, fmt, out_is_tty=True, env=None, want_cell=False):
     want_cell: also how big a character cell is (an animation needs it to know how many lines it takes)."""
     if not to_terminal(a, fmt, out_is_tty) or a.no_query or fmt not in ("sixel", "auto"):
         return bifterm.NOTHING
-    return bifterm.query(want_bg=(a.background or "").lower() == "auto", want_cell=want_cell, env=env, debug=a.verbose)
+    with bifdiag.stage("ask the terminal"), bifdiag.quiet():
+        reply = bifterm.query(want_bg=(a.background or "").lower() == "auto", want_cell=want_cell, env=env,
+                              debug=a.verbose or bifdiag.debugging())
+    bifdiag.debug("terminal: sixel=%s bg=%s cell=%s" % (reply.sixel, reply.bg, reply.cell))
+    return reply
 
 
 def plays(pic, a, fmt, out_tty=True):
@@ -544,9 +563,7 @@ def plays(pic, a, fmt, out_tty=True):
 
 
 def progress_on_stderr(done, total):
-    if sys.stderr.isatty():
-        sys.stderr.write("\rbifout: drawing frame %d of %d" % (done, total) + ("\n" if done == total else ""))
-        sys.stderr.flush()
+    bifdiag.progress("drawing frame", done, total)
 
 
 def terminal_options(pic, a, opts, reply, env=None, fmt="sixel", check=None):
@@ -612,11 +629,12 @@ def show(pic, a, fmt, opts, out=None, tty=True):
     r, data = terminal_data(pic, a, fmt, opts, out, tty)
     if data is None:
         return r
-    if tty and data.startswith(TEK_ERASE):
-        bifgfx.tek_emit(data[len(TEK_ERASE):], out, xterm=True, erase=True)
-    else:
-        out.write(data)
-        out.flush()
+    with bifdiag.quiet():
+        if tty and data.startswith(TEK_ERASE):
+            bifgfx.tek_emit(data[len(TEK_ERASE):], out, xterm=True, erase=True)
+        else:
+            out.write(data)
+            out.flush()
     return r
 
 
@@ -635,19 +653,25 @@ def main(argv=None):
         ap.error("will not write %s to a terminal: use -o FILE, -s for SIXEL, -f ansi, -f auto, or a pipe" % fmt.upper())
     try:
         if a.file == "-":
-            pic = bif.read(sys.stdin.buffer, allow_truncated=a.truncated)
+            data = sys.stdin.buffer.read()                       # (the tools before it are working: the spinner waits)
         else:
-            pic = bif.load(a.file, allow_truncated=a.truncated)
+            with open(a.file, "rb") as f:
+                data = f.read()
+        bifdiag.start("bifout", debug=a.debug, profile=a.profile)
+        with bifdiag.stage("read BIF"):
+            pic = bif.loads(data, allow_truncated=a.truncated)
         opts = render_options(a)
         if to_terminal(a, fmt):                                  # for the terminal: it is asked, and an animation played
             r = show(pic, a, fmt, opts, tty=out_tty)
+            bifdiag.stop()
             for n in r.notes:
                 sys.stderr.write("bifout: %s\n" % n)
             return
         buf = io.BytesIO()
         r = convert(pic, fmt, buf, fmt_opts=format_options(a), **opts)
     except (bif.BifError, IOError) as e:
-        sys.exit("bifout: %s" % e)
+        bifdiag.fail("bifout", e, a.debug)
+    bifdiag.stop()
     for n in r.notes:
         sys.stderr.write("bifout: %s\n" % n)
     if a.verbose:

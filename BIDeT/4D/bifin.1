@@ -66,6 +66,17 @@ or
 .BR \-v ", " \-\-verbose
 Say what was decided (the mode, the font, the strokes).
 .TP
+.B \-\-debug
+As
+.BR \-\-verbose ,
+and every stage (parse, regions, classify, the frames of a session, the font catalogue, writing the BIF) as it
+starts and ends, with the time; the versions of Python, numpy and Pillow; a traceback with an error.
+.TP
+.BR \-\-profile ", " \-\-profiling
+When done, print how long every stage took and the 25 functions that took longest (cProfile) on standard error;
+.B BIDET_PROFILE=FILE
+also saves the statistics.  The clock starts when the input has been read.
+.TP
 .BR \-V ", " \-\-version
 Print the version.
 .SS Art
@@ -261,6 +272,12 @@ bifin \-m ansi\-block art.ans | bifout \-o art.png
 echo Hello | bifin \-f lettering \-\-face impact \-\-size 120 | bifout \-s
 bifin bambi.vt \-\-delay 25 \-\-hold 3000 | bifout \-o bambi.gif
 .fi
+.SH PROGRESS
+While it works, a spinning cursor turns on standard error (only if that is a terminal, and only after a quarter of a
+second, so a quick run shows nothing); a terminal session counts its screens.  In a pipe each tool starts its spinner
+when its input has arrived, so they take turns.
+.B BIDET_NO_SPIN=1
+turns it off.
 .SH DIAGNOSTICS
 .B bifin
 exits with a message on standard error and a non-zero status if the input cannot be read, or if no importer fits it.

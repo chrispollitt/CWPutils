@@ -20,6 +20,7 @@ import os
 import sys
 
 import bif
+import bifdiag
 import bifin_lettering
 import bifin_text
 import bifin_vt
@@ -82,7 +83,8 @@ def convert(data, kind=None, **options):
         raise bif.BifError("the input is already a BIF")
     if kind not in READERS:
         raise bif.BifError("no importer for %s input yet (have: %s)" % (kind, ", ".join(sorted(READERS))))
-    return READERS[kind](data, **options)
+    with bifdiag.stage("bifin %s" % kind):
+        return READERS[kind](data, **options)
 
 
 def _color(s):
@@ -168,6 +170,7 @@ def build_parser():
     ap.add_argument("--no-cells", action="store_true", help="do not keep the character grid in the file")
     ap.add_argument("--keep-source", action="store_true", help="store the input itself in the file (srce chunk)")
     ap.add_argument("-v", "--verbose", action="store_true")
+    bifdiag.add_arguments(ap)
     ap.add_argument("-V", "--version", action="version", version="bifin " + VERSION)
     return ap
 
@@ -183,7 +186,8 @@ def options_of(a):
     options = dict(mode=a.mode, cell_w=a.cell, aspect=a.aspect, weight=a.weight, join=a.join * 1.0 if a.join > 0 else 0.0,
                    round_lines=not a.no_round, spline=a.spline, shade=a.shade, hatch=a.hatch, text_bold=a.text_bold,
                    smooth=a.smooth, detail=a.detail, scale=a.scale, levels=a.levels, dark=a.dark, invert=a.invert,
-                   font=art_font, rows=a.rows, color=a.color, cols=a.cols, crop=not a.no_crop, verbose=a.verbose,
+                   font=art_font, rows=a.rows, color=a.color, cols=a.cols, crop=not a.no_crop,
+                   verbose=a.verbose or bifdiag.debugging(),
                    outlines=not a.no_outlines, tone_vectors=not a.tone_raster, tone_fill=a.tone_fill, cells=not a.no_cells, keep_source=a.keep_source,
                    name=None if a.file == "-" else a.file, encoding=a.encoding,
                    vt=dict(delay=a.delay, hold=a.hold, fps=a.fps, loop=a.loop),
@@ -216,12 +220,15 @@ def main(argv=None):
             sys.exit("bifin: %s" % e)
     if not a.output and sys.stdout.isatty():
         ap.error("will not write a BIF to a terminal: use -o FILE, or pipe it into bifout")
+    bifdiag.start("bifin", debug=a.debug, profile=a.profile)
     try:
         options = options_of(a)
         pic = convert(data, a.kind, **options)
-        blob = bif.dumps(pic)
+        with bifdiag.stage("write BIF"):
+            blob = bif.dumps(pic)
     except (bif.BifError, ValueError) as e:
-        sys.exit("bifin: %s" % e)
+        bifdiag.fail("bifin", e, a.debug)
+    bifdiag.stop()
     if a.output and a.output != "-":
         with open(a.output, "wb") as f:
             f.write(blob)

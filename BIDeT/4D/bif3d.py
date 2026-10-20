@@ -339,7 +339,11 @@ def render_frames(solid, states, persp=2.5, workers=1, progress=None):
     if workers > 1 and len(states) > 2:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(workers) as ex:
-            images = list(ex.map(lambda st: render(solid, st, persp, bounds), states))
+            images = []
+            for im in ex.map(lambda st: render(solid, st, persp, bounds), states):
+                images.append(im)
+                if progress:
+                    progress(len(images), len(states))
     else:
         images = []
         for i, st in enumerate(states):

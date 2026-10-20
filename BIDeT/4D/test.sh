@@ -18,6 +18,7 @@ done
 "$PY" -W ignore tests/test_bif.py || exit 1
 "$PY" -W ignore tests/test_bifout.py || exit 1
 "$PY" -W ignore tests/test_bifterm.py || exit 1
+"$PY" -W ignore tests/test_diag.py || exit 1
 "$PY" -W ignore tests/test_bifin.py || exit 1
 "$PY" -W ignore tests/test_lettering.py || exit 1
 "$PY" -W ignore tests/test_tonetrace.py || exit 1

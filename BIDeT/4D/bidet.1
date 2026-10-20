@@ -100,6 +100,23 @@ Print the pipeline and do not run it.
 .BR \-v ", " \-\-verbose ", " \-V ", " \-\-version
 Say what pipeline was run; print the version.
 .TP
+.B \-\-debug
+Say every stage (bifin, each bifop operation, bifout's drawing and writing) as it starts and ends, with the time, and
+the versions of Python, numpy and Pillow; the
+.B \-\-verbose
+lines of every stage; a traceback with an error.
+.TP
+.BR \-\-profile ", " \-\-profiling
+When done, print on standard error how long every stage took (a tree; repeated stages added up) and the 25 functions
+that took longest (Python's cProfile, cumulative time, the main thread only).
+.B BIDET_PROFILE=FILE
+also saves the cProfile statistics there.
+.PP
+While it works, a spinning cursor (|/-\e) turns on standard error if that is a terminal, as bidet3d's did, and an
+animation counts its frames as it draws them.
+.B BIDET_NO_SPIN=1
+turns the spinner off.
+.TP
 .BI \-\-bifin " FLAGS" "\fR, " \-\-bifop " OPS\fR, " \-\-bifout " FLAGS"
 Extra flags for a stage, as one quoted string (a single flag: \fB\-\-bifout=\-\-erase=bg\fR).
 .PP

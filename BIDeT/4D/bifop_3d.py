@@ -22,6 +22,7 @@ import numpy as np
 
 import bif
 import bif3d
+import bifdiag
 import bifop
 import bifrender
 from bifop import op, REQUIRED, _float, _int, _ids, _str
@@ -115,7 +116,8 @@ def _lift(pic, notes, name, segments, o):
             raise bif.BifError("%s: no move '%s'" % (name, kind))
     if not states:
         raise bif.BifError("%s: no frames" % name)
-    images, lo, hi = bif3d.render_frames(solid, states, o["perspective"], _workers())
+    images, lo, hi = bif3d.render_frames(solid, states, o["perspective"], _workers(),
+                                         progress=lambda n, total: bifdiag.progress("drawing 3D frame", n, total))
     cw, chh = images[0].size
     sx, sy = r.sx, r.sy
     bounds = [0, 0, cw / sx, chh / sy]

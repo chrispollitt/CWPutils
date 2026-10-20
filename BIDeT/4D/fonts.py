@@ -17,6 +17,7 @@ from __future__ import print_function
 import json
 import os
 
+import bifdiag
 import ttfglyphs
 
 FONT_DIRS = ["C:/Windows/Fonts", "/cygdrive/c/Windows/Fonts", "/mnt/c/Windows/Fonts", "~/AppData/Local/Microsoft/Windows/Fonts",
@@ -100,6 +101,11 @@ def catalog(dirs=None, use_cache=None):
     if dirs in _cache:
         return _cache[dirs]
     use_cache = system if use_cache is None else use_cache
+    with bifdiag.stage("fonts"):
+        return _catalog(dirs, system, use_cache)
+
+
+def _catalog(dirs, system, use_cache):
     cpath = cache_path()
     cached = _load_cache(cpath) if use_cache else {}
     known = cached.get("fonts", {})

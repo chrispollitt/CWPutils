@@ -108,6 +108,18 @@ Draw what arrived of a file that ends early.
 .TP
 .BR \-v ", " \-\-verbose ", " \-V ", " \-\-version
 Say what was drawn, and how big; print the version.
+.TP
+.B \-\-debug
+Say every stage (reading the BIF, asking the terminal and its answer, drawing, writing) as it starts and ends, with
+the time, and the versions of Python, numpy and Pillow; a traceback with an error.
+.TP
+.BR \-\-profile ", " \-\-profiling
+When done, print how long every stage took and the 25 functions that took longest (cProfile) on standard error;
+.B BIDET_PROFILE=FILE
+also saves the statistics.
+.PP
+While it works, a spinning cursor turns on standard error if that is a terminal, and an animation counts the frames
+it draws; both stop while the terminal is asked something and while an animation plays.
 .PP
 Everything else is in
 .BR "bifout \-\-help" .
@@ -196,6 +208,12 @@ If set, never ask the terminal anything.
 .TP
 .B BIDET_CELL
 The character cell, as WxH in pixels, for an animation (see \fB\-\-cell\fR).
+.TP
+.B BIDET_NO_SPIN
+If set, no spinning cursor on standard error.
+.TP
+.B BIDET_PROFILE
+With \fB\-\-profile\fR: a file to save the cProfile statistics in (for \fBpython \-m pstats\fR, snakeviz, ...).
 .TP
 .B LSIX_FORCE_SIXEL_SUPPORT
 If set, send SIXEL even if the terminal does not say it can.
