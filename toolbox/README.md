@@ -1,9 +1,9 @@
 # CWPutils/toolbox - command-line utilities
 
-A small collection of standalone Python 3 command-line utilities for
-slicing/filtering text streams and doing quick network diagnostics.
-Each tool is a single dependency-free script; no build step or
-third-party packages are required.
+A small collection of standalone command-line utilities for
+slicing/filtering text streams, quick network diagnostics and taming
+Cygwin on Windows. Each tool is a single dependency-free script (Python 3,
+or bash for `fixperms`); no build step or third-party packages are required.
 
 | Tool | Purpose |
 | --- | --- |
@@ -14,15 +14,18 @@ third-party packages are required.
 | [`tcping`](#tcping) | Time a TCP connect/disconnect and report any welcome banner |
 | [`termprobe`](#termprobe) | Find out what survives the trip between a program and its terminal (colour queries, key and mouse input, ConPTY/ssh damage) |
 | [`wincygterm`](#wincygterm) | Run Cygwin programs on a real pty inside Windows Terminal (fixes OSC colour queries and ncurses input) |
+| [`fixperms`](#fixperms) | Repair owner, mode and ACL of files created from an elevated (administrator) Cygwin shell |
 
 Full details for each tool are in its man page (`cut2.1`, `pullout.1`,
-`rpullout.1`, `ghgrep.1`, `tcping.1`, `termprobe.1`, `wincygterm.1`); this
+`rpullout.1`, `ghgrep.1`, `tcping.1`, `termprobe.1`, `wincygterm.1`,
+`fixperms.1`); this
 file is a quick-start summary.
 
 ## Requirements
 
-Python 3.8+ and nothing else. All scripts use only the standard
-library (`argparse`, `re`, `socket`, `sys`).
+Python 3.8+ and nothing else. All the Python scripts use only the standard
+library (`argparse`, `re`, `socket`, `sys`). `fixperms` needs bash 4+ and
+the usual coreutils plus `getfacl`/`setfacl` (part of Cygwin's base install).
 
 ## Installation
 
@@ -189,6 +192,32 @@ python wincygterm [--root DIR] [--python EXE] [--term TERM] [--login-dir] [--no-
 - Sets `WINCYGTERM=<version>` for the command; `termprobe` shows it as a `via:` line.
 - Check the result with `termprobe` (`tty` should say `/dev/pty*`, OSC 11 `ANSWERED`).
 - Tested in Windows Terminal 1.24 with a Cygwin 3.7 development snapshot: `bash`, a live `tvmail` session and a live `bidet` animation all work.
+
+## fixperms
+
+Files created from an elevated ("Run as administrator") Cygwin shell - an
+elevated `pip install` into `/usr/local`, a build, anything in `~/.local` -
+often end up owned by Administrators with Windows ACLs that a normal shell
+cannot read: `Permission denied`, failed imports, a trailing `+` in `ls -l`.
+`chmod` alone does not fix them. `fixperms` walks the tree top-down (never
+following symlinks), sets owner and group to you, and replaces each ACL with
+a minimal, inheritable one via `setfacl -s` (falling back to
+`icacls /reset` and `chmod`), so new files created there come out clean too.
+
+```bash
+fixperms -n /usr/local/lib/python3.12/site-packages   # dry run: what would change
+fixperms -v /usr/local/lib/python3.12/site-packages   # fix it, listing each change
+fixperms -w ~/github/myproject                        # group-writable (775/664)
+```
+
+```
+fixperms [-n] [-v] [-d] [-u USER] [-g GROUP] [-w] [-x] [-f] PATH...
+```
+
+- Modes become 755 for directories and 644 for files; files keep x for everyone if any x bit was set or they start with `#!`, `MZ` (exe/dll/pyd, which Cygwin needs x on to load) or ELF magic. `-x` ignores old x bits and goes by content alone; `-w` adds group write.
+- `-d` / `--no-recurse` fixes only the named paths; `-n` / `--dry-run` changes nothing; `-v` lists changes (`-vv` also unchanged entries).
+- Taking ownership of Administrators-owned files usually needs an elevated shell: `fixperms` reports those, fixes everything else, and prints the command to rerun elevated.
+- Refuses `/`, the Cygwin root, drive roots and top-level directories such as `/usr` without `-f`. Exit status 0 all fixed, 1 something not fixed, 2 usage error.
 
 ## Testing
 

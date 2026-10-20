@@ -1,0 +1,240 @@
+.TH FIXPERMS 1 "October 2026" "fixperms 1.0" "User Commands"
+.SH NAME
+fixperms \- repair owner, mode and ACL of files created from an elevated Cygwin shell
+
+.SH SYNOPSIS
+.B fixperms
+[\-n] [\-v] [\-d] [\-u USER] [\-g GROUP] [\-w] [\-x] [\-f]
+.I path
+\&...
+
+.SH DESCRIPTION
+Files and directories created from an elevated ("Run as administrator") Cygwin shell \- a
+.B pip install
+into
+.IR /usr/local ,
+a build in a project directory, anything under
+.I ~/.local
+\- often come out owned by the Administrators group, with Windows ACLs that a normal, non-elevated
+session cannot read or write: "Permission denied" on
+.BR ls ,
+failed imports, and a trailing
+.B +
+in
+.BR "ls \-l" .
+.B chmod
+alone does not fix them, because the trouble is in ACL entries it leaves in place: named user and group
+entries (such as
+.B user:chris:\-\-\-
+or
+.BR group:Administrators:rwx ),
+a mask, NULL SID and deny ACEs, and default (inheritable) entries such as
+.B default:user::\-\-\-
+that hand the same damage on to every new file.
+
+.B fixperms
+walks each
+.I path
+top-down, without following symbolic links, and for every file and directory:
+.IP 1. 4
+sets the owner and group to the invoking user (or
+.BR \-\-user / \-\-group )
+with
+.BR chown ;
+.IP 2. 4
+replaces the whole ACL with a minimal one using
+.BR "setfacl \-s" :
+directories get
+.BR u::rwx,g::r\-x,o::r\-x ,
+plus the same as default entries so that new files and subdirectories inherit a clean ACL;
+files get
+.BR u::rw\-,g::r\-\-,o::r\-\- ,
+or
+.B rwxr\-xr\-x
+if they are executable (see below). Cygwin turns this into a short, canonical Windows ACL: the owner,
+the group and Everyone, plus CREATOR OWNER, CREATOR GROUP and Everyone entries that are inherited by new
+files. Setuid, setgid and sticky bits are kept;
+.IP 3. 4
+if
+.B setfacl
+cannot set the ACL (a file system Cygwin cannot map POSIX ACLs onto, for example), resets the Windows ACL
+to the inherited one with
+.B "icacls /reset"
+and then sets the mode with
+.BR chmod .
+.PP
+Entries whose owner, group and ACL are already right are left alone, so a second run changes nothing.
+Directories are fixed before they are listed, so a directory the user cannot even open is fixed first and
+then descended into.
+
+.SS Executable files
+A file is made executable for everyone if any of its execute bits was set, or if it starts with
+.B #!
+(a script),
+.B MZ
+(a Windows .exe, .dll or Python .pyd, which Cygwin will not load without execute permission) or
+.B \e177ELF
+\- an "a+rX"-style rule, never a blanket
+.BR +x .
+With
+.BR \-\-exec\-by\-content ,
+existing execute bits are ignored and only the content decides; use it when a tree's execute bits cannot be
+trusted, as with files created under Windows-default ACLs, which often show
+.B rwx
+on everything. A file that cannot be read until it is fixed is checked after its ACL has been set.
+
+.SS Ownership and elevation
+Changing a file's owner to yourself from a non-elevated shell works only if you already own it or the ACL
+grants you "take ownership"; files owned by Administrators usually need an elevated shell. When a
+.B chown
+fails like that,
+.B fixperms
+says so, carries on with the rest, and at the end prints the command to run again from an elevated Cygwin
+terminal. It never touches the ACL of a file whose owner it could not change.
+.B fixperms
+counts a shell as elevated when
+.B "id \-G"
+includes the Administrators group (544), which Cygwin lists only for an elevated token.
+
+.SS Safety
+.B fixperms
+refuses, without
+.BR \-\-force ,
+to work on
+.IR / ,
+the Cygwin root (as
+.IR / ,
+.I D:/cygwin
+or
+.IR /cygdrive/d/cygwin ),
+a drive root, or a top-level directory such as
+.I /usr
+or
+.IR C:/Users .
+It never follows a symbolic link (a link's own owner is changed with
+.BR "chown \-h" ,
+nothing else), and does not descend into a directory on another file system. Paths may contain spaces and
+any other characters.
+
+.SH OPTIONS
+.TP
+.B \-n, \-\-dry\-run
+Show what would be changed, and predict which changes would need an elevated shell; change nothing.
+Implies
+.BR \-v .
+A directory that cannot be read until it is fixed is reported as not looked into.
+.TP
+.B \-v, \-\-verbose
+List every change, with the old and new owner, group and mode. Give it twice to list unchanged entries too.
+.TP
+.B \-d, \-\-no\-recurse
+Fix only the named paths, not what is under them.
+.TP
+.B \-u, \-\-user USER
+Owner to set. Default: the invoking user.
+.TP
+.B \-g, \-\-group GROUP
+Group to set, by name or number. Default: the primary group of the invoking user (or of
+.BR \-\-user ).
+.TP
+.B \-w, \-\-group\-write
+Give the group write access: 775 and 664 instead of 755 and 644. Without it, write access for the group
+and for others is removed.
+.TP
+.B \-x, \-\-exec\-by\-content
+Ignore existing execute bits; set them only on files that start with
+.BR #! ,
+.B MZ
+or ELF magic.
+.TP
+.B \-f, \-\-force
+Allow
+.IR / ,
+the Cygwin root, drive roots and top-level directories.
+.TP
+.B \-h, \-\-help
+Show a usage summary and exit.
+.TP
+.B \-V, \-\-version
+Show the version and exit.
+
+.SH OUTPUT
+Each change (with
+.B \-v
+or
+.BR \-n )
+is one line; a
+.B +
+after the old mode means the old ACL had extended entries that were removed:
+.RS
+.nf
+fix site-packages/pyte: mode dr-xrwxr-x+ -> 755 (ACL cleaned)
+fix site-packages/pyte/__init__.py: owner Administrators -> chris; mode -r--rw-r--+ -> 644 (ACL cleaned)
+.fi
+.RE
+Then a summary, and on standard error each path that could not be fixed, with the reason:
+.RS
+.nf
+fixperms: 412 checked, 3 already fine, 409 fixed (409 owner/group, 409 mode/ACL), 2 symlinks not followed
+.fi
+.RE
+
+.SH EXAMPLES
+See what an elevated pip install did, then fix it from an elevated Cygwin terminal:
+.RS
+.nf
+.B fixperms \-n /usr/local/lib/python3.12/site-packages
+.B fixperms \-v /usr/local/lib/python3.12/site-packages
+.fi
+.RE
+
+Fix a project directory, leaving it group-writable:
+.RS
+.B fixperms \-w ~/github/myproject
+.RE
+
+Fix just one directory entry, not its contents:
+.RS
+.B fixperms \-d /usr/local/bin
+.RE
+
+.SH EXIT STATUS
+.TP
+.B 0
+Everything is (or, with
+.BR \-n ,
+would be) fixed.
+.TP
+.B 1
+Something could not be fixed (or would need an elevated shell), a path does not exist, or a path was
+refused.
+.TP
+.B 2
+Usage error, or a required tool
+.RB ( stat ,
+.BR chown ,
+.BR chmod ,
+.BR getfacl ,
+.BR setfacl ,
+.BR realpath )
+is missing.
+
+.SH NOTES
+Written for Cygwin, where
+.B getfacl
+and
+.B setfacl
+map POSIX ACLs onto Windows ACLs; it also works on Linux file systems with ACL support, where "elevated"
+means root.
+
+.SH AUTHOR
+Chris Pollitt.
+
+.SH SEE ALSO
+.BR chown (1),
+.BR chmod (1),
+.BR getfacl (1),
+.BR setfacl (1),
+.BR icacls ,
+the Cygwin User's Guide section "POSIX accounts, permission, and security"
+.RI ( https://cygwin.com/cygwin\-ug\-net/ntsec.html )

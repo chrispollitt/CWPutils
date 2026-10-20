@@ -1,0 +1,578 @@
+#!/usr/bin/env bash
+# fixperms - repair the owner, group, mode and ACL of files and directories
+# that were created from an elevated (Run as administrator) Cygwin shell and
+# that a normal, non-elevated session then cannot read or write.
+#
+# For every path it:
+#   1. sets the owner and group to the invoking user (or --user / --group);
+#   2. replaces the ACL with a minimal, inheritable POSIX ACL
+#      (setfacl -s: directories u::rwx,g::r-x,o::r-x plus the same as default
+#      entries; files u::rw-,g::r--,o::r--; executables keep x for everyone),
+#      which drops the named-user/group entries, mask and deny ACEs that show
+#      up as a trailing '+' in ls -l;
+#   3. falls back to "icacls /reset" + chmod for anything setfacl cannot set.
+#
+# A file counts as executable if any x bit was set or it starts with "#!",
+# "MZ" (a Windows exe/dll, which Cygwin needs x on to load) or "\177ELF".
+#
+# See fixperms.1 for the full description.  Exit status: 0 everything is (or
+# would be) fixed, 1 something could not be fixed, 2 usage error.
+
+set -u
+export LC_ALL=C
+shopt -s nullglob dotglob
+
+VERSION=1.0
+PROG=${0##*/}
+ORIG_ARGS=("$@")
+
+usage() {
+    cat <<EOF
+Usage: $PROG [OPTION]... PATH...
+Repair owner, group, mode and ACL of PATHs (recursively) so the invoking user
+owns them and a non-elevated Cygwin shell can use them.
+
+  -n, --dry-run          show what would change; change nothing
+  -v, --verbose          list every change (twice: also unchanged entries)
+  -d, --no-recurse       fix only the named PATHs, not what is under them
+  -u, --user USER        owner to set (default: the invoking user)
+  -g, --group GROUP      group to set (default: the invoking user's group)
+  -w, --group-write      give the group write access (775/664, not 755/644)
+  -x, --exec-by-content  ignore existing x bits; set x only on files that
+                         start with #!, MZ or ELF magic
+  -f, --force            allow /, the Cygwin root, drive roots and top-level
+                         directories such as /usr
+  -h, --help             show this help and exit
+  -V, --version          show the version and exit
+
+Exit status: 0 all fixed, 1 something could not be fixed, 2 usage error.
+EOF
+}
+
+die_usage() {
+    printf '%s: %s\n' "$PROG" "$1" >&2
+    printf "Try '%s --help' for more information.\n" "$PROG" >&2
+    exit 2
+}
+
+# ---------------------------------------------------------------- options
+
+dry_run=0 verbose=0 recurse=1 force=0 group_write=0 exec_by_content=0
+opt_user='' opt_group=''
+paths=()
+
+while (($#)); do
+    arg=$1
+    shift
+    case $arg in
+    --) paths+=("$@"); break ;;
+    -n|--dry-run) dry_run=1 ;;
+    -v|--verbose) ((verbose++)) ;;
+    -d|--no-recurse) recurse=0 ;;
+    -w|--group-write) group_write=1 ;;
+    -x|--exec-by-content) exec_by_content=1 ;;
+    -f|--force) force=1 ;;
+    -h|--help) usage; exit 0 ;;
+    -V|--version) echo "$PROG $VERSION"; exit 0 ;;
+    -u|--user|-g|--group)
+        (($#)) || die_usage "option '$arg' requires an argument"
+        case $arg in -u|--user) opt_user=$1 ;; *) opt_group=$1 ;; esac
+        shift ;;
+    --user=*) opt_user=${arg#*=} ;;
+    --group=*) opt_group=${arg#*=} ;;
+    -[nvdwxfhV][nvdwxfhV]*)
+        # Bundled flags such as -nv: split into single flags.
+        flags=()
+        for ((j = 1; j < ${#arg}; j++)); do flags+=("-${arg:j:1}"); done
+        set -- "${flags[@]}" "$@" ;;
+    -?*) die_usage "unknown option '$arg'" ;;
+    *) paths+=("$arg") ;;
+    esac
+done
+((${#paths[@]})) || die_usage "no PATH given"
+((dry_run && !verbose)) && verbose=1
+
+# ---------------------------------------------------------------- environment
+
+for tool in stat chown chmod getfacl setfacl realpath; do
+    command -v "$tool" >/dev/null || { echo "$PROG: '$tool' not found" >&2; exit 2; }
+done
+
+CYGWIN=0
+[[ $(uname -s) == CYGWIN* ]] && CYGWIN=1
+
+# Elevated?  On Cygwin an elevated token lists Administrators (gid 544) in
+# id -G; a non-elevated one has it only as a deny-only SID, which id omits.
+ELEVATED=0
+MY_UID=$(id -u)
+if ((CYGWIN)); then
+    [[ " $(id -G) " == *" 544 "* ]] && ELEVATED=1
+else
+    [[ $(id -u) == 0 ]] && ELEVATED=1
+fi
+
+if [[ -n $opt_user ]]; then
+    T_UID=$(id -u -- "$opt_user" 2>/dev/null) || die_usage "unknown user '$opt_user'"
+    T_USER=$opt_user
+else
+    T_UID=$(id -u) T_USER=$(id -un)
+fi
+if [[ -n $opt_group ]]; then
+    if [[ $opt_group =~ ^[0-9]+$ ]]; then
+        T_GID=$opt_group
+    else
+        T_GID=$(getent group -- "$opt_group" 2>/dev/null | cut -d: -f3)
+        [[ -n $T_GID ]] || die_usage "unknown group '$opt_group'"
+    fi
+    T_GROUP=$opt_group
+elif [[ -n $opt_user ]]; then
+    T_GID=$(id -g -- "$opt_user") T_GROUP=$(id -gn -- "$opt_user")
+else
+    T_GID=$(id -g) T_GROUP=$(id -gn)
+fi
+
+# ---------------------------------------------------------------- helpers
+
+declare -A FAIL_MSG=()  # path -> why it could not be fixed
+FAIL_ORDER=()
+n_checked=0 n_ok=0 n_fixed=0 n_owner=0 n_acl=0 n_links=0 n_skipped=0
+n_unscanned=0 n_icacls=0 n_elev=0
+
+say() { printf '%s\n' "$*"; }
+vsay() { ((verbose >= ${1})) && printf '%s\n' "${*:2}"; return 0; }
+
+fail() {  # fail PATH MESSAGE [elev]
+    [[ -n ${FAIL_MSG[$1]+x} ]] || FAIL_ORDER+=("$1")
+    FAIL_MSG[$1]=$2
+    [[ ${3:-} == elev ]] && ((n_elev++))
+    return 0
+}
+
+# The helpers below return their result in REPLY: a $(...) per entry would
+# cost a fork each, which is slow on Cygwin.
+PERM=(--- --x -w- -wx r-- r-x rw- rwx)
+
+# The canonical form of the ACL that setfacl -s gives for MODE (3 octal
+# digits), as getfacl -c prints it with the lines joined by commas.
+acl_for() {  # acl_for dir|file MODE
+    local u=${PERM[${2:0:1}]} g=${PERM[${2:1:1}]} o=${PERM[${2:2:1}]}
+    REPLY="user::$u,group::$g,other::$o"
+    [[ $1 == dir ]] && REPLY+=",default:user::$u,default:group::$g,default:other::$o"
+    return 0
+}
+
+# The same ACL in setfacl's short syntax: u::rwx,g::r-x,o::r-x,d:u::rwx,...
+setfacl_spec() {  # setfacl_spec dir|file MODE
+    acl_for "$1" "$2"
+    REPLY=${REPLY//default:/d:}
+    REPLY=${REPLY//user:/u:}
+    REPLY=${REPLY//group:/g:}
+    REPLY=${REPLY//other:/o:}
+}
+
+# MODE with x added for everyone: 644 -> 755, 4664 -> 4775.
+add_x() {
+    local m=$1 n=${#1}
+    printf -v REPLY '%s%d%d%d' "${m:0:n-3}" $((${m:n-3:1} | 1)) $((${m:n-2:1} | 1)) $((${m:n-1:1} | 1))
+}
+
+has_exec_magic() {  # true if the file starts with #!, MZ or \177ELF
+    local hdr=
+    IFS= read -r -n 4 hdr <"$1" 2>/dev/null || [[ -n $hdr ]] || return 1
+    [[ $hdr == '#!'* || $hdr == MZ* || $hdr == $'\177'ELF ]]
+}
+
+# Is PATH dangerous to work on without --force?  Refuses /, the Cygwin root,
+# drive roots and anything directly under them (/usr, /home, D:/Users, ...).
+too_close_to_root() {
+    local r m lm rel
+    r=$(realpath -- "$1" 2>/dev/null) || r=$1
+    if ((CYGWIN)); then
+        m=$(cygpath -m -- "$r") lm=${m,,}
+        lm=${lm%/} m=${m%/}
+        if [[ $lm == "$ROOT_LM" ]]; then
+            rel=
+        elif [[ $lm == "$ROOT_LM"/* ]]; then
+            rel=${m:${#ROOT_LM}+1}
+        elif [[ $lm =~ ^[a-z]: ]]; then
+            rel=${m:3}
+        elif [[ $m == //* ]]; then   # //server/share/rest
+            rel=${m#//}; rel=${rel#*/}; rel=${rel#*/}
+            [[ $rel == "${m#//}" ]] && rel=
+        else
+            rel=${m#/}
+        fi
+    else
+        rel=${r#/}
+    fi
+    rel=${rel%/}
+    [[ -z $rel || $rel != */* ]]
+}
+if ((CYGWIN)); then ROOT_LM=$(cygpath -m /); ROOT_LM=${ROOT_LM,,}; ROOT_LM=${ROOT_LM%/}; fi
+
+# Run CMD... -- BATCH[@]; if that fails, retry one path at a time so we know
+# which ones failed.  Leaves the failed paths in BAD and their errors in BAD_ERR.
+BAD=()
+declare -A BAD_ERR=()
+apply() {
+    local err p
+    BAD=()
+    BAD_ERR=()
+    ((${#BATCH[@]})) || return 0
+    err=$("$@" -- "${BATCH[@]}" 2>&1 >/dev/null) && return 0
+    for p in "${BATCH[@]}"; do
+        if ! err=$("$@" -- "$p" 2>&1 >/dev/null); then
+            BAD+=("$p")
+            BAD_ERR[$p]=${err##*: }
+        fi
+    done
+}
+
+# Fill ST[] with one stat line per path (empty if stat failed for it).
+STAT_FMT=$'%u\t%g\t%a\t%d\t%U\t%G\t%A\t%F'
+stat_batch() {
+    local out p
+    ST=()
+    if out=$(stat -c "$STAT_FMT" -- "$@" 2>/dev/null); then
+        mapfile -t ST <<<"$out"
+        ((${#ST[@]} == $#)) && return
+    fi
+    ST=()
+    for p; do ST+=("$(stat -c "$STAT_FMT" -- "$p" 2>/dev/null)"); done
+}
+
+# Fill ACL[] with each path's getfacl -c output, lines joined by commas and
+# the "#effective" comments dropped (empty if getfacl failed for it).
+getfacl_one() {
+    local l blk=
+    while IFS= read -r l; do
+        [[ -z $l ]] && break
+        l=${l%%$'\t'*}
+        blk+=${blk:+,}${l%%#*}
+    done
+    printf '%s' "$blk"
+}
+getfacl_batch() {
+    local out l blk='' p
+    ACL=()
+    if out=$(getfacl -c -- "$@" 2>/dev/null); then
+        while IFS= read -r l; do
+            if [[ -z $l ]]; then
+                [[ -n $blk ]] && ACL+=("$blk")
+                blk=
+            else
+                l=${l%%$'\t'*}
+                blk+=${blk:+,}${l%%#*}
+            fi
+        done <<<"$out"
+        [[ -n $blk ]] && ACL+=("$blk")
+        ((${#ACL[@]} == $#)) && return
+    fi
+    ACL=()
+    for p; do ACL+=("$(getfacl -c -- "$p" 2>/dev/null | getfacl_one)"); done
+}
+
+# ---------------------------------------------------------------- the work
+
+# Check and fix a batch of paths that all exist.  Directories among them that
+# should be descended into are appended to SUBDIRS (relative to ROOT_DEV).
+process_batch() {
+    local -a items=("$@") kind=() tmode=() later=()
+    local -a acl_paths=() acl_idx=()
+    local i n=$# p u g a dev un gn ls ftype special cur_acl want own_change msg
+    local -a why
+    stat_batch "$@"
+    local -a st=("${ST[@]}")
+
+    # Pass 1: classify; collect the dirs and files for one getfacl call.
+    for ((i = 0; i < n; i++)); do
+        p=${items[i]}
+        ((n_checked++))
+        if [[ -z ${st[i]} ]]; then
+            kind[i]=bad
+            fail "$p" "cannot stat (no permission on its parent directory?)"
+            continue
+        fi
+        IFS=$'\t' read -r u g a dev un gn ls ftype <<<"${st[i]}"
+        case $ftype in
+        directory) kind[i]=dir ;;
+        regular*) kind[i]='file' ;;
+        "symbolic link") kind[i]='link' ;;
+        *) kind[i]=other ;;
+        esac
+        if [[ ${kind[i]} == dir || ${kind[i]} == file ]]; then
+            acl_paths+=("$p")
+            acl_idx+=("$i")
+        fi
+    done
+    if ((${#acl_paths[@]})); then
+        getfacl_batch "${acl_paths[@]}"
+    else
+        ACL=()
+    fi
+    local -a acls=()
+    for ((i = 0; i < ${#acl_idx[@]}; i++)); do acls[acl_idx[i]]=${ACL[i]}; done
+
+    # Pass 2: decide what each one needs and report it.
+    local -a do_chown=() do_acl=()
+    declare -A by_spec=()
+    for ((i = 0; i < n; i++)); do
+        [[ ${kind[i]} == bad ]] && continue
+        p=${items[i]}
+        IFS=$'\t' read -r u g a dev un gn ls ftype <<<"${st[i]}"
+        why=()
+        own_change=0
+        if [[ $u != "$T_UID" ]]; then
+            why+=("owner $un -> $T_USER")
+            own_change=1
+        fi
+        if [[ $g != "$T_GID" ]]; then
+            why+=("group $gn -> $T_GROUP")
+            own_change=1
+        fi
+
+        case ${kind[i]} in
+        link|other)
+            # Never follow a symlink: chown -h changes the link itself, and
+            # neither setfacl nor chmod is applied to links or special files.
+            if [[ ${kind[i]} == link ]]; then ((n_links++)); else ((n_skipped++)); fi
+            if ((own_change)); then
+                vsay 1 "${DRY:+would }fix ${kind[i]} ${p}: ${why[*]}"
+                do_chown+=("$i")
+            else
+                vsay 2 "ok (${kind[i]}, owner only) $p"
+                ((n_ok++))
+            fi
+            continue ;;
+        esac
+
+        # Target mode.  a holds 3 or 4 octal digits; keep any special bits.
+        special=
+        ((${#a} == 4)) && special=${a:0:1}
+        a=${a: -3}
+        local exe=0 base
+        if [[ ${kind[i]} == dir ]]; then
+            base=755
+        else
+            if ((!exec_by_content)) && [[ $a == *[1357]* ]]; then
+                exe=1
+            elif [[ -r $p ]]; then
+                has_exec_magic "$p" && exe=1
+            else
+                later+=("$i")   # unreadable: look at its first bytes once fixed
+            fi
+            ((exe)) && base=755 || base=644
+        fi
+        ((group_write)) && base=${base:0:1}$((${base:1:1} | 2))${base:2:1}
+        tmode[i]=$special$base
+        acl_for "${kind[i]}" "$base"
+        want=$REPLY
+        cur_acl=${acls[i]:-}
+        if [[ $cur_acl != "$want" ]] || ((own_change)); then
+            if [[ $cur_acl != "$want" ]]; then
+                if [[ $cur_acl == *user:?*:* || $cur_acl == *group:?*:* || $cur_acl == *mask::* || -z $cur_acl ]]; then
+                    why+=("mode $ls+ -> $base (ACL cleaned)")
+                else
+                    why+=("mode $ls -> $base")
+                fi
+            fi
+            if ((verbose)); then
+                printf -v msg '; %s' "${why[@]}"
+                say "${DRY:+would }fix $p: ${msg:2}"
+            fi
+            ((own_change)) && do_chown+=("$i")
+            do_acl+=("$i")
+            by_spec["${kind[i]} $base"]+="$i "
+        else
+            vsay 2 "ok $p"
+            ((n_ok++))
+        fi
+        if [[ ${kind[i]} == dir ]] && ((recurse)); then
+            if [[ $dev != "$ROOT_DEV" ]]; then
+                vsay 1 "not descending into $p (another file system)"
+            else
+                SUBDIRS+=("$p")
+            fi
+        fi
+    done
+
+    # Predict failures in dry-run mode: a different owner needs an elevated
+    # shell unless we are elevated (or it is the owner we already are).
+    if ((dry_run)); then
+        for i in "${do_chown[@]}"; do
+            IFS=$'\t' read -r u _ <<<"${st[i]}"
+            if ((!ELEVATED)) && [[ $u != "$MY_UID" ]]; then
+                fail "${items[i]}" "owned by another account: changing it needs an elevated shell" elev
+            fi
+        done
+        local k
+        for k in "${!by_spec[@]}"; do
+            for i in ${by_spec[$k]}; do
+                [[ -n ${FAIL_MSG[${items[i]}]+x} ]] || ((n_fixed++))
+            done
+        done
+        for i in "${do_chown[@]}"; do
+            [[ ${kind[i]} == link || ${kind[i]} == other ]] && ((n_fixed++))
+        done
+        ((n_owner += ${#do_chown[@]}, n_acl += ${#do_acl[@]}))
+        return
+    fi
+
+    # 1. chown everything that needs it, in one go.
+    declare -A chown_bad=()
+    BATCH=()
+    for i in "${do_chown[@]}"; do BATCH+=("${items[i]}"); done
+    apply chown -h "$T_UID:$T_GID"
+    for p in "${BAD[@]}"; do
+        chown_bad[$p]=1
+        if ((!ELEVATED)); then
+            fail "$p" "chown: ${BAD_ERR[$p]} - needs an elevated shell" elev
+        else
+            fail "$p" "chown: ${BAD_ERR[$p]}"
+        fi
+    done
+    for i in "${do_chown[@]}"; do
+        p=${items[i]}
+        [[ -n ${chown_bad[$p]+x} ]] && continue
+        ((n_owner++))
+        [[ ${kind[i]} == link || ${kind[i]} == other ]] && ((n_fixed++))
+    done
+
+    # 2. setfacl -s, one call per (kind, mode); icacls + chmod as the fallback.
+    local k kk mm
+    for k in "${!by_spec[@]}"; do
+        kk=${k% *} mm=${k#* }
+        BATCH=()
+        for i in ${by_spec[$k]}; do
+            [[ -n ${chown_bad[${items[i]}]+x} ]] || BATCH+=("${items[i]}")
+        done
+        ((${#BATCH[@]})) || continue
+        setfacl_spec "$kk" "$mm"
+        apply setfacl -s "$REPLY"
+        declare -A acl_bad=()
+        for p in "${BAD[@]}"; do
+            if ((CYGWIN)) && icacls "$(cygpath -w -- "$p")" /reset /Q >/dev/null 2>&1 &&
+                chmod "$mm" -- "$p" 2>/dev/null; then
+                vsay 1 "  setfacl failed (${BAD_ERR[$p]}); reset with icacls + chmod $mm: $p"
+                ((n_icacls++))
+            else
+                acl_bad[$p]=1
+                if ((!ELEVATED)); then
+                    fail "$p" "setfacl: ${BAD_ERR[$p]} - try an elevated shell" elev
+                else
+                    fail "$p" "setfacl: ${BAD_ERR[$p]}"
+                fi
+            fi
+        done
+        for i in ${by_spec[$k]}; do
+            p=${items[i]}
+            [[ -n ${chown_bad[$p]+x} || -n ${acl_bad[$p]+x} ]] && continue
+            ((n_acl++, n_fixed++))
+            # setfacl -s keeps setuid/setgid/sticky on Cygwin, but make sure.
+            if [[ ${#tmode[i]} == 4 ]]; then
+                chmod "${tmode[i]}" -- "$p" 2>/dev/null ||
+                    fail "$p" "chmod ${tmode[i]} failed (special bits)"
+            fi
+        done
+        unset acl_bad
+    done
+
+    # 3. Files that were unreadable before: now we can see if they need x.
+    for i in "${later[@]}"; do
+        p=${items[i]}
+        [[ -n ${FAIL_MSG[$p]+x} ]] && continue
+        if has_exec_magic "$p"; then
+            local xm
+            add_x "${tmode[i]}"
+            xm=$REPLY
+            setfacl_spec file "${xm: -3}"
+            if setfacl -s "$REPLY" -- "$p" 2>/dev/null; then
+                vsay 1 "  executable content, mode -> ${xm: -3}: $p"
+            else
+                fail "$p" "could not add execute permission"
+            fi
+        fi
+    done
+}
+
+# Walk DIR top-down: the directory itself was fixed by its parent's batch (or
+# as an operand), so by the time we list it we can read it.
+walk() {
+    local d=$1 i
+    if [[ ! -r $d || ! -x $d ]]; then
+        if ((dry_run)); then
+            vsay 1 "  (contents of $d not checked: unreadable until it is fixed)"
+            ((n_unscanned++))
+        else
+            fail "$d" "cannot read the directory to fix its contents"
+        fi
+        return
+    fi
+    local -a kids=("$d"/*)
+    local -a subs=()
+    for ((i = 0; i < ${#kids[@]}; i += 200)); do
+        SUBDIRS=()
+        process_batch "${kids[@]:i:200}"
+        subs+=("${SUBDIRS[@]}")
+    done
+    for i in "${subs[@]}"; do walk "$i"; done
+}
+
+DRY=
+((dry_run)) && DRY=1
+status=0
+
+if ((dry_run)); then
+    say "$PROG: dry run - nothing will be changed"
+fi
+if ((CYGWIN && !ELEVATED)); then
+    vsay 1 "$PROG: not elevated; files owned by other accounts (e.g. Administrators) may need an elevated shell"
+fi
+
+for p in "${paths[@]}"; do
+    p=${p%/}
+    [[ -z $p ]] && p=/
+    if [[ ! -e $p && ! -L $p ]]; then
+        fail "$p" "no such file or directory"
+        continue
+    fi
+    if ((!force)) && too_close_to_root "$p"; then
+        printf "%s: refusing to work on '%s' (/, the Cygwin root, a drive root or a top-level directory); use --force\n" \
+            "$PROG" "$p" >&2
+        status=1
+        continue
+    fi
+    ROOT_DEV=$(stat -c %d -- "$p" 2>/dev/null)
+    SUBDIRS=()
+    process_batch "$p"
+    if ((recurse)) && ((${#SUBDIRS[@]})); then
+        walk "$p"
+    fi
+done
+
+# ---------------------------------------------------------------- summary
+
+((${#FAIL_ORDER[@]})) && status=1
+summary="$n_checked checked, $n_ok already fine, $n_fixed ${DRY:+would be }fixed"
+summary+=" ($n_owner owner/group, $n_acl mode/ACL"
+((n_icacls)) && summary+=", $n_icacls via icacls"
+summary+=")"
+((n_links)) && summary+=", $n_links symlinks not followed"
+((n_skipped)) && summary+=", $n_skipped special files"
+((n_unscanned)) && summary+=", $n_unscanned directories not looked into"
+((${#FAIL_ORDER[@]})) && summary+=", ${#FAIL_ORDER[@]} ${DRY:+would }fail"
+say "$PROG: $summary"
+
+if ((${#FAIL_ORDER[@]})); then
+    for p in "${FAIL_ORDER[@]}"; do
+        printf '%s: %s: %s\n' "$PROG" "$p" "${FAIL_MSG[$p]}" >&2
+    done
+    if ((n_elev)); then
+        printf '%s: %d of these need an elevated shell.  Open Cygwin with "Run as administrator" and run:\n' \
+            "$PROG" "$n_elev" >&2
+        printf '  %s' "$PROG" >&2
+        printf ' %q' "${ORIG_ARGS[@]}" >&2
+        printf '\n' >&2
+    fi
+fi
+exit "$status"

@@ -1,8 +1,8 @@
-# CWPutils/toolbox - Makefile for a set of standalone Python 3 CLI utilities.
+# CWPutils/toolbox - Makefile for a set of standalone CLI utilities.
 #
-# All tools (cut2, pullout, rpullout, ghgrep, tcping, termprobe, wincygterm) are dependency-free
-# Python 3 scripts, so "build" is just making sure they are executable
-# and syntactically valid; there is nothing to compile.
+# The tools (cut2, pullout, rpullout, ghgrep, tcping, termprobe, wincygterm) are dependency-free
+# Python 3 scripts, plus one bash script (fixperms), so "build" is just making sure they are
+# executable and syntactically valid; there is nothing to compile.
 
 PYTHON = python3
 PREFIX = /usr/local
@@ -10,16 +10,22 @@ BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man/man1
 SUDO =
 
-BINS     = cut2 pullout rpullout ghgrep tcping termprobe wincygterm
-MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1 tcping.1 termprobe.1 wincygterm.1
+PYBINS   = cut2 pullout rpullout ghgrep tcping termprobe wincygterm
+SHBINS   = fixperms
+BINS     = $(PYBINS) $(SHBINS)
+MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1 tcping.1 termprobe.1 wincygterm.1 fixperms.1
 
 # Default target
 all: build
 
 # "Build": verify each script is syntactically valid and executable.
 build:
-	@for bin in $(BINS); do \
+	@for bin in $(PYBINS); do \
 		$(PYTHON) -m py_compile $$bin || exit 1; \
+		chmod +x $$bin; \
+	done
+	@for bin in $(SHBINS); do \
+		bash -n $$bin || exit 1; \
 		chmod +x $$bin; \
 	done
 	@echo "Build OK: $(BINS)"
