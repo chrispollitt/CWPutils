@@ -27,12 +27,13 @@ usage() {
   echo "Options:"
   echo "  -u    List repositories linked to GitHub, and GitHub repositories not cloned"
   echo "        here (with -i: offer to clone them)"
-  echo "  -c    Check for uncommitted changes and unpushed commits"
-  echo "  -f    Fetch and compare commits"
+  echo "  -c    Check for uncommitted changes, unpulled commits (flagging potential"
+  echo "        conflicts) and unpushed commits"
+  echo "  -f    Fetch first, then compare the current branch with its upstream"
   echo "  -b    List all branches"
   echo "  -l    Check for large files (>1MB)"
   echo "  -s    Display repository summary"
-  echo "  -i    Interactive, with -c: add/ignore untracked files, commit, push;"
+  echo "  -i    Interactive, with -c: add/ignore untracked files, commit, pull, push;"
   echo "        with -u: clone; either way: make non-repository directories new"
   echo "        repos (git init, commit, create on GitHub) or stop flagging them"
   echo "  -V    Show the version"
@@ -101,6 +102,141 @@ handle_commit() {
     return
   fi
   git -C "$dir" commit -q -m "$msg" && echo "  │    Committed: $(git -C "$dir" log -1 --format='%h %s')"
+}
+
+# Highlight for warnings (potential conflicts), only on a terminal
+if [ -t 1 ]; then
+  WARN=$'\e[1;31m⚠ ' NORM=$'\e[0m'
+else
+  WARN='⚠ ' NORM=''
+fi
+
+# Print up to 5 of the newline-separated names in $1, comma-separated
+list_names() {
+  local n
+  n=$(grep -c . <<< "$1")
+  printf '%s' "$(head -n 5 <<< "$1" | paste -sd, - | sed 's/,/, /g')"
+  [ "$n" -gt 5 ] && printf ' and %d more' $((n - 5))
+}
+
+# List "branch<TAB>upstream-ref" for each local branch in repo $1 whose
+# upstream still exists
+branches_with_upstream() {
+  local b up
+  while IFS=$'\t' read -r b up; do
+    [ -n "$up" ] && git -C "$1" rev-parse -q --verify "$up" > /dev/null &&
+      printf '%s\t%s\n' "$b" "$up"
+  done < <(git -C "$1" for-each-ref --format='%(refname:short)%09%(upstream)' refs/heads)
+}
+
+# Work out how local branch $2 in repo $1 stands against its upstream $3 (as
+# of the last fetch).  Sets: behind, ahead (commit counts); merge_rc (0 merges
+# cleanly, 1 would conflict, other: unknown; only if both are nonzero) and
+# conflicts (the files); clash (uncommitted or untracked files that the
+# upstream also changed; current branch only)
+pull_state() {
+  local dir=$1 b=$2 up=$3 theirs ours
+  behind=$(git -C "$dir" rev-list --count "refs/heads/$b..$up")
+  ahead=$(git -C "$dir" rev-list --count "$up..refs/heads/$b")
+  merge_rc=0 conflicts="" clash=""
+  if [ "$behind" -gt 0 ] && [ "$ahead" -gt 0 ]; then
+    conflicts=$(git -C "$dir" merge-tree --write-tree --name-only --no-messages \
+                  "refs/heads/$b" "$up" 2>/dev/null)
+    merge_rc=$?
+    conflicts=$(tail -n +2 <<< "$conflicts")
+  fi
+  if [ "$behind" -gt 0 ] && [ "$b" = "$(git -C "$dir" symbolic-ref --short -q HEAD)" ]; then
+    theirs=$(git -C "$dir" diff --name-only "HEAD...$up")
+    ours=$( { git -C "$dir" diff --name-only HEAD
+              git -C "$dir" ls-files --others --exclude-standard; } | LC_ALL=C sort -u)
+    [ -n "$theirs" ] && [ -n "$ours" ] &&
+      clash=$(grep -Fx -f <(printf '%s\n' "$theirs") <<< "$ours")
+  fi
+  return 0
+}
+
+# Report, for each local branch in repo $1 with an upstream, commits on the
+# upstream that are not in the branch (as of the last fetch), and flag
+# potential conflicts: a merge of diverged branches that would conflict,
+# and, on the current branch, uncommitted changes to files that the
+# upstream also changed
+report_unpulled() {
+  local dir=$1 b up out=""
+  while IFS=$'\t' read -r b up; do
+    pull_state "$dir" "$b" "$up"
+    [ "$behind" -gt 0 ] || continue
+    out+="  │  └─ $b: $behind (from ${up#refs/remotes/})"$'\n'
+    if [ "$ahead" -gt 0 ]; then
+      if [ $merge_rc -eq 1 ]; then
+        out+="  │     ${WARN}Diverged ($ahead local); merging would conflict in: $(list_names "$conflicts")${NORM}"$'\n'
+      elif [ $merge_rc -eq 0 ]; then
+        out+="  │     Diverged ($ahead local); merges cleanly"$'\n'
+      else
+        out+="  │     ${WARN}Diverged ($ahead local)${NORM}"$'\n'
+      fi
+    fi
+    if [ -n "$clash" ]; then
+      out+="  │     ${WARN}Uncommitted changes to files changed upstream: $(list_names "$clash")${NORM}"$'\n'
+    fi
+  done < <(branches_with_upstream "$dir")
+  if [ -n "$out" ]; then
+    echo "  ├─ Unpulled commits: Yes"
+    printf '%s' "$out"
+    return 0
+  else
+    echo "  ├─ Unpulled commits: No"
+    return 1
+  fi
+}
+
+# Offer to pull each branch in repo $1 that is behind its upstream, where it
+# can be done safely: a fast-forward, or (current branch only) a merge or
+# rebase that merge-tree says will not conflict.  Never when uncommitted
+# changes touch files the upstream changed.
+handle_pull() {
+  local dir=$1 b up target cur pair
+  local -a pairs
+  mapfile -t pairs < <(branches_with_upstream "$dir")
+  for pair in "${pairs[@]}"; do
+    b=${pair%%$'\t'*} up=${pair#*$'\t'} target=${up#refs/remotes/}
+    pull_state "$dir" "$b" "$up"
+    [ "$behind" -gt 0 ] || continue
+    cur=$(git -C "$dir" symbolic-ref --short -q HEAD)
+    if [ -n "$clash" ]; then
+      echo "  │    Not pulling '$b': commit or stash the changes to $(list_names "$clash") first"
+      continue
+    fi
+    if [ "$ahead" -eq 0 ]; then
+      ask "Pull $behind commit(s) from $target into '$b' (fast-forward)? [y]es, [n]o, [q]uit" "ynq"
+      case $reply in
+        y ) if [ "$b" = "$cur" ]; then
+              git -C "$dir" merge -q --ff-only "$up"
+            else
+              git -C "$dir" fetch -q . "$up:refs/heads/$b"
+            fi && echo "  │    '$b' is now at $(git -C "$dir" log -1 --format='%h %s' "refs/heads/$b")" ;;
+        q ) exit 0 ;;
+      esac
+    elif [ "$b" != "$cur" ]; then
+      echo "  │    Not pulling '$b': it has diverged and is not checked out"
+    elif [ $merge_rc -ne 0 ]; then
+      echo "  │    Not pulling '$b': it has diverged and would not merge cleanly; resolve by hand"
+    else
+      ask "'$b' has diverged from $target ($ahead local, $behind remote). [m]erge, [r]ebase, [n]o, [q]uit?" "mrnq"
+      case $reply in
+        m ) if git -C "$dir" merge -q --no-edit "$up"; then
+              echo "  │    Merged $target into '$b'"
+            else
+              git -C "$dir" merge --abort 2>/dev/null; echo "  │    Merge failed; aborted"
+            fi ;;
+        r ) if git -C "$dir" rebase -q --autostash "$up"; then
+              echo "  │    Rebased '$b' onto $target"
+            else
+              git -C "$dir" rebase --abort 2>/dev/null; echo "  │    Rebase failed; aborted"
+            fi ;;
+        q ) exit 0 ;;
+      esac
+    fi
+  done
 }
 
 # Per-branch git config key recording "never set an upstream for this branch"
@@ -308,6 +444,12 @@ for dir in */; do
   if [ -e "$dir/.git" ]; then
     echo "Processing $dir..."
 
+    # -f: fetch first, so the -c and -f checks see the remotes as they are now
+    if [ "$fetch_compare" = true ] && git -C "$dir" remote | grep -q .; then
+      git -C "$dir" fetch --all -q &>/dev/null ||
+        echo "  ├─ ${WARN}Fetch failed${NORM}"
+    fi
+
     # Check GitHub connection
     if git -C "$dir" remote -v | grep -q 'github.com'; then
       echo -n "  ├─ Linked to GitHub: "
@@ -341,6 +483,10 @@ for dir in */; do
         echo "  ├─ Uncommitted changes: No"
       fi
 
+      if report_unpulled "$dir" && [ "$interactive" = true ]; then
+        handle_pull "$dir"
+      fi
+
       # Commits on local branches that are on no remote-tracking branch
       unpushed=""
       while IFS= read -r b; do
@@ -366,7 +512,6 @@ for dir in */; do
       if ! git -C "$dir" remote | grep -q .; then
         echo "No remotes configured"
       else
-        git -C "$dir" fetch &>/dev/null
         if ! git -C "$dir" rev-parse @{u} &>/dev/null; then
           echo "No upstream branch set"
         else

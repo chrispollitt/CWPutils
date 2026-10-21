@@ -256,12 +256,17 @@ Processing CWPutils...
   ├─ Uncommitted changes: Yes (branch: main)
   │  ├─ Tracked files changed: 3
   │  └─ Untracked files: 1
+  ├─ Unpulled commits: Yes
+  │  └─ main: 2 (from origin/main)
+  │     ⚠ Diverged (1 local); merging would conflict in: README.md
+  │     ⚠ Uncommitted changes to files changed upstream: Makefile
   ├─ Unpushed commits: Yes
+  │  └─ main: 1
   │  └─ media: 1 (local only)
 ```
 
-- `-c` splits changes into tracked files and untracked ones, and counts commits on each local branch that are on no remote-tracking branch (no fetch). `-f` fetches and compares the current branch with its upstream; `-b` lists branches, `-l` files over 1 MB, `-s` a summary.
-- `-c -i` asks, per untracked item, to add, `.gitignore` or skip it; then whether to commit all tracked changes or only what is staged; then, for each branch with unpushed commits, whether to set an upstream (if it has none) and whether to push. `q` quits.
+- `-c` splits changes into tracked files and untracked ones; lists branches whose upstream has commits they don't (unpulled), flagging potential conflicts with ⚠ (a diverged branch whose merge, tried in memory with `git merge-tree`, would conflict; uncommitted changes to files the upstream also changed); and counts commits on each local branch that are on no remote-tracking branch (unpushed). It compares with the remotes as of the last fetch. `-f` fetches first and compares the current branch with its upstream; `-b` lists branches, `-l` files over 1 MB, `-s` a summary.
+- `-c -i` asks, per untracked item, to add, `.gitignore` or skip it; then whether to commit all tracked changes or only what is staged; then, for each branch that is behind its upstream, whether to pull, but only when it is safe (a fast-forward, or a merge or rebase of the checked-out branch that `git merge-tree` says won't conflict, and never over uncommitted changes to the same files); then, for each branch with unpushed commits, whether to set an upstream (if it has none) and whether to push. `q` quits.
 - `-u` lists your GitHub repositories that have no directory of the same name here (needs `gh`); with `-i` it offers to clone each one.
 - Subdirectories that are not repositories are flagged, except names like `tmp`, `BAK`, `old` or `*.bak` (any case) and anything listed in `~/.config/gitcheck/ignore` (name patterns, or full paths starting with `/`). With `-i`, answering `g` to a flagged directory makes it a new repo (`git init`, add or ignore its files, an initial commit, then optionally `gh repo create` as private or public and push); answering `i` adds it to the ignore file.
 - Answering `n` to setting an upstream marks the branch local-only (`branch.NAME.gitcheckNoUpstream` in the repo's config), and `n` to cloning adds the repo to `~/.config/gitcheck/noclone`, so neither is asked about again.

@@ -66,7 +66,7 @@ With
 offers to clone them.
 .TP
 .B \-c
-Uncommitted changes and unpushed commits.
+Uncommitted changes, unpulled commits and unpushed commits.
 .RS
 .PP
 If the working tree has changes, prints the branch they are on (or "detached at
@@ -78,19 +78,41 @@ and two counts:
 (new files that are not ignored). A new directory counts as one untracked entry, as in
 .BR "git status" .
 .PP
-Then lists each local branch that has commits found on no remote-tracking branch, with the number
+Then
+.B unpulled commits:
+each local branch whose upstream has commits the branch does not, with their number and the upstream
+they are on. Potential conflicts are flagged with
+.B \[u26A0]
+(in bold red on a terminal):
+.IP \(bu 2
+the branch has also diverged (it has commits of its own): the merge is tried in memory with
+.B git merge-tree
+(nothing is changed), and the files that would conflict are listed, or it says the branches merge
+cleanly;
+.IP \(bu 2
+on the current branch, uncommitted changes (or untracked files) touch files the upstream also
+changed, so a pull would stop or conflict; those files are listed.
+.PP
+Then
+.B unpushed commits:
+each local branch that has commits found on no remote-tracking branch, with the number
 of such commits. This covers branches ahead of their upstream and branches that were never pushed.
-No fetch is done, so the comparison is with the remotes as of the last fetch (see
-.BR \-f ).
 Branches marked "don't ask again" by
 .B \-i
 are shown with
 .BR "(local only)" .
+.PP
+Without
+.BR \-f ,
+no fetch is done, so unpulled and unpushed commits are counted against the remotes as of the last
+fetch.
 .RE
 .TP
 .B \-f
-Fetch from the remotes, then say whether the current branch is up to date with, behind, ahead of, or
-diverged from its upstream.
+Fetch from all remotes first (before the
+.B \-c
+checks), then say whether the current branch is up to date with, behind, ahead of, or diverged from
+its upstream.
 .TP
 .B \-b
 List all local and remote-tracking branches.
@@ -111,8 +133,8 @@ and/or
 .BR \-u .
 With
 .BR \-c ,
-after each part of that report, asks what to do about it: add or ignore untracked files, commit, set
-upstreams and push. With
+after each part of that report, asks what to do about it: add or ignore untracked files, commit,
+pull, set upstreams and push. With
 .BR \-u ,
 offers to clone the repositories that are not cloned here. Either way, offers to make each flagged
 subdirectory that is not a repository a new one, or to stop flagging it. See
@@ -134,7 +156,7 @@ at any prompt exits
 .B gitcheck
 at once, leaving everything done so far in place. The "Not a repository" prompt comes with any
 .BR \-i ,
-the next four with
+the next five with
 .BR \-c ,
 and the last with
 .BR \-u .
@@ -194,6 +216,36 @@ only what is already staged (offered only when something is), or
 .B n
 nothing. It then asks for a one-line commit message; an empty message cancels the commit and leaves
 the changes staged. Commit hooks run as usual.
+.TP
+.B Pull
+For each branch with unpulled commits, only where it is safe:
+.RS
+.IP \(bu 2
+If the branch has no commits of its own, offers a fast-forward
+.RB ( y / n ):
+.B git merge \-\-ff\-only
+on the current branch, or an update of the branch ref for one that is not checked out.
+.IP \(bu 2
+If it has diverged, is the current branch and
+.B git merge-tree
+says the merge is clean, offers
+.B m
+to merge
+.RB ( "git merge \-\-no\-edit" ),
+.B r
+to rebase onto the upstream
+.RB ( "git rebase \-\-autostash" )
+or
+.B n
+neither. If either fails anyway it is aborted, leaving the branch as it was.
+.IP \(bu 2
+Otherwise it says why it is not pulling and moves on: uncommitted changes touch files the upstream
+changed (commit or stash them first), the merge would conflict (resolve it by hand), or the diverged
+branch is not checked out.
+.RE
+.IP
+Pulls are offered before pushes, so a branch that is both behind and ahead can be merged and then
+pushed in the same run.
 .TP
 .B Set upstream
 For each branch with unpushed commits and no upstream:

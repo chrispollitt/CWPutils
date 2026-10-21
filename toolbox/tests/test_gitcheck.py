@@ -190,6 +190,121 @@ class GitcheckTest(unittest.TestCase):
         self.assertIn("tester/newproj already exists on GitHub", r.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.base, "gh-create.log")))
 
+    # --- unpulled commits and potential conflicts -----------------------------
+
+    def push_from_other(self, files, fetch=True):
+        """Commit `files` ({name: text}) in a second clone and push them, then fetch in the first."""
+        other = os.path.join(self.base, "other")
+        if not os.path.exists(other):
+            self.git("clone", "-q", "-b", "main", self.remote, other, cwd=self.base)
+        for name, text in files.items():
+            with open(os.path.join(other, name), "w") as f:
+                f.write(text)
+            self.git("add", name, cwd=other)
+        self.git("commit", "-q", "-m", "upstream " + " ".join(files), cwd=other)
+        self.git("push", "-q", cwd=other)
+        if fetch:
+            self.git("fetch", "-q")
+
+    def commit_local(self, name, text):
+        self.write(name, text)
+        self.git("add", name)
+        self.git("commit", "-q", "-m", "local " + name)
+
+    def test_unpulled(self):
+        self.push_from_other({"a.txt": "1\n"})
+        self.push_from_other({"b.txt": "2\n"})
+        r = self.run_gitcheck("-c")
+        self.assertIn("Unpulled commits: Yes", r.stdout)
+        self.assertIn("└─ main: 2 (from origin/main)", r.stdout)
+        self.assertNotIn("⚠", r.stdout)
+        self.assertIn("Unpushed commits: No", r.stdout)
+
+    def test_diverged_with_conflict(self):
+        self.push_from_other({"README": "theirs\n"})
+        self.commit_local("README", "ours\n")
+        r = self.run_gitcheck("-c")
+        self.assertIn("└─ main: 1 (from origin/main)", r.stdout)
+        self.assertIn("⚠ Diverged (1 local); merging would conflict in: README", r.stdout)
+
+    def test_diverged_merges_cleanly(self):
+        self.push_from_other({"theirs.txt": "x\n"})
+        self.commit_local("ours.txt", "y\n")
+        r = self.run_gitcheck("-c")
+        self.assertIn("Diverged (1 local); merges cleanly", r.stdout)
+        self.assertNotIn("⚠", r.stdout)
+
+    def test_uncommitted_changes_clash_with_upstream(self):
+        self.push_from_other({"README": "theirs\n", "new.txt": "theirs\n"})
+        self.write("README", "ours\n")      # modified, not committed
+        self.write("new.txt", "ours\n")     # untracked, would be overwritten
+        self.write("unrelated.txt", "x\n")
+        r = self.run_gitcheck("-c")
+        self.assertIn("⚠ Uncommitted changes to files changed upstream: README, new.txt", r.stdout)
+
+    def test_fetch_first_with_f(self):
+        self.push_from_other({"a.txt": "1\n"}, fetch=False)
+        r = self.run_gitcheck("-c")
+        self.assertIn("Unpulled commits: No", r.stdout)
+        r = self.run_gitcheck("-c", "-f")
+        self.assertIn("└─ main: 1 (from origin/main)", r.stdout)
+        self.assertIn("Remote status: Behind remote", r.stdout)
+
+    # --- interactive pull ------------------------------------------------------
+
+    def head(self, ref="HEAD"):
+        return self.git("rev-parse", ref).strip()
+
+    def test_pull_fast_forward_current(self):
+        self.push_from_other({"a.txt": "1\n"})
+        r = self.run_gitcheck("-c", "-i", answers=["y"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.head(), self.head("origin/main"))
+        self.assertTrue(os.path.exists(os.path.join(self.repo, "a.txt")))
+
+    def test_pull_fast_forward_other_branch(self):
+        self.git("branch", "-q", "--track", "stale", "origin/main")
+        self.push_from_other({"a.txt": "1\n"})
+        before = self.head()
+        r = self.run_gitcheck("-c", "-i", answers=["n", "y"])   # main: no; stale: yes
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.head(), before)
+        self.assertEqual(self.head("stale"), self.head("origin/main"))
+
+    def test_pull_merge_diverged(self):
+        self.push_from_other({"theirs.txt": "x\n"})
+        self.commit_local("ours.txt", "y\n")
+        r = self.run_gitcheck("-c", "-i", answers=["m", "n"])   # merge; then don't push
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.git("rev-list", "--parents", "-n1", "HEAD").count(" "), 2)  # a merge
+        self.assertIn("Merged origin/main into 'main'", r.stdout)
+        self.assertIn("main: 2", r.stdout)                       # now 2 unpushed
+
+    def test_pull_rebase_diverged(self):
+        self.push_from_other({"theirs.txt": "x\n"})
+        self.commit_local("ours.txt", "y\n")
+        r = self.run_gitcheck("-c", "-i", answers=["r", "n"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.head("HEAD^"), self.head("origin/main"))
+
+    def test_no_pull_offered_when_merge_would_conflict(self):
+        self.push_from_other({"README": "theirs\n"})
+        self.commit_local("README", "ours\n")
+        before = self.head()
+        r = self.run_gitcheck("-c", "-i", answers=["n"])         # only the push prompt
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("would not merge cleanly", r.stdout)
+        self.assertEqual(self.head(), before)
+
+    def test_no_pull_over_clashing_changes(self):
+        self.push_from_other({"README": "theirs\n"})
+        self.write("README", "ours\n")
+        before = self.head()
+        r = self.run_gitcheck("-c", "-i", answers=["n"])         # only the commit prompt
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Not pulling 'main': commit or stash the changes to README first", r.stdout)
+        self.assertEqual(self.head(), before)
+
     def test_tracked_vs_untracked_and_branch(self):
         self.write("README", "changed\n")
         self.write("new1.txt", "x\n")
