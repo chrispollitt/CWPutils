@@ -23,10 +23,15 @@ from PIL import Image, ImageChops, ImageFilter
 
 SLICE_DENSITY = 2.0        # slices per output pixel of extrusion; higher = smoother near edge-on
 MAX_SLICES = 320
-SIDE_LEVELS = 48           # distinct extrusion shades (cached per level)
+SIDE_LEVELS = 48           # distinct extrusion shades
 BEVEL_LEVELS = 10          # distinct bevel strengths of the face (cached per level)
 SHADOW_SLICES = 14         # the shadow is soft, so it needs fewer
 MAX_PIXELS = 60000000
+MARCH_TILE = 65536         # pixels the march walks at a time
+PAD = 3                    # the march's sources are padded by this
+REACH_EXACT = 24           # the march's leaps over empty picture: distances to ink known to the pixel up to this,
+REACH_MAX = 96             # then in powers of two up to this (px)
+T_DONE = 1.0 / 1024        # a pixel of the march is covered when less than this shows through it
 LIGHT = np.array([-0.45, -0.55, 0.70], np.float32)
 LIGHT /= np.linalg.norm(LIGHT)
 SHADOW_DIR = (0.30, 0.40)                             # the shadow of a point h above the screen lands this far over, per h (a high lamp)
@@ -146,6 +151,7 @@ class Solid(object):
         shade = 0.55 + 0.75 * np.clip(facing * 0.5 + 0.5, 0, 1)
         self.side_shade = np.where(mag > 1e-4, shade, 0.8).astype(np.float32)[..., None]
         self.sil = u8
+        self._edge_ink = bool(u8[0].any() or u8[-1].any() or u8[:, 0].any() or u8[:, -1].any())
         self._sil_img = Image.fromarray(u8)
         self._faces, self._sides = {}, {}
 
@@ -316,20 +322,234 @@ def render(solid, st, persp, bounds):
         sh = sh.filter(ImageFilter.GaussianBlur(sig)).point(lambda v: int(v * op))
         canvas.paste(Image.merge("RGBA", (Image.new("L", sh.size, 0),) * 3 + (sh,)), (0, 0))
 
-    # the solid, farthest slice first
-    depthz = [(R.dot(np.array([0.0, 0.0, z])))[2] for z in zs]
-    order = sorted(range(n), key=lambda k: -depthz[k])
-    for k in order:
-        if k == 0 and R[2, 2] > 0:
-            img = solid.face(st.bevel, st.paint)               # the front cap, facing us
-        else:
-            img = solid.side(k / float(max(1, n - 1)))
-        q = cam.project(cam.world(st, zs[k]))
-        w = warp(img, q)
-        if w:
-            part, x0, y0 = w
-            canvas.alpha_composite(part, (x0, y0))
+    # the solid
+    march(solid, st, n, [cam.project(cam.world(st, z)) - lo for z in (zs[0], zs[-1])], R[2, 2] > 0, canvas)
     return canvas
+
+
+def _dilate(b, r):
+    """b (bool) grown by shifts of +-r along each axis: a box of radius r grown to 2r, or any shape by 1 when r == 1."""
+    o = b.copy()
+    for ax in (1, 0):
+        src = o.copy()
+        if ax:
+            o[:, r:] |= src[:, :-r]
+            o[:, :-r] |= src[:, r:]
+        else:
+            o[r:] |= src[:-r]
+            o[:-r] |= src[r:]
+    return o
+
+
+def _pad(a):
+    """a (H, W) padded by PAD on every side with copies of its edge (as Pillow's bilinear sampling clamps there), raveled."""
+    return np.pad(a, PAD, mode="edge").ravel()
+
+
+def _reach(solid):
+    """Per (padded) source pixel: r such that the box of radius r about it has no ink (0: ink within 1 px, so a
+    bilinear sample there may see it): exact up to REACH_EXACT, then powers of two up to REACH_MAX.  It lets the march
+    leap over empty picture."""
+    lv = getattr(solid, "_reach", None)
+    if lv is None:
+        d = np.pad(solid.sil > 0, PAD, mode="edge")
+        lv = np.zeros(d.shape, np.uint8)
+        for r in range(1, REACH_EXACT + 1):                  # grown by 1 each time: d is the ink grown by a box of radius r
+            d = _dilate(d, 1)
+            lv[~d] = r
+        while r < REACH_MAX:
+            d, r = _dilate(d, r), r * 2
+            lv[~d] = r
+        solid._reach = lv = lv.ravel()
+    return lv
+
+
+def _sources(solid, bevel, paint, face):
+    """What the march samples, premultiplied and padded (_pad): the sides (alpha, alpha * shade), or the face
+    (alpha, alpha * r, alpha * g, alpha * b)."""
+    if not face:
+        a = getattr(solid, "_side_src", None)
+        if a is None:
+            al = solid.sil.astype(np.float32) / 255.0
+            a = solid._side_src = (_pad(al), _pad(al * solid.side_shade[..., 0]))
+        return a
+    img = np.asarray(solid.face(bevel, paint), np.float32)
+    al = img[..., 3] / 255.0
+    return (_pad(al),) + tuple(_pad(img[..., c] * al) for c in range(3))
+
+
+def _at(W, H, u, v):
+    """Where a bilinear sample at picture points (u, v) looks, in the padded picture: the index of the top left of
+    its 2x2 pixels, and the fractions across them.  Points are held within a pixel of the picture."""
+    x = np.minimum(np.maximum(u, -1.0), W + 1.0) + (PAD - 0.5)
+    y = np.minimum(np.maximum(v, -1.0), H + 1.0) + (PAD - 0.5)
+    x0, y0 = x.astype(np.intp), y.astype(np.intp)             # (positive: truncation is floor)
+    return y0 * (W + 2 * PAD) + x0, x - x0, y - y0
+
+
+def _sample(srcs, Wp, i, fx, fy, inside=None):
+    """Bilinear samples of the padded sources at _at's (i, fx, fy), one array per source, as Pillow's transform takes
+    them: clamped at the picture's edges, and zero outside it (inside: the points that are in it; None when the
+    picture has no ink on its edge, so that the padding is already zero there)."""
+    out = []
+    i1, i2 = i + 1, i + Wp
+    i3 = i2 + 1
+    for src in srcs:
+        g0, g1 = src[i], src[i1]
+        top = g0 + (g1 - g0) * fx
+        g2 = src[i2]
+        bot = g2 + (src[i3] - g2) * fx
+        s = top + (bot - top) * fy
+        if inside is not None:
+            s *= inside
+        out.append(s)
+    return out
+
+
+def _inside(solid, W, H, u, v):
+    if not solid._edge_ink:
+        return None
+    return (u >= 0) & (u < W) & (v >= 0) & (v < H)
+
+
+def _walk(solid, reach, side, lvl, W, H, idx, lines, A, P, Q):
+    """The march of the pixels idx (lines: their uF vF du dv j jhi T inv, packed): adds what they see to A, P, Q.
+    A pixel is done when its line leaves the picture or nothing more shows through; the arrays are packed again only
+    when a quarter are done (until then a done pixel's T is 0: it adds nothing)."""
+    uF, vF, du, dv, j, jhi, T, inv = lines
+    a, p, q = (np.zeros(len(idx), np.float32) for _ in range(3))
+    Wp = W + 2 * PAD
+    c0, c1 = lvl                                               # the side's shade level at step j: rint(c0 + c1 * j)
+    scale = np.float32(1.0 / SIDE_LEVELS)
+    while True:
+        live = (j <= jhi) & (T > T_DONE)
+        nl = int(np.count_nonzero(live))
+        if nl < 0.75 * len(idx):
+            gone = np.nonzero(~live)[0]
+            A[idx[gone]] += a[gone]
+            P[idx[gone]] += p[gone]
+            Q[idx[gone]] += q[gone]
+            if not nl:
+                return
+            ok = np.nonzero(live)[0]
+            idx, uF, vF, du, dv, j, jhi, T, inv, a, p, q = (x[ok] for x in (idx, uF, vF, du, dv, j, jhi, T, inv, a, p, q))
+        elif nl < len(idx):
+            T[~live] = 0
+        u, v = uF + du * j, vF + dv * j
+        i, fx, fy = _at(W, H, u, v)
+        r = reach[i].astype(np.float32)
+        near = r == 0
+        nn = int(np.count_nonzero(near))
+        if nn > len(idx) // 3:                                 # many: sample them all (the rest see nothing)
+            sa, ss = _sample(side, Wp, i, fx, fy, _inside(solid, W, H, u, v))
+            t = T * near
+            ta, ts = t * sa, t * ss
+            a += ta
+            p += ts
+            q += ts * (np.rint(c0 + c1 * j) * scale)
+            T -= ta
+        elif nn:
+            near = np.nonzero(near)[0]
+            un, vn = u[near], v[near]
+            sa, ss = _sample(side, Wp, i[near], fx[near], fy[near], _inside(solid, W, H, un, vn))
+            t = T[near]
+            ta, ts = t * sa, t * ss
+            a[near] += ta
+            p[near] += ts
+            q[near] += ts * (np.rint(c0 + c1 * j[near]) * scale)
+            T[near] = t - ta
+        # leap: the box of radius r about the sample's top left pixel has no ink, so the sample sees none until the
+        # line has moved r - 1 px
+        j += 1 + np.maximum(np.floor((r - 1.0) * inv - 1e-3), 0)
+        np.minimum(j, jhi + 1, out=j)                          # (a pixel past its end stays just past it)
+
+
+def march(solid, st, n, quads, facing, canvas):
+    """Draws the n slices of the solid onto canvas (which holds the shadow) as if each were warped onto it and laid over
+    it, farthest first, the face (slice 0) on top when `facing` (quads: the corners of the first and the last slice on
+    the canvas).  It used to be done that way, one Pillow transform and alpha_composite a slice (about 0.1 s each for a
+    big picture, and a few hundred slices a frame).  Now every pixel walks from the nearest slice to the farthest,
+    adding what each shows through what is in front of it (premultiplied, "under"), until it is covered: the slices are
+    parallel planes, so a pixel's point on slice k is a + k * b, a straight line through the picture, and its walk
+    leaps where there is no ink near that line (_reach).  The pixels go in tiles of MARCH_TILE (numpy on small arrays
+    stays in the cache).  Same picture to rounding, as tests/test_3d.py checks against the old way."""
+    W, H = solid.W, solid.H
+    cw, chh = canvas.size
+    src = [(0, 0), (W, 0), (W, H), (0, H)]
+    try:
+        cos = [persp_coeffs(q, src) for q in quads]
+    except np.linalg.LinAlgError:
+        return                                                 # edge-on: the slices have no area
+    q = np.concatenate(quads)
+    x0, y0 = max(0, int(math.floor(q[:, 0].min())) - 1), max(0, int(math.floor(q[:, 1].min())) - 1)
+    x1, y1 = min(cw, int(math.ceil(q[:, 0].max())) + 1), min(chh, int(math.ceil(q[:, 1].max())) + 1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    px = np.arange(x0, x1, dtype=np.float32)[None, :] + 0.5
+    py = np.arange(y0, y1, dtype=np.float32)[:, None] + 0.5
+    ends = []
+    for a in cos:                                              # each end slice's homography, canvas -> picture
+        a = a.astype(np.float32)
+        w = 1.0 / (a[6] * px + (a[7] * py + 1.0))
+        ends.append(((a[0] * px + (a[1] * py + a[2])) * w, (a[3] * px + (a[4] * py + a[5])) * w))
+    # front to back: j = 0 is the nearest slice (k = j when the face looks at us, else k = n - 1 - j)
+    (uF, vF), (uB, vB) = ends if facing else ends[::-1]
+    m = float(max(1, n - 1))
+    # the part of each pixel's line inside the picture (with a pixel to spare: Liang-Barsky), as steps j
+    tlo, thi = np.zeros(uF.shape, np.float32), np.ones(uF.shape, np.float32)
+    for s, e, size in ((uF, uB, W), (vF, vB, H)):
+        d = e - s
+        flat = np.abs(d) < 1e-6
+        d = np.where(flat, 1.0, d)
+        ta, tb = (-1.0 - s) / d, (size + 1.0 - s) / d
+        tlo = np.maximum(tlo, np.where(flat, np.where((s < -1.0) | (s > size + 1.0), 2.0, 0.0), np.minimum(ta, tb)))
+        thi = np.minimum(thi, np.where(flat, 1.0, np.maximum(ta, tb)))
+    jlo, jhi = np.ceil(tlo * m - 1e-4), np.minimum(np.floor(thi * m + 1e-4), n - 1)
+    keep = np.nonzero((jlo <= jhi).ravel())[0]
+    if not len(keep):
+        return
+    wy, wx = np.divmod(keep, x1 - x0)
+    where = (wy + y0) * cw + wx + x0                           # canvas pixel of each pixel that may show something
+    uF, vF, uB, vB = (a.ravel()[keep] for a in (uF, vF, uB, vB))
+    du, dv = (uB - uF) / np.float32(m), (vB - vF) / np.float32(m)
+    j, jhi = jlo.ravel()[keep].astype(np.float32), jhi.ravel()[keep].astype(np.float32)
+    inv = 1.0 / np.maximum(np.maximum(np.abs(du), np.abs(dv)), 1e-6)
+    N = len(j)
+    T = np.ones(N, np.float32)                                 # how much still shows through
+    A, P, Q = (np.zeros(N, np.float32) for _ in range(3))      # coverage, shade, shade * how far back (premultiplied)
+    rgb, A0 = None, 0.0
+    reach = _reach(solid)
+    Wp = W + 2 * PAD
+    if facing:                                                 # the face (slice 0), where the line starts on it
+        f0 = np.nonzero(j == 0)[0]
+        i, fx, fy = _at(W, H, uF[f0], vF[f0])
+        f0 = f0[reach[i] == 0]
+        i, fx, fy = _at(W, H, uF[f0], vF[f0])
+        fa, fr, fg, fb = _sample(_sources(solid, st.bevel, st.paint, True), Wp, i, fx, fy, _inside(solid, W, H, uF[f0], vF[f0]))
+        rgb = np.zeros((N, 3), np.float32)
+        rgb[f0, 0], rgb[f0, 1], rgb[f0, 2] = fr, fg, fb
+        A[f0] = fa
+        A0 = A.copy()
+        T[f0] = 1 - fa
+        j[j == 0] = 1
+    side = _sources(solid, None, None, False)
+    k0, k1 = (0.0, 1.0) if facing else (n - 1.0, -1.0)         # slice k = k0 + k1 * j
+    lvl = (np.float32(SIDE_LEVELS * k0 / m), np.float32(SIDE_LEVELS * k1 / m))
+    lines = (uF, vF, du, dv, j, jhi, T, inv)
+    for sel in np.array_split(np.arange(N), max(1, int(round(N / float(MARCH_TILE))))):
+        _walk(solid, reach, side, lvl, W, H, sel, [a[sel] for a in lines], A, P, Q)
+    col = P[:, None] * solid.front.astype(np.float32) + Q[:, None] * (solid.back - solid.front).astype(np.float32)
+    col -= 0.5 * (A - A0)[:, None]                             # the slices' colours were whole numbers, rounded down
+    if rgb is not None:
+        col += rgb
+    shows = np.nonzero(A > 0)[0]
+    where, A, col = where[shows], A[shows], col[shows]
+    # the solid over the shadow already on the canvas (black, so it only adds coverage)
+    out = np.array(canvas).reshape(-1, 4)
+    al = A + out[where, 3].astype(np.float32) / 255.0 * (1 - A)
+    out[where, :3] = np.clip(col / np.maximum(al, 1e-6)[:, None] + 0.5, 0, 255).astype(np.uint8)
+    out[where, 3] = np.clip(al * 255 + 0.5, 0, 255).astype(np.uint8)
+    canvas.paste(Image.fromarray(out.reshape(chh, cw, 4), "RGBA"))
 
 
 def render_frames(solid, states, persp=2.5, workers=1, progress=None):

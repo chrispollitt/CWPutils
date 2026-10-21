@@ -134,6 +134,45 @@ class Engine(unittest.TestCase):
         self.assertAlmostEqual(float(mid[30, 45, 0]), 100.0, delta=2)                  # halfway from (200,40,40) to (0,0,255)
         self.assertAlmostEqual(float(mid[30, 45, 2]), 147.0, delta=3)
 
+    def test_the_march_draws_what_the_slice_stack_drew(self):
+        # the old way, kept here as the reference: every slice warped by Pillow and laid over the canvas, farthest first
+        def slices(solid, st, persp, bounds):
+            cam = bif3d.Camera(solid, persp)
+            lo, hi = bounds
+            canvas = Image.new("RGBA", (int(hi[0] - lo[0]), int(hi[1] - lo[1])), (0, 0, 0, 0))
+            R = bif3d.rot_matrix(*st.view())
+            n = 1
+            if st.depth > 0.5:
+                q0, q1 = (cam.project(cam.world(st, z)) for z in (-st.depth / 2.0, st.depth / 2.0))
+                n = int(min(max(np.ceil(np.abs(q1 - q0).max() * bif3d.SLICE_DENSITY) + 1, 2), bif3d.MAX_SLICES))
+            zs = [-st.depth / 2.0 + st.depth * k / float(max(1, n - 1)) for k in range(n)]
+            src = [(0, 0), (solid.W, 0), (solid.W, solid.H), (0, solid.H)]
+            for k in sorted(range(n), key=lambda k: -R[2, 2] * zs[k]):
+                img = solid.face(st.bevel, st.paint) if k == 0 and R[2, 2] > 0 else solid.side(k / float(max(1, n - 1)))
+                q = cam.project(cam.world(st, zs[k])) - lo
+                co = bif3d.persp_coeffs(q, src)
+                canvas.alpha_composite(img.transform(canvas.size, Image.PERSPECTIVE, tuple(co), Image.BILINEAR))
+            return np.asarray(canvas, np.float64)
+
+        def premultiplied(a):
+            return np.dstack([a[..., :3] * a[..., 3:] / 255.0, a[..., 3]])
+
+        solid, a = disc_solid()
+        yy, xx = np.mgrid[0:60, 0:90]
+        soft = np.clip(1.2 - np.hypot(xx - 45, yy - 30) / 25.0, 0, 1) * (0.3 + 0.7 * (xx % 7 < 4))
+        rgb = np.dstack([xx * 2.5, yy * 4.0, 255 - xx * 2.0]).astype(np.uint8)
+        cases = [(solid, bif3d.State(depth=0, bevel=0, paint=0, shadow=0)),
+                 (solid, bif3d.State(depth=20, yaw=-35, pitch=10, shadow=0)),
+                 (solid, bif3d.State(depth=20, yaw=150, pitch=-8, roll=5, shadow=0)),       # from behind
+                 (bif3d.Solid(rgb, soft, material="gold"), bif3d.State(depth=15, hover=10, yaw=25, pitch=8, shadow=0)),
+                 (bif3d.Solid(rgb, np.pad(np.ones((50, 85)), ((5, 5), (0, 5))) * 0.9), bif3d.State(depth=12, yaw=-30, shadow=0))]  # ink on the edge
+        for solid, st in cases:                                                        # (no shadow: it is drawn as it was)
+            bounds = bif3d.bounds_of(solid, [st], 2.5)
+            d = np.abs(premultiplied(np.asarray(bif3d.render(solid, st, 2.5, bounds), np.float64))
+                       - premultiplied(slices(solid, st, 2.5, bounds)))
+            self.assertLess(d.max(), 24, st)                                           # rounding: the old way was 8-bit per slice
+            self.assertLess(d.mean(), 1.5, st)
+
     def test_frames_share_one_canvas(self):
         solid, _ = disc_solid()
         states = bif3d.pop_path(5, 15.0, 20.0, (-20.0, 8.0, 0.0)) + bif3d.spin_path(4, 15.0, 20.0, (-20.0, 8.0, 0.0))
