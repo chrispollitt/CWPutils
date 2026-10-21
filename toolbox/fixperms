@@ -12,6 +12,13 @@
 #      up as a trailing '+' in ls -l;
 #   3. falls back to "icacls /reset" + chmod for anything setfacl cannot set.
 #
+# On Cygwin a real run fixes whole subtrees that need nothing special in one
+# go, by inheritance: chown -R, an inheritable ACL on the subtree's top
+# directory (files rw-r--r--, directories rwxr-xr-x), "icacls DIR\* /reset
+# /T", then x for the executables.  icacls follows junctions and directory
+# symlinks, so a subtree with any of those (or a rule, an unreadable
+# directory or a mount point in it) is walked entry by entry instead.
+#
 # Places that need other modes or owners (~/.ssh, ~/.gnupg, credential files,
 # /var/mail, /tmp, sshd's host keys, other users' homes) are handled by a rule
 # table: see BUILTIN_RULES below, --list-rules, and the user rules file.
@@ -26,7 +33,7 @@ set -u
 export LC_ALL=C
 shopt -s nullglob dotglob extglob
 
-VERSION=1.2
+VERSION=1.3
 PROG=${0##*/}
 ORIG_ARGS=("$@")
 
@@ -53,6 +60,8 @@ owns them and a non-elevated Cygwin shell can use them.
   -l, --list-rules       print the rules in force, first match first, and exit
   -P, --no-progress      no spinner and running count on stderr (shown only
                          when stderr is a terminal)
+  -I, --no-inherit       fix every entry one by one; don't reset whole
+                         subtrees by inheritance (icacls /reset)
   -h, --help             show this help and exit
   -V, --version          show the version and exit
 
@@ -69,7 +78,7 @@ die_usage() {
 # ---------------------------------------------------------------- options
 
 dry_run=0 verbose=0 recurse=1 force=0 group_write=0 exec_by_content=0
-use_rules=1 list_rules=0 progress=1
+use_rules=1 list_rules=0 progress=1 inherit=1
 opt_user='' opt_group=''
 paths=() rule_files=()
 
@@ -87,6 +96,7 @@ while (($#)); do
     -R|--no-rules) use_rules=0 ;;
     -l|--list-rules) list_rules=1 ;;
     -P|--no-progress) progress=0 ;;
+    -I|--no-inherit) inherit=0 ;;
     -h|--help) usage; exit 0 ;;
     -V|--version) echo "$PROG $VERSION"; exit 0 ;;
     -u|--user|-g|--group|-r|--rules)
@@ -100,7 +110,7 @@ while (($#)); do
     --user=*) opt_user=${arg#*=} ;;
     --group=*) opt_group=${arg#*=} ;;
     --rules=*) rule_files+=("${arg#*=}") ;;
-    -[nvdwxfhVRlP][nvdwxfhVRlP]*)
+    -[nvdwxfhVRlPI][nvdwxfhVRlPI]*)
         # Bundled flags such as -nv: split into single flags.
         flags=()
         for ((j = 1; j < ${#arg}; j++)); do flags+=("-${arg:j:1}"); done
@@ -351,7 +361,7 @@ resolve_owner() {
 declare -A FAIL_MSG=()  # path -> why it could not be fixed
 FAIL_ORDER=()
 n_checked=0 n_ok=0 n_fixed=0 n_owner=0 n_acl=0 n_links=0 n_skipped=0
-n_unscanned=0 n_icacls=0 n_elev=0
+n_unscanned=0 n_icacls=0 n_elev=0 n_inherit=0 n_inherit_x=0
 
 # Progress: a spinner, the running counts and the path being looked at, on
 # one self-overwriting line of stderr.  The total is not known in advance
@@ -825,6 +835,195 @@ process_batch() {
     done
 }
 
+# ---------------------------------------------------------------- inheritance
+#
+# A subtree that needs only the defaults is fixed in one go: chown -R, an
+# inheritable ACL on its top directory with separate entries for files (OI)
+# and directories (CI), so files inherit rw-r--r-- and directories
+# rwxr-xr-x, then "icacls DIR\* /reset /T" to make everything below inherit
+# it, then x for the executables.  Measured on 376 entries: about 1 s, where
+# one entry at a time takes about 10 s.  Everything below ends up with only
+# inherited ACEs, which Cygwin shows as a plain mode and Windows programs
+# keep when they create files there.
+#
+# icacls /T follows junctions and directory symlinks out of the tree, and
+# sees the Windows directory under a Cygwin mount point rather than what is
+# mounted there, so a directory with any of those below it, or with an
+# unreadable directory (contents unknown), another file system or a rule
+# below it, is "tainted": it is walked entry by entry, and its untainted
+# subdirectories get the fast path in turn.
+
+declare -A SCANNED=() TAINT=() XMODE=()
+R_PRE=() MOUNTS=() mounts_loaded=0
+
+# Could a rule match DIR (absolute) or anything under it?
+rules_touch() {
+    local d=$1 j pre
+    if ((${#R_PRE[@]} != ${#R_PAT[@]})); then
+        R_PRE=()
+        for ((j = 0; j < ${#R_PAT[@]}; j++)); do
+            pre=${R_PAT[j]%%[*?[]*}
+            pre=${pre%%"+("*}
+            pre=${pre%%"@("*}
+            pre=${pre%%"!("*}
+            # A literal path as is; otherwise the directory part, ending in /.
+            [[ $pre == "${R_PAT[j]}" ]] || pre=${pre%/*}/
+            R_PRE[j]=$pre
+        done
+    fi
+    ((CYGWIN)) && d=${d,,}
+    for pre in "${R_PRE[@]}"; do
+        ((CYGWIN)) && pre=${pre,,}
+        if [[ $pre == */ ]]; then
+            [[ $d/ == "$pre"* || $pre == "$d"/* ]] && return 0
+        else
+            [[ $pre == "$d" || $pre == "$d"/* ]] && return 0
+        fi
+    done
+    return 1
+}
+
+taint_up() {  # taint_up PATH TOP: mark PATH's parents up to TOP as tainted
+    local x=$1
+    while [[ $x == "$2"/* ]]; do
+        x=${x%/*}
+        TAINT[$x]=1
+    done
+}
+
+# One find over DIR: note the directories it could see into, taint those that
+# have a link, an unreadable or foreign directory or a Cygwin mount point
+# below them, and remember the modes of executables and setuid/setgid/sticky
+# entries (an inherited ACL loses them).
+scan_subtree() {
+    local d=$1 rec typ dev mode p m absd
+    SCANNED[$d]=1
+    while IFS= read -r -d '' rec; do
+        typ=${rec%%$'\t'*} rec=${rec#*$'\t'}
+        dev=${rec%%$'\t'*} rec=${rec#*$'\t'}
+        mode=${rec%%$'\t'*} p=${rec#*$'\t'}
+        case $typ in
+        D)
+            if [[ $dev != "$ROOT_DEV" ]]; then
+                taint_up "$p" "$d"
+            else
+                SCANNED[$p]=1
+            fi
+            ((8#$mode & 07000)) && XMODE[$p]=$mode ;;
+        U|L) taint_up "$p" "$d" ;;
+        X) XMODE[$p]=$mode ;;
+        esac
+    done < <(find "$d" -mindepth 1 -xdev \
+        \( -type d \( ! -readable -o ! -executable \) -printf 'U\t%D\t%m\t%p\0' -prune \) -o \
+        \( -type l ! -xtype f -printf 'L\t%D\t%m\t%p\0' \) -o \
+        \( -type d -printf 'D\t%D\t%m\t%p\0' \) -o \
+        \( -type f -perm /7111 -printf 'X\t%D\t%m\t%p\0' \) 2>/dev/null)
+    # Cygwin mount points inside the subtree.
+    if ((!mounts_loaded)); then
+        mounts_loaded=1
+        while IFS= read -r m; do
+            m=${m#* on }
+            m=${m% type *}
+            [[ $m == /* && $m != / ]] && MOUNTS+=("$m")
+        done < <(mount 2>/dev/null)
+    fi
+    absd=$ABS_ROOT${d:${#OPERAND}}
+    for m in "${MOUNTS[@]}"; do
+        [[ $m == "$absd"/* ]] && taint_up "$d${m:${#absd}}" "$d"
+    done
+    return 0
+}
+
+# Win32 rights for one class (u, g or o) of MODE digit DIGIT on KIND.
+win_rights() {  # win_rights dir|file u|g|o DIGIT
+    case $1$2$3 in
+    diru7) REPLY=F ;;
+    fileu6) REPLY=R,W,D,WDAC,WO ;;
+    dir?5) REPLY=RX ;;
+    dir?7) REPLY=RX,W,DC ;;
+    file?4) REPLY=R ;;
+    file?6) REPLY=R,W ;;
+    *) return 1 ;;
+    esac
+}
+
+# Fix the whole subtree under DIR by inheritance.  Returns 1, having changed
+# nothing below DIR, if DIR's own ACL could not be set up.
+inherit_subtree() {
+    local d=$1 w dm fm out line p rec n_all=0 nx=0 had sp
+    local -a grants=() exe=() kids=("$d"/*)
+    dm=755 fm=644
+    ((group_write)) && dm=775 fm=664
+    # icacls puts each new ACE first, so grant them in reverse order: owner,
+    # group, Everyone for directories, then the same for files.
+    win_rights file o "${fm:2:1}" && grants+=("*S-1-1-0:(OI)(IO)($REPLY)")
+    win_rights file g "${fm:1:1}" && grants+=("*S-1-3-1:(OI)(IO)($REPLY)")
+    win_rights file u "${fm:0:1}" && grants+=("*S-1-3-0:(OI)(IO)($REPLY)")
+    win_rights dir o "${dm:2:1}" && grants+=("*S-1-1-0:(CI)(IO)($REPLY)")
+    win_rights dir g "${dm:1:1}" && grants+=("*S-1-3-1:(CI)(IO)($REPLY)")
+    win_rights dir u "${dm:0:1}" && grants+=("*S-1-3-0:(CI)(IO)($REPLY)")
+    w=$(cygpath -w -- "$d")
+    show_progress "$d"
+    # Owner and group first: an inherited CREATOR OWNER entry becomes
+    # whoever owns the file when it is reset, and Cygwin's chown rewrites
+    # ACLs in its own form, which would merge the file and directory entries
+    # set up next.
+    out=$(chown -R -h "$T_UID:$T_GID" -- "$d" 2>&1 >/dev/null)
+    while IFS= read -r line; do
+        [[ $line == *"changing ownership of '"*"': "* ]] || continue
+        p=${line#*"changing ownership of '"}
+        p=${p%"': "*}
+        if ((!ELEVATED)); then
+            fail "$p" "chown: ${line##*: } - needs an elevated shell" elev
+        else
+            fail "$p" "chown: ${line##*: }"
+        fi
+    done <<<"$out"
+    [[ -n ${FAIL_MSG[$d]+x} ]] && return 1
+    setfacl_spec file "$dm"   # the base entries only, no default ones
+    setfacl -s "$REPLY" -- "$d" 2>/dev/null || return 1
+    icacls "$w" /grant "${grants[@]}" /Q >/dev/null 2>&1 || return 1
+    [[ -n ${XMODE[$d]:-} ]] && chmod "${XMODE[$d]: -4:1}$dm" -- "$d" 2>/dev/null
+    ((${#kids[@]})) || return 0
+
+    out=$(icacls "$w\\*" /reset /T /C /Q 2>&1)
+    while IFS= read -r line; do
+        line=${line%$'\r'}
+        [[ -z $line || $line == "Successfully processed "* ]] && continue
+        p=${line%%: *}
+        p=$(cygpath -u -- "$p" 2>/dev/null) || p=${line%%: *}
+        fail "$p" "icacls /reset: ${line#*: }"
+    done <<<"$out"
+
+    # Executables get x (an explicit ACL); setuid/setgid/sticky bits back.
+    while IFS= read -r -d '' rec; do
+        ((n_all++))
+        [[ $rec == f* ]] || { p=${rec:2}; had=${XMODE[$p]:-}
+            [[ -n $had ]] && chmod "${had: -4:1}$dm" -- "$p" 2>/dev/null; continue; }
+        p=${rec:2}
+        had=${XMODE[$p]:-}
+        if ((!exec_by_content)) && [[ -n $had && ${had: -3} == *[1357]* ]] || has_exec_magic "$p"; then
+            exe+=("$p")
+        fi
+        sp=${had:+${had: -4:1}}
+        if [[ -n $sp && $sp != 0 && ${#had} == 4 ]]; then
+            chmod "$sp$fm" -- "$p" 2>/dev/null
+        fi
+    done < <(find "$d" -mindepth 1 \( -type f -printf 'f %p\0' \) -o \( -type d -printf 'd %p\0' \) -o -printf 'o %p\0' 2>/dev/null)
+    BATCH=("${exe[@]}")
+    apply chmod "$dm"
+    for p in "${BAD[@]}"; do fail "$p" "chmod $dm: ${BAD_ERR[$p]}"; done
+    nx=$((${#exe[@]} - ${#BAD[@]}))
+    # Executables that were also setuid/setgid keep those bits.
+    for p in "${exe[@]}"; do
+        had=${XMODE[$p]:-}
+        [[ ${#had} == 4 && ${had:0:1} != 0 ]] && chmod "${had:0:1}$dm" -- "$p" 2>/dev/null
+    done
+    ((n_checked += n_all, n_inherit += n_all, n_inherit_x += nx))
+    vsay 1 "reset by inheritance: $d ($n_all entries below it, $nx made executable)"
+    return 0
+}
+
 # Walk DIR top-down: the directory itself was fixed by its parent's batch (or
 # as an operand), so by the time we list it we can read it.
 walk() {
@@ -837,6 +1036,13 @@ walk() {
             fail "$d" "cannot read the directory to fix its contents"
         fi
         return
+    fi
+    if ((INHERIT)) && [[ -z ${FAIL_MSG[$d]+x} ]] &&
+        ! rules_touch "$ABS_ROOT${d:${#OPERAND}}"; then
+        [[ -n ${SCANNED[$d]+x} ]] || scan_subtree "$d"
+        if [[ -z ${TAINT[$d]+x} ]]; then
+            inherit_subtree "$d" && return
+        fi
     fi
     local -a kids=("$d"/*)
     local -a subs=()
@@ -851,6 +1057,13 @@ walk() {
 DRY=
 ((dry_run)) && DRY=1
 status=0
+# Inheritance is for real runs on Cygwin; a dry run reports entry by entry.
+INHERIT=0
+((inherit && CYGWIN && !dry_run && recurse)) && command -v icacls >/dev/null && INHERIT=1
+# When the group is the user's own SID (Cygwin gives them the same number),
+# an inherited group entry merges into the owner's, so group write cannot
+# be inherited; Cygwin's own chmod has its way of storing it.
+((group_write && T_UID == T_GID)) && INHERIT=0
 
 if ((dry_run)); then
     say "$PROG: dry run - nothing will be changed"
@@ -898,6 +1111,7 @@ summary+=")"
 ((n_links)) && summary+=", $n_links symlinks not followed"
 ((n_skipped)) && summary+=", $n_skipped special files"
 ((n_unscanned)) && summary+=", $n_unscanned directories not looked into"
+((n_inherit)) && summary+=", $n_inherit reset by inheritance ($n_inherit_x made executable)"
 ((${#FAIL_ORDER[@]})) && summary+=", ${#FAIL_ORDER[@]} ${DRY:+would }fail"
 say "$PROG: $summary"
 

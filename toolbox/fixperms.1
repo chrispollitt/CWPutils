@@ -1,10 +1,10 @@
-.TH FIXPERMS 1 "October 2026" "fixperms 1.2" "User Commands"
+.TH FIXPERMS 1 "October 2026" "fixperms 1.3" "User Commands"
 .SH NAME
 fixperms \- repair owner, mode and ACL of files created from an elevated Cygwin shell
 
 .SH SYNOPSIS
 .B fixperms
-[\-n] [\-v] [\-d] [\-u USER] [\-g GROUP] [\-w] [\-x] [\-f] [\-r FILE]... [\-R] [\-P]
+[\-n] [\-v] [\-d] [\-u USER] [\-g GROUP] [\-w] [\-x] [\-f] [\-r FILE]... [\-R] [\-P] [\-I]
 .I path
 \&...
 .br
@@ -79,6 +79,62 @@ below.
 Entries whose owner, group and ACL are already right are left alone, so a second run changes nothing.
 Directories are fixed before they are listed, so a directory the user cannot even open is fixed first and
 then descended into.
+
+.SS Inheritance
+On Cygwin, a real run (not
+.BR \-n )
+fixes each subtree that needs nothing but the defaults in one go, by Windows inheritance, which is about
+ten times faster than one entry at a time and leaves a cleaner result:
+.IP 1. 4
+.B "chown \-R \-h"
+sets the owner and group of the whole subtree;
+.IP 2. 4
+the subtree's top directory gets its owner, group and Everyone entries plus inheritable ones, with
+separate entries for files and for directories, so that files inherit
+.B rw\-r\-\-r\-\-
+and directories
+.BR rwxr\-xr\-x ;
+.IP 3. 4
+.B "icacls DIR\e* /reset /T"
+replaces every ACL below it with the inherited one;
+.IP 4. 4
+executables (see below) get
+.BR "chmod 755" ,
+and setuid, setgid and sticky bits are put back.
+.PP
+Everything else below the directory then carries only inherited entries: Cygwin shows them as a plain mode,
+with no
+.BR + ,
+and what anyone creates there later, from Cygwin or from Windows programs, inherits the same. A file that
+Cygwin creates there comes out 644, a directory 755.
+.PP
+.B icacls /T
+follows junctions and directory symbolic links out of the tree, and under a Cygwin mount point it sees the
+Windows directory rather than what is mounted there. So before using inheritance on a directory,
+.B fixperms
+looks through it with one
+.BR find ,
+and a directory with a link to a directory, a junction, an unreadable directory, another file system or a
+Cygwin mount point anywhere below it is done entry by entry instead, as is any directory that a rule could
+match or have below it (home directories,
+.IR /var/mail ,
+.IR /tmp ).
+Its subdirectories are looked at in turn, so only the directories on the way to the trouble go slowly.
+.PP
+With
+.BR \-v ,
+a subtree done this way is one line,
+.RB \(dq "reset by inheritance: DIR (N entries below it, M made executable)" \(dq,
+rather than a line per entry; use
+.B \-n
+or
+.B \-I
+to see each entry.
+.B \-I
+turns inheritance off. It is also off with
+.B \-w
+when the group is the user's own (as Cygwin sets up a Microsoft account's group), since an inherited group
+entry would then merge into the owner's.
 
 .SS Executable files
 A file is made executable for everyone if any of its execute bits was set, or if it starts with
@@ -295,6 +351,10 @@ Print the rules in force, first match first, and exit.
 .B \-P, \-\-no\-progress
 Don't show the progress line (see
 .BR OUTPUT ).
+.TP
+.B \-I, \-\-no\-inherit
+Fix every entry one at a time; don't reset whole subtrees by inheritance (see
+.BR Inheritance ).
 .TP
 .B \-h, \-\-help
 Show a usage summary and exit.

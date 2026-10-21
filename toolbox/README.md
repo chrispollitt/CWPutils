@@ -213,7 +213,7 @@ fixperms -w ~/github/myproject                        # group-writable (775/664)
 ```
 
 ```
-fixperms [-n] [-v] [-d] [-u USER] [-g GROUP] [-w] [-x] [-f] [-r FILE]... [-R] [-P] PATH...
+fixperms [-n] [-v] [-d] [-u USER] [-g GROUP] [-w] [-x] [-f] [-r FILE]... [-R] [-P] [-I] PATH...
 fixperms --list-rules
 ```
 
@@ -221,6 +221,7 @@ fixperms --list-rules
 - `-d` / `--no-recurse` fixes only the named paths; `-n` / `--dry-run` changes nothing; `-v` lists changes (`-vv` also unchanged entries). On a terminal, a spinner line shows the running count and the current path (`-P` / `--no-progress` turns it off).
 - Taking ownership of Administrators-owned files usually needs an elevated shell: `fixperms` reports those, fixes everything else, and prints the command to rerun elevated.
 - Refuses `/`, the Cygwin root, drive roots and top-level directories such as `/usr` without `-f`. Exit status 0 all fixed, 1 something not fixed, 2 usage error.
+- On Cygwin, a real run fixes each subtree that needs only the defaults in one go, by inheritance, which is about 10x faster: `chown -R`, an inheritable ACL on the subtree's top directory (files inherit `rw-r--r--` and directories `rwxr-xr-x`, set separately), `icacls DIR\* /reset /T`, then `chmod 755` on the executables. Everything below carries only inherited entries, so it shows no `+`, and new files from Cygwin or Windows programs inherit the same. `icacls /T` follows junctions and directory links, so any directory with one of those below it (or an unreadable directory, a mount point or a rule) is done entry by entry. `-I` / `--no-inherit` turns this off, and a dry run always goes entry by entry.
 
 Places that need other modes or owners are handled by a rule table. The first
 match wins, `--list-rules` prints the table, and `-v` says which rule each

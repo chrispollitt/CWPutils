@@ -336,5 +336,81 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(mode(loose), "644")
 
 
+def winpath(p):
+    return subprocess.run(["cygpath", "-w", p], capture_output=True, text=True).stdout.strip()
+
+
+def icacls(p):
+    return subprocess.run(["icacls", winpath(p)], capture_output=True, text=True).stdout
+
+
+@unittest.skipUnless(sys.platform == "cygwin" and shutil.which("icacls"), "inheritance is Cygwin-only")
+class InheritTest(unittest.TestCase):
+    """The fast path: whole subtrees reset by inheritance with icacls."""
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp(prefix="fixperms-inherit-")
+        self.t = os.path.join(self.base, "tree")
+        for d in ["a/sub", "b/deep"]:
+            os.makedirs(os.path.join(self.t, d))
+        self.plain = os.path.join(self.t, "a", "sub", "plain.txt")
+        self.script = os.path.join(self.t, "a", "sub", "run.sh")
+        for p, data in [(self.plain, "x\n"), (self.script, "#!/bin/sh\n")]:
+            with open(p, "w") as f:
+                f.write(data)
+            subprocess.run(["setfacl", "-s", FILE_MESS, p], check=True)
+        self.outside = os.path.join(self.base, "outside")
+        os.makedirs(os.path.join(self.outside, "inner"))
+        subprocess.run(["setfacl", "-s", "u::rwx,g::---,o::---", self.outside], check=True)
+
+    def tearDown(self):
+        subprocess.run(["icacls", winpath(self.base), "/grant", "*S-1-3-4:(OI)(CI)(F)", "/T", "/C", "/Q"],
+                       capture_output=True)
+        subprocess.run(["chmod", "-R", "u+rwx", self.base], capture_output=True)
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def test_subtree_inherits(self):
+        r = run(["-v", self.t])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("reset by inheritance: ", r.stdout)
+        self.assertEqual(mode(self.plain), "644")
+        self.assertEqual(mode(self.script), "755")
+        self.assertIn("(I)", icacls(self.plain))  # inherited, not an explicit ACL
+        self.assertEqual(getfacl(self.plain), ["user::rw-", "group::r--", "other::r--"])
+        # An entry-by-entry check afterwards finds nothing to do.
+        r = run(["-I", self.t])
+        self.assertIn(" 0 fixed", r.stdout)
+
+    def test_no_inherit_option(self):
+        r = run(["-I", "-v", self.t])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("reset by inheritance", r.stdout)
+        self.assertNotIn("(I)", icacls(self.plain))
+        self.assertEqual(mode(self.plain), "644")
+
+    def test_dry_run_does_not_inherit(self):
+        r = run(["-n", self.t])
+        self.assertNotIn("reset by inheritance", r.stdout)
+        self.assertIn("mask::", "".join(getfacl(self.plain)))
+
+    def test_junction_is_not_followed(self):
+        junction = os.path.join(self.t, "a", "sub", "junction")
+        mk = subprocess.run(["cmd", "/c", "mklink", "/J", winpath(junction), winpath(self.outside)],
+                            capture_output=True, text=True)
+        if mk.returncode != 0:
+            self.skipTest("cannot create a junction: " + mk.stdout + mk.stderr)
+        before = (mode(self.outside), icacls(self.outside), icacls(os.path.join(self.outside, "inner")))
+        r = run(["-v", self.t])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        after = (mode(self.outside), icacls(self.outside), icacls(os.path.join(self.outside, "inner")))
+        self.assertEqual(after, before)
+        # The directories holding the junction were done entry by entry; b was inherited.
+        sub = os.path.join(self.t, "a", "sub")
+        self.assertNotIn(f"reset by inheritance: {sub} ", r.stdout)
+        self.assertIn("reset by inheritance: " + os.path.join(self.t, "b") + " ", r.stdout)
+        self.assertEqual(mode(self.plain), "644")
+        self.assertEqual(mode(self.script), "755")
+
+
 if __name__ == "__main__":
     unittest.main()
