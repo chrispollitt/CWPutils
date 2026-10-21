@@ -1,0 +1,376 @@
+#!/usr/bin/env bash
+# gitcheck - report on every git repository directly under a directory:
+# whether it is linked to (and exists on) GitHub, uncommitted changes (tracked
+# vs untracked), unpushed commits per branch, remote status, branches, large
+# files and a summary, plus the user's GitHub repositories that are not cloned
+# there.  With -i it also offers to act on them: with -c, to add or ignore
+# untracked files, commit, set upstreams and push; with -u, to clone.
+#
+# "Don't ask again" answers to setting an upstream are kept in the repo's own
+# config as branch.<name>.gitcheckNoUpstream; to cloning, in
+# ~/.config/gitcheck/noclone.
+#
+# See gitcheck.1 for the full description.  Exit status: 0 done, 2 usage error.
+
+VERSION=1.0
+PROG=${0##*/}
+TTY=${GITCHECK_TTY:-/dev/tty}
+
+usage() {
+  echo "Usage: $PROG [options] [DIR]"
+  echo "Check each git repository directly under DIR (default: the current directory)."
+  echo "Options:"
+  echo "  -u    List repositories linked to GitHub, and GitHub repositories not cloned"
+  echo "        here (with -i: offer to clone them)"
+  echo "  -c    Check for uncommitted changes and unpushed commits"
+  echo "  -f    Fetch and compare commits"
+  echo "  -b    List all branches"
+  echo "  -l    Check for large files (>1MB)"
+  echo "  -s    Display repository summary"
+  echo "  -i    Interactive, with -c: add/ignore untracked files, commit, push;"
+  echo "        with -u: clone"
+  echo "  -V    Show the version"
+  echo "  -h    Show this help message"
+  exit "${1:-2}"
+}
+
+# Prompt on the terminal (stdin may be redirected inside loops).
+# Usage: ask "question" "choices"  -> sets $reply to the lowercased answer
+ask() {
+  local prompt=$1 choices=$2
+  while true; do
+    read -r -u 9 -p "  │  ? $prompt " reply || exit 1
+    reply=${reply,,}
+    [[ ${#reply} -eq 1 && "$choices" == *"$reply"* ]] && return
+    echo "  │    Please answer one of: $choices"
+  done
+}
+
+# Offer to add or ignore each untracked file/folder in repo $1
+handle_untracked() {
+  local dir=$1 f entry
+  local -a files
+  mapfile -d '' files < <(git -C "$dir" ls-files --others --exclude-standard \
+                            --directory --no-empty-directory -z)
+  for f in "${files[@]}"; do
+    ask "Untracked '$f': [a]dd, [i]gnore, [s]kip, [q]uit?" "aisq"
+    case $reply in
+      a ) git -C "$dir" add -- "$f" && echo "  │    Added $f" ;;
+      i ) # Anchor to repo root and escape glob characters
+          entry="/$(sed 's/[][*?\\]/\\&/g' <<< "$f")"
+          if [ -s "$dir/.gitignore" ] && [ -n "$(tail -c1 "$dir/.gitignore")" ]; then
+            echo >> "$dir/.gitignore"
+          fi
+          echo "$entry" >> "$dir/.gitignore"
+          git -C "$dir" add -- .gitignore
+          echo "  │    Added $entry to .gitignore" ;;
+      q ) exit 0 ;;
+    esac
+  done
+}
+
+# Offer to commit tracked changes in repo $1
+handle_commit() {
+  local dir=$1 changes staged msg
+  changes=$(git -C "$dir" status --short --untracked-files=no)
+  [ -z "$changes" ] && return
+  echo "  │  Changes to commit:"
+  head -n 20 <<< "$changes" | sed 's/^/  │    /'
+  local total=$(wc -l <<< "$changes")
+  [ "$total" -gt 20 ] && echo "  │    ... and $((total - 20)) more"
+
+  if git -C "$dir" diff --cached --quiet; then
+    ask "Commit: [a]ll tracked changes, [n]o, [q]uit?" "anq"
+  else
+    ask "Commit: [a]ll tracked changes, [s]taged only, [n]o, [q]uit?" "asnq"
+  fi
+  case $reply in
+    n ) return ;;
+    q ) exit 0 ;;
+    a ) git -C "$dir" add -u ;;
+  esac
+  read -r -u 9 -p "  │  ? Commit message (empty to cancel): " msg
+  if [ -z "$msg" ]; then
+    echo "  │    Commit cancelled (changes left staged)"
+    return
+  fi
+  git -C "$dir" commit -q -m "$msg" && echo "  │    Committed: $(git -C "$dir" log -1 --format='%h %s')"
+}
+
+# Per-branch git config key recording "never set an upstream for this branch"
+NO_UPSTREAM_KEY=gitcheckNoUpstream
+
+# True if branch $2 in repo $1 was marked as never needing an upstream
+is_local_only() {
+  [ "$(git -C "$1" config --bool "branch.$2.$NO_UPSTREAM_KEY")" = true ]
+}
+
+# Offer to set upstreams, then to push, for each local branch in repo $1
+# that has unpushed commits
+handle_push() {
+  local dir=$1 b n remote merge
+  local -a branches
+  mapfile -t branches < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
+  for b in "${branches[@]}"; do
+    n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
+    [ -n "$n" ] && [ "$n" -gt 0 ] || continue
+    is_local_only "$dir" "$b" && continue
+    remote=$(git -C "$dir" config "branch.$b.remote")
+    merge=$(git -C "$dir" config "branch.$b.merge")
+
+    # No upstream: ask whether to set one (no push yet)
+    if [ -z "$remote" ] || [ -z "$merge" ]; then
+      remote=$(git -C "$dir" remote | grep -qx origin && echo origin || git -C "$dir" remote | head -n 1)
+      if [ -z "$remote" ]; then
+        echo "  │    '$b' has $n unpushed commit(s) but no remote is configured"
+        continue
+      fi
+      ask "'$b' has no upstream. Set it to $remote/$b? [y]es, [n]o (don't ask again), [s]kip, [q]uit" "ynsq"
+      case $reply in
+        y ) merge="refs/heads/$b"
+            git -C "$dir" config "branch.$b.remote" "$remote"
+            git -C "$dir" config "branch.$b.merge" "$merge"
+            echo "  │    Upstream of '$b' set to $remote/$b" ;;
+        n ) git -C "$dir" config --bool "branch.$b.$NO_UPSTREAM_KEY" true
+            echo "  │    '$b' marked local-only (undo: git config --unset branch.$b.$NO_UPSTREAM_KEY)"
+            continue ;;
+        s ) continue ;;
+        q ) exit 0 ;;
+      esac
+    fi
+
+    ask "Push $n commit(s) on '$b' to $remote/${merge#refs/heads/}? [y]es, [n]o, [q]uit" "ynq"
+    case $reply in
+      y ) git -C "$dir" push "$remote" "refs/heads/$b:$merge" ;;
+      q ) exit 0 ;;
+    esac
+  done
+}
+
+# GitHub repositories (owner/name, one per line) never to offer to clone
+NOCLONE_FILE=${XDG_CONFIG_HOME:-$HOME/.config}/gitcheck/noclone
+
+is_noclone() {
+  [ -f "$NOCLONE_FILE" ] && grep -qxF -- "$1" "$NOCLONE_FILE"
+}
+
+# Offer to clone each GitHub repository in the array named $1 into the
+# current directory
+handle_clone() {
+  local -n names=$1
+  local name
+  for name in "${names[@]}"; do
+    is_noclone "$owner/$name" && continue
+    ask "Clone $owner/$name? [y]es, [n]o (don't ask again), [s]kip, [q]uit" "ynsq"
+    case $reply in
+      y ) gh repo clone "$owner/$name" "$name" ;;
+      n ) mkdir -p "$(dirname "$NOCLONE_FILE")" &&
+          echo "$owner/$name" >> "$NOCLONE_FILE" &&
+          echo "  │    Won't ask again (undo: remove it from $NOCLONE_FILE)" ;;
+      q ) exit 0 ;;
+    esac
+  done
+}
+
+# Flags
+list_repos=false
+check_changes=false
+fetch_compare=false
+list_branches=false
+check_large_files=false
+display_summary=false
+interactive=false
+
+# Parse options
+while getopts "ucfblsiVh" opt; do
+  case ${opt} in
+    u ) list_repos=true ;;
+    c ) check_changes=true ;;
+    f ) fetch_compare=true ;;
+    b ) list_branches=true ;;
+    l ) check_large_files=true ;;
+    s ) display_summary=true ;;
+    i ) interactive=true ;;
+    V ) echo "$PROG $VERSION"; exit 0 ;;
+    h ) usage 0 ;;
+    * ) usage ;;
+  esac
+done
+
+# If no options provided, show usage
+if [ $OPTIND -eq 1 ]; then
+    usage
+fi
+if [ "$interactive" = true ] && [ "$check_changes" != true ] && [ "$list_repos" != true ]; then
+  echo "$PROG: -i needs -c and/or -u" >&2
+  usage
+fi
+shift $((OPTIND - 1))
+[ $# -gt 1 ] && usage
+# Answers are read on fd 9, opened once (stdin may be redirected inside loops)
+if [ "$interactive" = true ]; then
+  exec 9< "$TTY" || exit 1
+fi
+if [ $# -eq 1 ]; then
+  cd -- "$1" || exit 2
+fi
+
+# List the signed-in user's GitHub repositories (skipped without gh)
+have_gh=false
+if command -v gh &> /dev/null &&
+   owner=$(gh api user --jq .login 2>/dev/null) && [ -n "$owner" ]; then
+  have_gh=true
+  repos=$(gh repo list "$owner" --limit 1000 --json name --jq '.[].name')
+fi
+
+# Process each directory
+for dir in */; do
+  # Remove trailing slash
+  dir=${dir%/}
+  
+  # Skip if not a directory
+  [ ! -d "$dir" ] && continue
+  
+  if [ -e "$dir/.git" ]; then
+    echo "Processing $dir..."
+
+    # Check GitHub connection
+    if git -C "$dir" remote -v | grep -q 'github.com'; then
+      echo -n "  ├─ Linked to GitHub: "
+      if [ "$have_gh" != true ]; then
+        echo "Yes"
+      elif grep -qxF -- "$dir" <<< "$repos"; then
+        echo "Yes (exists on GitHub)"
+      else
+        echo "Yes (but NOT on GitHub)"
+      fi
+    else
+      echo "  ├─ Linked to GitHub: No"
+    fi
+    
+    # Check for uncommitted changes
+    if [ "$check_changes" = true ]; then
+      status=$(git -C "$dir" status --porcelain)
+      if [ -n "$status" ]; then
+        branch=$(git -C "$dir" symbolic-ref --short -q HEAD ||
+                 echo "detached at $(git -C "$dir" rev-parse --short HEAD 2>/dev/null)")
+        tracked=$(grep -vc '^??' <<< "$status")
+        untracked=$(grep -c '^??' <<< "$status")
+        echo "  ├─ Uncommitted changes: Yes (branch: $branch)"
+        echo "  │  ├─ Tracked files changed: $tracked"
+        echo "  │  └─ Untracked files: $untracked"
+        if [ "$interactive" = true ]; then
+          handle_untracked "$dir"
+          handle_commit "$dir"
+        fi
+      else
+        echo "  ├─ Uncommitted changes: No"
+      fi
+
+      # Commits on local branches that are on no remote-tracking branch
+      unpushed=""
+      while IFS= read -r b; do
+        n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
+        if [ -n "$n" ] && [ "$n" -gt 0 ]; then
+          unpushed+="  │  └─ $b: $n"
+          is_local_only "$dir" "$b" && unpushed+=" (local only)"
+          unpushed+=$'\n'
+        fi
+      done < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
+      if [ -n "$unpushed" ]; then
+        echo "  ├─ Unpushed commits: Yes"
+        printf '%s' "$unpushed"
+        [ "$interactive" = true ] && handle_push "$dir"
+      else
+        echo "  ├─ Unpushed commits: No"
+      fi
+    fi
+    
+    # Fetch and compare commits
+    if [ "$fetch_compare" = true ]; then
+      echo -n "  ├─ Remote status: "
+      if ! git -C "$dir" remote | grep -q .; then
+        echo "No remotes configured"
+      else
+        git -C "$dir" fetch &>/dev/null
+        if ! git -C "$dir" rev-parse @{u} &>/dev/null; then
+          echo "No upstream branch set"
+        else
+          local_branch=$(git -C "$dir" rev-parse @)
+          remote_branch=$(git -C "$dir" rev-parse @{u})
+          base_branch=$(git -C "$dir" merge-base @ @{u})
+          
+          if [ "$local_branch" = "$remote_branch" ]; then
+            echo "Up to date"
+          elif [ "$local_branch" = "$base_branch" ]; then
+            echo "Behind remote"
+          elif [ "$remote_branch" = "$base_branch" ]; then
+            echo "Ahead of remote"
+          else
+            echo "Diverged from remote"
+          fi
+        fi
+      fi
+    fi
+    
+    # List branches
+    if [ "$list_branches" = true ]; then
+      echo "  ├─ Branches:"
+      git -C "$dir" branch -a | sed 's/^/  │  /'
+    fi
+    
+    # Check for large files
+    if [ "$check_large_files" = true ]; then
+      echo "  ├─ Checking for large files (>1MB)..."
+      # ls-tree -l: "<mode> <type> <object> <size>\t<path>"
+      git -C "$dir" ls-tree -r -l HEAD 2>/dev/null |
+        awk -F '\t' '{ split($1, f, " ") }
+                     f[4] != "-" && f[4] >= 1000000 {
+                       printf "  │  └─ %s: %.2fMB\n", $2, f[4] / 1000000 }'
+    fi
+    
+    # Display repository summary
+    if [ "$display_summary" = true ]; then
+      echo "  └─ Summary:"
+      commit_count=$(git -C "$dir" rev-list --all --count)
+      branch_count=$(git -C "$dir" branch | wc -l)
+      recent_activity=$(git -C "$dir" log -1 --format="%cd" --date=relative 2>/dev/null || echo "No commits")
+      echo "      Commits: $commit_count"
+      echo "      Branches: $branch_count"
+      echo "      Last commit: $recent_activity"
+    fi
+    
+    echo ""
+  else
+    echo "$dir: Not a Git repository"
+    echo ""
+  fi
+done
+
+# GitHub repositories with no local directory of the same name
+if [ "$list_repos" = true ]; then
+  if [ "$have_gh" != true ]; then
+    echo "GitHub repositories not cloned here: unknown (gh is not installed or not signed in)"
+  else
+    missing=()
+    while IFS= read -r name; do
+      [ -z "$name" ] || [ -e "$name" ] || missing+=("$name")
+    done <<< "$repos"
+    if [ ${#missing[@]} -eq 0 ]; then
+      echo "GitHub repositories not cloned here: None"
+    else
+      echo "GitHub repositories not cloned here:"
+      for name in "${missing[@]}"; do
+        if is_noclone "$owner/$name"; then
+          echo "  └─ $name (don't clone)"
+        else
+          echo "  └─ $name"
+        fi
+      done
+      if [ "$interactive" = true ]; then
+        handle_clone missing
+      fi
+    fi
+  fi
+fi
+exit 0

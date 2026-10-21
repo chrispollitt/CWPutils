@@ -1,7 +1,7 @@
 # CWPutils/toolbox - Makefile for a set of standalone CLI utilities.
 #
 # The tools (cut2, pullout, rpullout, ghgrep, tcping, termprobe, wincygterm) are dependency-free
-# Python 3 scripts, plus one bash script (fixperms), so "build" is just making sure they are
+# Python 3 scripts, plus two bash scripts (fixperms, gitcheck), so "build" is just making sure they are
 # executable and syntactically valid; there is nothing to compile.
 
 PYTHON = python3
@@ -11,9 +11,9 @@ MANDIR = $(PREFIX)/share/man/man1
 SUDO =
 
 PYBINS   = cut2 pullout rpullout ghgrep tcping termprobe wincygterm
-SHBINS   = fixperms
+SHBINS   = fixperms gitcheck
 BINS     = $(PYBINS) $(SHBINS)
-MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1 tcping.1 termprobe.1 wincygterm.1 fixperms.1
+MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1 tcping.1 termprobe.1 wincygterm.1 fixperms.1 gitcheck.1
 
 # Default target
 all: build

@@ -1,0 +1,271 @@
+.TH GITCHECK 1 "October 2026" "gitcheck 1.0" "User Commands"
+.SH NAME
+gitcheck \- report on, and optionally tidy up, every git repository in a directory
+
+.SH SYNOPSIS
+.B gitcheck
+[\-u] [\-c] [\-f] [\-b] [\-l] [\-s] [\-i]
+.RI [ dir ]
+.br
+.B gitcheck
+\-V | \-h
+
+.SH DESCRIPTION
+.B gitcheck
+looks at each immediate subdirectory of
+.I dir
+(default: the current directory) and, for every one that is a git repository, prints a short report.
+Subdirectories that are not repositories are listed as such. It is meant to be run over a folder of
+clones \- such as
+.I \(ti/github/USER
+\- to see at a glance what still needs committing or pushing.
+
+Every report starts with whether the repository has a GitHub remote. If the GitHub CLI
+.BR gh (1)
+is installed and signed in,
+.B gitcheck
+also says whether a repository of the same name exists in the signed-in account
+("Yes (exists on GitHub)" or "Yes (but NOT on GitHub)"); without
+.B gh
+it just says "Yes". The options choose what else is reported; at least one must be given.
+.B gh
+is also needed to list repositories that are on GitHub but not cloned
+.RB ( \-u ).
+
+.SH OPTIONS
+.TP
+.B \-u
+List repositories linked to GitHub (above). Then, after the repositories, list the signed-in account's
+GitHub repositories that have no directory of the same name in
+.IR dir .
+Ones marked "don't ask again" by
+.B \-i
+are shown with
+.BR "(don't clone)" .
+Needs
+.BR gh .
+With
+.BR \-i ,
+offers to clone them.
+.TP
+.B \-c
+Uncommitted changes and unpushed commits.
+.RS
+.PP
+If the working tree has changes, prints the branch they are on (or "detached at
+.IR commit ")"
+and two counts:
+.B tracked files changed
+(modified, staged, deleted or renamed) and
+.B untracked files
+(new files that are not ignored). A new directory counts as one untracked entry, as in
+.BR "git status" .
+.PP
+Then lists each local branch that has commits found on no remote-tracking branch, with the number
+of such commits. This covers branches ahead of their upstream and branches that were never pushed.
+No fetch is done, so the comparison is with the remotes as of the last fetch (see
+.BR \-f ).
+Branches marked "don't ask again" by
+.B \-i
+are shown with
+.BR "(local only)" .
+.RE
+.TP
+.B \-f
+Fetch from the remotes, then say whether the current branch is up to date with, behind, ahead of, or
+diverged from its upstream.
+.TP
+.B \-b
+List all local and remote-tracking branches.
+.TP
+.B \-l
+List files over 1 MB (10^6 bytes) in the
+.B HEAD
+commit.
+.TP
+.B \-s
+Summary: number of commits on all branches, number of local branches, and the time of the last
+commit.
+.TP
+.B \-i
+Interactive; must be combined with
+.B \-c
+and/or
+.BR \-u .
+With
+.BR \-c ,
+after each part of that report, asks what to do about it: add or ignore untracked files, commit, set
+upstreams and push. With
+.BR \-u ,
+offers to clone the repositories that are not cloned here. See
+.B INTERACTIVE MODE
+below.
+.TP
+.B \-V
+Print the version and exit.
+.TP
+.B \-h
+Print a usage summary and exit.
+
+.SH INTERACTIVE MODE
+Prompts are read from the terminal
+.RI ( /dev/tty ),
+not from standard input. Answers are single letters, in either case; anything else asks again.
+.B q
+at any prompt exits
+.B gitcheck
+at once, leaving everything done so far in place. The first four kinds of prompt below come with
+.BR \-c ,
+the last with
+.BR \-u .
+.TP
+.B Untracked files and folders
+One prompt for each:
+.B a
+stages it
+.RB ( "git add" ),
+.B i
+appends it to the repository's top-level
+.I .gitignore
+and stages that file,
+.B s
+leaves it alone. The ignore entry is anchored to the repository root (a leading
+.BR / )
+and has
+.BR * ,
+.BR ? ,
+.B [
+and
+.B ]
+escaped, so it matches only that one path.
+.TP
+.B Commit
+Shows the tracked changes (the first 20, then a count of the rest) and offers to commit
+.B a
+all tracked changes
+.RB ( "git add \-u" ,
+plus anything staged above),
+.B s
+only what is already staged (offered only when something is), or
+.B n
+nothing. It then asks for a one-line commit message; an empty message cancels the commit and leaves
+the changes staged. Commit hooks run as usual.
+.TP
+.B Set upstream
+For each branch with unpushed commits and no upstream:
+.B y
+sets its upstream to the branch of the same name on
+.B origin
+(or the first remote if there is no
+.BR origin ),
+without pushing;
+.B n
+marks the branch local-only and never asks about it again;
+.B s
+skips it for this run only. Branches with no remote at all are reported and skipped.
+.TP
+.B Push
+For each branch with unpushed commits and an upstream (including one just set):
+.B y
+pushes the branch to its upstream,
+.B n
+doesn't.
+.TP
+.B Clone
+With
+.BR \-u ,
+for each GitHub repository not cloned in
+.IR dir :
+.B y
+clones it there with
+.BR "gh repo clone" ,
+.B n
+records it in
+.I \(ti/.config/gitcheck/noclone
+and never asks about it again,
+.B s
+skips it for this run only.
+
+.SH FILES
+.TP
+.B branch.\fIname\fB.gitcheckNoUpstream
+Set to
+.B true
+in a repository's
+.I .git/config
+when you answer
+.B n
+to setting an upstream for branch
+.IR name .
+To be asked again:
+.RS
+.nf
+git config \-\-unset branch.\fIname\fR.gitcheckNoUpstream
+.fi
+.RE
+.TP
+.I $XDG_CONFIG_HOME/gitcheck/noclone
+(default
+.IR \(ti/.config/gitcheck/noclone )
+GitHub repositories, one
+.I owner/name
+per line, that you answered
+.B n
+to cloning. Delete a line to be asked again.
+
+.SH ENVIRONMENT
+.TP
+.B GITCHECK_TTY
+File to read interactive answers from instead of
+.IR /dev/tty .
+Used by the test suite.
+
+.SH EXAMPLES
+What needs committing or pushing in all my clones:
+.RS
+.B gitcheck \-c \(ti/github/chrispollitt
+.RE
+
+The same, and deal with it as I go, cloning any GitHub repositories I don't have yet:
+.RS
+.B gitcheck \-u \-i \(ti/github/chrispollitt
+.RE
+
+Fetch everything and show where each current branch stands, with a summary:
+.RS
+.B gitcheck \-f \-s
+.RE
+
+.SH EXIT STATUS
+.TP
+.B 0
+Finished, or quit with
+.B q
+in interactive mode.
+.TP
+.B 1
+The terminal could not be read in interactive mode (or ran out of answers, with
+.BR GITCHECK_TTY ).
+.TP
+.B 2
+Usage error, or
+.I dir
+could not be entered.
+
+.SH NOTES
+On Cygwin, a repository can show many "changed" tracked files that differ only in file mode. Answering
+.B a
+at the commit prompt commits those too; check with
+.B git diff
+first, or set
+.B core.fileMode false
+in that repository.
+
+.SH AUTHOR
+Chris Pollitt.
+
+.SH SEE ALSO
+.BR git-status (1),
+.BR git-push (1),
+.BR gitignore (5),
+.BR gh (1)

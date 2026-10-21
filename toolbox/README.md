@@ -3,7 +3,7 @@
 A small collection of standalone command-line utilities for
 slicing/filtering text streams, quick network diagnostics and taming
 Cygwin on Windows. Each tool is a single dependency-free script (Python 3,
-or bash for `fixperms`); no build step or third-party packages are required.
+or bash for `fixperms` and `gitcheck`); no build step or third-party packages are required.
 
 | Tool | Purpose |
 | --- | --- |
@@ -15,10 +15,11 @@ or bash for `fixperms`); no build step or third-party packages are required.
 | [`termprobe`](#termprobe) | Find out what survives the trip between a program and its terminal (colour queries, key and mouse input, ConPTY/ssh damage) |
 | [`wincygterm`](#wincygterm) | Run Cygwin programs on a real pty inside Windows Terminal (fixes OSC colour queries and ncurses input) |
 | [`fixperms`](#fixperms) | Repair owner, mode and ACL of files created from an elevated (administrator) Cygwin shell |
+| [`gitcheck`](#gitcheck) | Report uncommitted changes and unpushed commits in every repo under a directory, and optionally commit, push and clone missing GitHub repos |
 
 Full details for each tool are in its man page (`cut2.1`, `pullout.1`,
 `rpullout.1`, `ghgrep.1`, `tcping.1`, `termprobe.1`, `wincygterm.1`,
-`fixperms.1`); this
+`fixperms.1`, `gitcheck.1`); this
 file is a quick-start summary.
 
 ## Requirements
@@ -26,6 +27,7 @@ file is a quick-start summary.
 Python 3.8+ and nothing else. All the Python scripts use only the standard
 library (`argparse`, `re`, `socket`, `sys`). `fixperms` needs bash 4+ and
 the usual coreutils plus `getfacl`/`setfacl` (part of Cygwin's base install).
+`gitcheck` needs bash 4.4+ and git; the GitHub CLI `gh` is optional.
 
 ## Installation
 
@@ -233,6 +235,35 @@ line: `PATTERN DIR-MODE FILE-MODE OWNER`. The mode is `-` (default), `=`
 (keep, never loosen) or octal. The owner is `user`, `keep`, `home`, `base`
 or an account name. For example `/srv/www/** 775 664 www`. `--no-rules`
 turns the table off.
+
+## gitcheck
+
+Run over a folder of clones to see what still needs committing or pushing.
+For each git repository directly under the directory it reports whether it
+has a GitHub remote (and, with `gh` signed in, whether the repo exists on
+GitHub), then whatever the options ask for.
+
+```bash
+gitcheck -c ~/github/chrispollitt     # uncommitted changes, unpushed commits
+gitcheck -c -i ~/github/chrispollitt  # same, and offer to add/ignore, commit, push
+gitcheck -u -i ~/github/chrispollitt  # ...and offer to clone GitHub repos not here yet
+gitcheck -f -s                        # fetch; ahead/behind; summary (current dir)
+```
+
+```
+Processing CWPutils...
+  ├─ Linked to GitHub: Yes (exists on GitHub)
+  ├─ Uncommitted changes: Yes (branch: main)
+  │  ├─ Tracked files changed: 3
+  │  └─ Untracked files: 1
+  ├─ Unpushed commits: Yes
+  │  └─ media: 1 (local only)
+```
+
+- `-c` splits changes into tracked files and untracked ones, and counts commits on each local branch that are on no remote-tracking branch (no fetch). `-f` fetches and compares the current branch with its upstream; `-b` lists branches, `-l` files over 1 MB, `-s` a summary.
+- `-c -i` asks, per untracked item, to add, `.gitignore` or skip it; then whether to commit all tracked changes or only what is staged; then, for each branch with unpushed commits, whether to set an upstream (if it has none) and whether to push. `q` quits.
+- `-u` lists your GitHub repositories that have no directory of the same name here (needs `gh`); with `-i` it offers to clone each one.
+- Answering `n` to setting an upstream marks the branch local-only (`branch.NAME.gitcheckNoUpstream` in the repo's config), and `n` to cloning adds the repo to `~/.config/gitcheck/noclone`, so neither is asked about again.
 
 ## Testing
 
