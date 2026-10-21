@@ -114,6 +114,82 @@ class GitcheckTest(unittest.TestCase):
         r = self.run_gitcheck("-u")
         self.assertIn("plain: Not a Git repository", r.stdout)
 
+    def test_builtin_ignored_names(self):
+        for name in ("tmp", "BAK", "Old", "notes.bak", "keep", "plain"):
+            os.makedirs(os.path.join(self.top, name))
+        os.rename(self.repo, os.path.join(self.top, "backup"))   # a repo is reported whatever its name
+        r = self.run_gitcheck("-u")
+        for name in ("tmp", "BAK", "Old", "notes.bak"):
+            self.assertNotIn(name + ":", r.stdout)
+        self.assertIn("keep: Not a Git repository", r.stdout)
+        self.assertIn("plain: Not a Git repository", r.stdout)
+        self.assertIn("Processing backup...", r.stdout)
+
+    def test_ignore_file(self):
+        for name in ("scratch1", "plain", "keep"):
+            os.makedirs(os.path.join(self.top, name))
+        conf = os.path.join(self.env["HOME"], ".config", "gitcheck")
+        os.makedirs(conf)
+        top = subprocess.run(["bash", "-c", 'cd "$1" && pwd -P', "_", self.top],
+                             capture_output=True, text=True).stdout.strip()
+        with open(os.path.join(conf, "ignore"), "w") as f:
+            f.write(f"# comment\n\nscratch*\n{top}/plain\n/elsewhere/keep\n")
+        r = self.run_gitcheck("-u")
+        self.assertNotIn("scratch1:", r.stdout)
+        self.assertNotIn("plain:", r.stdout)
+        self.assertIn("keep: Not a Git repository", r.stdout)
+
+    def test_interactive_ignore_is_remembered(self):
+        os.makedirs(os.path.join(self.top, "odd[1]"))
+        os.makedirs(os.path.join(self.top, "later"))
+        r = self.run_gitcheck("-c", "-i", answers=["s", "i"])   # sorted: later, odd[1]
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.env["HOME"], ".config", "gitcheck", "ignore")) as f:
+            self.assertTrue(f.read().endswith("/odd\\[1\\]\n"))
+        r = self.run_gitcheck("-c", "-i", answers=["s"])          # only 'later' is asked about
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("odd[1]:", r.stdout)
+        self.assertIn("later: Not a Git repository", r.stdout)
+
+    def make_plain_dir(self, name, files):
+        d = os.path.join(self.top, name)
+        os.makedirs(d)
+        for f in files:
+            with open(os.path.join(d, f), "w") as fh:
+                fh.write("x\n")
+        return d
+
+    def test_interactive_new_repo(self):
+        d = self.make_plain_dir("newproj", ["a.txt", "b.log"])
+        # git init; add a.txt, ignore b.log; commit staged only; message
+        r = self.run_gitcheck("-c", "-i", answers=["g", "a", "i", "s", "first"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        log = self.git("log", "--name-only", "--format=%s", cwd=d).split()
+        self.assertEqual(log[0], "first")
+        self.assertEqual(sorted(log[1:]), [".gitignore", "a.txt"])
+        with open(os.path.join(d, ".gitignore")) as f:
+            self.assertEqual(f.read(), "/b.log\n")
+
+    def test_interactive_new_repo_on_github(self):
+        self.fake_gh(["proj"])
+        d = self.make_plain_dir("newproj", ["a.txt"])
+        r = self.run_gitcheck("-c", "-i", answers=["g", "a", "a", "first", "p"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.base, "gh-create.log")) as f:
+            self.assertEqual(f.read().split()[:4], ["repo", "create", "newproj", "--private"])
+        self.assertEqual(self.git("log", "--format=%s", cwd=os.path.join(self.base, "created.git")).strip(),
+                         "first")
+        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "@{u}", cwd=d).strip(),
+                         "origin/" + self.git("branch", "--show-current", cwd=d).strip())
+
+    def test_new_repo_not_created_if_name_taken(self):
+        self.fake_gh(["proj", "newproj"])
+        self.make_plain_dir("newproj", ["a.txt"])
+        r = self.run_gitcheck("-c", "-i", answers=["g", "s", "n"])   # no GitHub prompt after this
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("tester/newproj already exists on GitHub", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.base, "gh-create.log")))
+
     def test_tracked_vs_untracked_and_branch(self):
         self.write("README", "changed\n")
         self.write("new1.txt", "x\n")
@@ -209,6 +285,11 @@ class GitcheckTest(unittest.TestCase):
                     '  "api user") echo tester ;;\n'
                     f'  "repo list") printf "%s\\n" {" ".join(names)} ;;\n'
                     f'  "repo clone") exec git clone -q "{self.remote}" "$4" ;;\n'
+                    # repo create NAME VIS --source DIR --remote origin [--push]
+                    f'  "repo create") echo "$@" > "{self.base}/gh-create.log"\n'
+                    f'      git init -q --bare "{self.base}/created.git"\n'
+                    f'      git -C "$6" remote add "$8" "{self.base}/created.git"\n'
+                    '      [ "$9" = --push ] && git -C "$6" push -q -u "$8" HEAD ;;\n'
                     '  *) exit 1 ;;\nesac\n')
         self.env["XDG_CONFIG_HOME"] = os.path.join(self.base, "config")
 

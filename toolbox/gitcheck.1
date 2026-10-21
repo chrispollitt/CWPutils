@@ -15,7 +15,24 @@ gitcheck \- report on, and optionally tidy up, every git repository in a directo
 looks at each immediate subdirectory of
 .I dir
 (default: the current directory) and, for every one that is a git repository, prints a short report.
-Subdirectories that are not repositories are listed as such. It is meant to be run over a folder of
+Subdirectories that are not repositories are flagged ("Not a Git repository"), except ones whose names
+match, in any case,
+.BR tmp ,
+.BR temp ,
+.BR bak ,
+.BR backup ,
+.BR backups ,
+.BR old ,
+.BR trash ,
+.BR cache ,
+.BR *.bak ,
+.B *.old
+or
+.BR *\(ti ,
+and ones listed in the ignore file (see
+.BR FILES ).
+These names only hide directories that are not repositories; a repository is always reported.
+It is meant to be run over a folder of
 clones \- such as
 .I \(ti/github/USER
 \- to see at a glance what still needs committing or pushing.
@@ -97,7 +114,8 @@ With
 after each part of that report, asks what to do about it: add or ignore untracked files, commit, set
 upstreams and push. With
 .BR \-u ,
-offers to clone the repositories that are not cloned here. See
+offers to clone the repositories that are not cloned here. Either way, offers to make each flagged
+subdirectory that is not a repository a new one, or to stop flagging it. See
 .B INTERACTIVE MODE
 below.
 .TP
@@ -114,10 +132,36 @@ not from standard input. Answers are single letters, in either case; anything el
 .B q
 at any prompt exits
 .B gitcheck
-at once, leaving everything done so far in place. The first four kinds of prompt below come with
+at once, leaving everything done so far in place. The "Not a repository" prompt comes with any
+.BR \-i ,
+the next four with
 .BR \-c ,
-the last with
+and the last with
 .BR \-u .
+.TP
+.B Not a repository
+For each flagged subdirectory that is not a repository:
+.B g
+makes it a new repository with
+.BR "git init" ,
+then asks about its files and an initial commit exactly as for an existing repository (the
+"Untracked files and folders" and "Commit" prompts below). Then, if
+.B gh
+is signed in and the account has no repository of that name, offers to create one
+.RB ( p rivate
+or
+.RB p u blic)
+with
+.BR "gh repo create" ,
+set it as
+.B origin
+and push the initial commit.
+.B i
+adds its full path to the ignore file (see
+.BR FILES ),
+so it is never flagged again;
+.B s
+leaves it flagged.
 .TP
 .B Untracked files and folders
 One prompt for each:
@@ -212,6 +256,25 @@ GitHub repositories, one
 per line, that you answered
 .B n
 to cloning. Delete a line to be asked again.
+.TP
+.I $XDG_CONFIG_HOME/gitcheck/ignore
+(default
+.IR \(ti/.config/gitcheck/ignore )
+Subdirectories that are not repositories and should not be flagged, in addition to the built-in
+names. One per line: a pattern such as
+.B scratch*
+matches a directory name in any
+.IR dir ;
+one that starts with
+.B /
+matches a full path, such as
+.BR /home/chris/github/WebAutomation .
+Patterns are shell globs; blank lines and lines starting with
+.B #
+are skipped. Answering
+.B i
+to a "Not a repository" prompt adds the directory's full path, with glob characters escaped. Delete a
+line to have it flagged again.
 
 .SH ENVIRONMENT
 .TP
