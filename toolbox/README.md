@@ -213,12 +213,12 @@ fixperms -w ~/github/myproject                        # group-writable (775/664)
 ```
 
 ```
-fixperms [-n] [-v] [-d] [-u USER] [-g GROUP] [-w] [-x] [-f] [-r FILE]... [-R] PATH...
+fixperms [-n] [-v] [-d] [-u USER] [-g GROUP] [-w] [-x] [-f] [-r FILE]... [-R] [-P] PATH...
 fixperms --list-rules
 ```
 
 - Where no rule says otherwise, modes become 755 for directories and 644 for files; files keep x for everyone if any x bit was set or they start with `#!`, `MZ` (exe/dll/pyd, which Cygwin needs x on to load) or ELF magic. `-x` ignores old x bits and goes by content alone; `-w` adds group write (in a home: wherever the group can already read).
-- `-d` / `--no-recurse` fixes only the named paths; `-n` / `--dry-run` changes nothing; `-v` lists changes (`-vv` also unchanged entries).
+- `-d` / `--no-recurse` fixes only the named paths; `-n` / `--dry-run` changes nothing; `-v` lists changes (`-vv` also unchanged entries). On a terminal, a spinner line shows the running count and the current path (`-P` / `--no-progress` turns it off).
 - Taking ownership of Administrators-owned files usually needs an elevated shell: `fixperms` reports those, fixes everything else, and prints the command to rerun elevated.
 - Refuses `/`, the Cygwin root, drive roots and top-level directories such as `/usr` without `-f`. Exit status 0 all fixed, 1 something not fixed, 2 usage error.
 

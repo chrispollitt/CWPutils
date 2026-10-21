@@ -102,6 +102,38 @@ class FixpermsTest(unittest.TestCase):
         self.assertIn("not checked", r.stdout)  # the unreadable directory
         self.assertEqual(self.snapshot(), before)
 
+    def run_on_pty(self, args):
+        """Run fixperms with stderr on a pseudo-terminal; return (result, what reached the terminal)."""
+        master, slave = os.openpty()
+        r = subprocess.run(["bash", script_path("fixperms"), "--no-rules"] + args,
+                           stdout=subprocess.PIPE, stderr=slave, text=True)
+        os.close(slave)
+        out = b""
+        while True:
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            out += chunk
+        os.close(master)
+        return r, out.decode(errors="replace")
+
+    def test_progress_only_on_a_terminal(self):
+        r = run(["-n", self.t])
+        self.assertNotIn("\r", r.stderr)
+        r, tty = self.run_on_pty(["-n", self.t])
+        self.assertEqual(r.returncode, 0)
+        self.assertRegex(tty, r"\r\x1b\[K[|/\\-] \d+ checked, \d+ would be fixed: ")
+        self.assertTrue(tty.endswith("\r\x1b[K"), repr(tty[-40:]))   # cleared before the summary
+        self.assertIn("checked", r.stdout)
+
+    def test_no_progress_option(self):
+        r, tty = self.run_on_pty(["-n", "-P", self.t])
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn("checked", tty)
+
     def test_fixes_tree(self):
         outside_before = (mode(self.outside), getfacl(self.outside))
         r = run([self.t])

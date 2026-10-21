@@ -1,10 +1,10 @@
-.TH FIXPERMS 1 "October 2026" "fixperms 1.1" "User Commands"
+.TH FIXPERMS 1 "October 2026" "fixperms 1.2" "User Commands"
 .SH NAME
 fixperms \- repair owner, mode and ACL of files created from an elevated Cygwin shell
 
 .SH SYNOPSIS
 .B fixperms
-[\-n] [\-v] [\-d] [\-u USER] [\-g GROUP] [\-w] [\-x] [\-f] [\-r FILE]... [\-R]
+[\-n] [\-v] [\-d] [\-u USER] [\-g GROUP] [\-w] [\-x] [\-f] [\-r FILE]... [\-R] [\-P]
 .I path
 \&...
 .br
@@ -292,6 +292,10 @@ files still apply).
 .B \-l, \-\-list\-rules
 Print the rules in force, first match first, and exit.
 .TP
+.B \-P, \-\-no\-progress
+Don't show the progress line (see
+.BR OUTPUT ).
+.TP
 .B \-h, \-\-help
 Show a usage summary and exit.
 .TP
@@ -299,6 +303,15 @@ Show a usage summary and exit.
 Show the version and exit.
 
 .SH OUTPUT
+While it works, if standard error is a terminal,
+.B fixperms
+keeps one line there up to date: a spinner, how many entries it has checked and fixed so far, and
+the path it is on (shortened from the left to fit). The total is not known in advance \- a
+directory is only listed once it has been fixed \- so there is no percentage. The line is cleared
+before anything else is printed, and at the end;
+.B \-P
+turns it off.
+
 Each change (with
 .B \-v
 or

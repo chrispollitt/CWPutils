@@ -26,7 +26,7 @@ set -u
 export LC_ALL=C
 shopt -s nullglob dotglob extglob
 
-VERSION=1.1
+VERSION=1.2
 PROG=${0##*/}
 ORIG_ARGS=("$@")
 
@@ -51,6 +51,8 @@ owns them and a non-elevated Cygwin shell can use them.
                          before the user rules file and the built-in ones)
   -R, --no-rules         ignore the built-in rules and the user rules file
   -l, --list-rules       print the rules in force, first match first, and exit
+  -P, --no-progress      no spinner and running count on stderr (shown only
+                         when stderr is a terminal)
   -h, --help             show this help and exit
   -V, --version          show the version and exit
 
@@ -67,7 +69,7 @@ die_usage() {
 # ---------------------------------------------------------------- options
 
 dry_run=0 verbose=0 recurse=1 force=0 group_write=0 exec_by_content=0
-use_rules=1 list_rules=0
+use_rules=1 list_rules=0 progress=1
 opt_user='' opt_group=''
 paths=() rule_files=()
 
@@ -84,6 +86,7 @@ while (($#)); do
     -f|--force) force=1 ;;
     -R|--no-rules) use_rules=0 ;;
     -l|--list-rules) list_rules=1 ;;
+    -P|--no-progress) progress=0 ;;
     -h|--help) usage; exit 0 ;;
     -V|--version) echo "$PROG $VERSION"; exit 0 ;;
     -u|--user|-g|--group|-r|--rules)
@@ -97,7 +100,7 @@ while (($#)); do
     --user=*) opt_user=${arg#*=} ;;
     --group=*) opt_group=${arg#*=} ;;
     --rules=*) rule_files+=("${arg#*=}") ;;
-    -[nvdwxfhVRl][nvdwxfhVRl]*)
+    -[nvdwxfhVRlP][nvdwxfhVRlP]*)
         # Bundled flags such as -nv: split into single flags.
         flags=()
         for ((j = 1; j < ${#arg}; j++)); do flags+=("-${arg:j:1}"); done
@@ -350,8 +353,36 @@ FAIL_ORDER=()
 n_checked=0 n_ok=0 n_fixed=0 n_owner=0 n_acl=0 n_links=0 n_skipped=0
 n_unscanned=0 n_icacls=0 n_elev=0
 
-say() { printf '%s\n' "$*"; }
-vsay() { ((verbose >= ${1})) && printf '%s\n' "${*:2}"; return 0; }
+# Progress: a spinner, the running counts and the path being looked at, on
+# one self-overwriting line of stderr.  The total is not known in advance
+# (directories are only listed once they have been fixed), so there is no
+# bar.  Redrawn at most 10 times a second; cleared before any other output.
+((progress)) && [[ -t 2 ]] || progress=0
+PROG_COLS=80
+((progress)) && PROG_COLS=$(tput cols 2>/dev/null || echo 80)
+PROG_SPIN='|/-\' prog_i=0 prog_last=0 prog_shown=0
+
+show_progress() {  # show_progress PATH
+    ((progress)) || return 0
+    local now=${EPOCHREALTIME/./} head path room
+    ((now - prog_last < 100000)) && return 0
+    prog_last=$now
+    head="${PROG_SPIN:prog_i++ % 4:1} $n_checked checked, $n_fixed ${DRY:+would be }fixed: "
+    path=$1
+    room=$((PROG_COLS - 1 - ${#head}))
+    ((room < 10)) && path='' || { ((${#path} > room)) && path="...${path: -(room - 3)}"; }
+    printf '\r\e[K%s%s' "$head" "$path" >&2
+    prog_shown=1
+}
+
+clear_progress() {
+    ((prog_shown)) && printf '\r\e[K' >&2
+    prog_shown=0
+    return 0
+}
+
+say() { clear_progress; printf '%s\n' "$*"; }
+vsay() { ((verbose >= ${1})) && { clear_progress; printf '%s\n' "${*:2}"; }; return 0; }
 
 fail() {  # fail PATH MESSAGE [elev]
     [[ -n ${FAIL_MSG[$1]+x} ]] || FAIL_ORDER+=("$1")
@@ -535,6 +566,7 @@ process_batch() {
     for ((i = 0; i < n; i++)); do
         p=${items[i]}
         ((n_checked++))
+        show_progress "$p"
         if [[ -z ${st[i]} ]]; then
             kind[i]=bad
             fail "$p" "cannot stat (no permission on its parent directory?)"
@@ -566,6 +598,7 @@ process_batch() {
     for ((i = 0; i < n; i++)); do
         [[ ${kind[i]} == bad ]] && continue
         p=${items[i]}
+        show_progress "$p"
         IFS=$'\t' read -r u g a dev un gn ls ftype <<<"${st[i]}"
         abs=$ABS_ROOT${p:${#OPERAND}}
         match_rule "$abs"
@@ -834,6 +867,7 @@ for p in "${paths[@]}"; do
         continue
     fi
     if ((!force)) && too_close_to_root "$p"; then
+        clear_progress
         printf "%s: refusing to work on '%s' (/, the Cygwin root, a drive root or a top-level directory); use --force\n" \
             "$PROG" "$p" >&2
         status=1
