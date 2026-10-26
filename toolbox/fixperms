@@ -352,8 +352,23 @@ resolve_owner() {
         OU=$T_UID OG=$T_GID OUN=$T_USER OGN=$T_GROUP
     elif lookup_acct "$name"; then
         OU=$AU OG=$AG OUN=$name OGN=$AGN
+    elif [[ $tok == home ]] && home_account "$name"; then
+        OU=$AU OG=$AG OUN=$HN OGN=$AGN
     fi
     return 0
+}
+
+# A /home/NAME directory with no account called NAME (a renamed account, a
+# symlinked alias): the account whose passwd home field is that directory.
+home_account() {  # home_account NAME: true, with HN AU AG AGN set, if some account's home is /home/NAME
+    local ent _x _u _g _h
+    HN=
+    while IFS= read -r ent; do
+        IFS=: read -r HN _x _u _g _ _h _ <<<"$ent"
+        [[ ${_h%/} == "/home/$1" ]] && lookup_acct "$HN" && return 0
+    done < <(getent passwd 2>/dev/null)
+    HN=
+    return 1
 }
 
 # ---------------------------------------------------------------- helpers

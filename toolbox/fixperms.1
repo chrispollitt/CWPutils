@@ -250,7 +250,9 @@ write for group and others, so what is created in it is not world-writable.
 .I /home/NAME
 directory is named after (the invoking user in their own home, or when
 .B \-\-user
-is given).
+is given). If no account has that name, the account whose passwd home is
+.I /home/NAME
+is used (a renamed account or a symlinked alias).
 .B base
 \- the account named by the entry's own name, as in
 .IR /var/mail/NAME .
