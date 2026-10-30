@@ -278,14 +278,14 @@ class TestEggs(ShellCase):
         self.assertIn("No such file or directory", self.err.getvalue())
 
     def test_advent_runs_what_debian_installs(self):
-        calls = []
-        debian = bidetsh.GAMES[1]
-        with mock.patch.object(bidetsh.os, "access", lambda p, m: p == debian), \
-                mock.patch.object(bidetsh.subprocess, "run", lambda argv, **kw: calls.append(argv) or mock.Mock(returncode=0)):
-            self.run_(bidetsh.ADVENT)
-            self.run_(debian)                       # typing the real name is not an invitation: only /usr/games/advent is
-        self.assertEqual(calls, [[debian]])
-        self.assertIn("command not found", self.err.getvalue())
+        for debian in bidetsh.GAMES[1:]:                       # the alternatives link, or the package's own name
+            calls = []
+            with mock.patch.object(bidetsh.os, "access", lambda p, m: p == debian), \
+                    mock.patch.object(bidetsh.subprocess, "run", lambda argv, **kw: calls.append(argv) or mock.Mock(returncode=0)):
+                self.run_(bidetsh.ADVENT)
+                self.run_(debian)                   # typing the real name is not an invitation: only /usr/games/advent is
+            self.assertEqual(calls, [[debian]], debian)
+            self.assertIn("command not found", self.err.getvalue())
 
     def test_advent_runs_alone_on_the_terminal_in_the_jail(self):
         calls = []

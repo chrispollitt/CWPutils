@@ -995,7 +995,7 @@ def b_seq(sh, args, stdin):
 # --- easter eggs: not in help, not completed, not in `type` -------------------------------------------------------------
 
 ADVENT = "/usr/games/advent"          # Debian keeps games out of PATH: it runs by its full path only, `advent` is not found
-GAMES = (ADVENT, "/usr/games/colossal-cave-adventure")      # what runs: Debian's package has the second name, not the first
+GAMES = (ADVENT, "/usr/games/adventure", "/usr/games/colossal-cave-adventure")   # what runs: Debian has no "advent"
 GAME_TIMEOUT = 3600
 
 
