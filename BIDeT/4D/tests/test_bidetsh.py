@@ -254,5 +254,76 @@ class TestBidet(ShellCase):
             self.assertEqual(self.run_("bidet -l | grep gold"), "gold  shiny\n")
 
 
+class TestEggs(ShellCase):
+    def test_xyzzy(self):
+        self.assertEqual(self.run_("xyzzy"), "Nothing happens.\n")
+        self.assertEqual(self.run_("xyzzy | rev"), ".sneppah gnihtoN\n")
+
+    def test_eggs_are_hidden(self):
+        for name in ("xyzzy", bidetsh.ADVENT, "advent"):
+            self.assertNotIn(name, self.sh.commands())
+        self.assertNotIn("xyzzy", self.run_("help"))
+        self.assertNotIn("advent", self.run_("help"))
+        self.run_("type xyzzy")
+        self.assertIn("not found", self.err.getvalue())
+
+    def test_advent_only_by_its_full_path(self):
+        self.run_("advent")
+        self.assertIn("command not found", self.err.getvalue())
+        self.assertEqual(self.sh.status, 127)
+
+    def test_advent_not_installed(self):
+        with mock.patch.object(bidetsh.os, "access", lambda p, m: p not in bidetsh.GAMES):
+            self.run_(bidetsh.ADVENT)
+        self.assertIn("No such file or directory", self.err.getvalue())
+
+    def test_advent_runs_what_debian_installs(self):
+        calls = []
+        debian = bidetsh.GAMES[1]
+        with mock.patch.object(bidetsh.os, "access", lambda p, m: p == debian), \
+                mock.patch.object(bidetsh.subprocess, "run", lambda argv, **kw: calls.append(argv) or mock.Mock(returncode=0)):
+            self.run_(bidetsh.ADVENT)
+            self.run_(debian)                       # typing the real name is not an invitation: only /usr/games/advent is
+        self.assertEqual(calls, [[debian]])
+        self.assertIn("command not found", self.err.getvalue())
+
+    def test_advent_runs_alone_on_the_terminal_in_the_jail(self):
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append((argv, kw))
+            return mock.Mock(returncode=0)
+        with mock.patch.object(bidetsh.os, "access", lambda p, m: True), mock.patch.object(bidetsh.subprocess, "run", fake_run):
+            self.run_(bidetsh.ADVENT)
+            for line in (bidetsh.ADVENT + " -r x", "echo hi | " + bidetsh.ADVENT):
+                self.run_(line)
+                self.assertEqual(self.sh.status, 2, line)
+            self.run_(bidetsh.ADVENT + " | cat")                  # refused too; the pipeline's status is cat's, as in bash
+            self.assertIn("terminal to itself", self.err.getvalue())
+        self.assertEqual(len(calls), 1)
+        argv, kw = calls[0]
+        self.assertEqual(argv, [bidetsh.ADVENT])
+        self.assertEqual(kw["cwd"], self.sh.scratch)
+        self.assertEqual(kw["env"]["HOME"], self.sh.scratch)
+        self.assertTrue(callable(kw["preexec_fn"]))
+        self.assertNotIn("stdout", kw)                 # the terminal, not a pipe
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Landlock is Linux's")
+    def test_jail_lets_it_write_only_in_the_scratch_directory(self):
+        inside, outside = self.sh.scratch, tempfile.mkdtemp()
+        try:
+            probe = "echo a > '%s/in' && echo b > '%s/out'" % (inside, outside)
+            try:
+                p = bidetsh.subprocess.run(["/bin/sh", "-c", probe], preexec_fn=lambda: bidetsh.jail_writes(inside),
+                                           capture_output=True)
+            except bidetsh.subprocess.SubprocessError:
+                self.skipTest("no Landlock in this kernel")
+            self.assertTrue(os.path.exists(os.path.join(inside, "in")))
+            self.assertFalse(os.path.exists(os.path.join(outside, "out")))
+            self.assertNotEqual(p.returncode, 0)
+        finally:
+            shutil.rmtree(outside, True)
+
+
 if __name__ == "__main__":
     unittest.main()

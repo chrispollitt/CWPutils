@@ -404,7 +404,7 @@ class Shell(object):
         for k, argv in enumerate(stages):
             self.last = k == len(stages) - 1
             name = argv[0]
-            fn = cmds.get(name)
+            fn = cmds.get(name) or EGGS.get(name)
             if fn is None:
                 if name in REFUSED:
                     self.err("bidetsh: %s: not available (this is an imitation shell)" % name)
@@ -990,6 +990,72 @@ def b_seq(sh, args, stdin):
     if step == 0 or (last - first) // step > 1000:
         raise ShellError("at most 1000 numbers")
     return "".join("%d\n" % n for n in range(first, last + (1 if step > 0 else -1), step)), 0
+
+
+# --- easter eggs: not in help, not completed, not in `type` -------------------------------------------------------------
+
+ADVENT = "/usr/games/advent"          # Debian keeps games out of PATH: it runs by its full path only, `advent` is not found
+GAMES = (ADVENT, "/usr/games/colossal-cave-adventure")      # what runs: Debian's package has the second name, not the first
+GAME_TIMEOUT = 3600
+
+
+def jail_writes(directory):
+    """For a child process, before exec: after this it can write (create, delete, truncate) only under `directory`, and to
+    /dev (the terminal).  Landlock, needs Linux 5.13+; raises OSError where it is not there.  (A game's SAVE asks for any file name.)"""
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    write_file, writes = 1 << 1, sum(1 << n for n in (1, 4, 5, 6, 7, 8, 9, 10, 11, 12))
+
+    class Path(ctypes.Structure):
+        _pack_ = 1
+        _fields_ = [("allowed", ctypes.c_uint64), ("parent_fd", ctypes.c_int32)]
+
+    def check(rc):
+        if rc < 0:
+            e = ctypes.get_errno()
+            raise OSError(e, os.strerror(e))
+        return rc
+    attr = ctypes.c_uint64(writes)
+    ruleset = check(libc.syscall(444, ctypes.byref(attr), ctypes.sizeof(attr), 0))      # landlock_create_ruleset
+    for path, allowed in ((directory, writes), ("/dev", write_file)):
+        fd = os.open(path, os.O_PATH)
+        try:
+            check(libc.syscall(445, ruleset, 1, ctypes.byref(Path(allowed, fd)), 0))      # landlock_add_rule, path beneath
+        finally:
+            os.close(fd)
+    check(libc.prctl(38, 1, 0, 0, 0))                                                    # PR_SET_NO_NEW_PRIVS
+    check(libc.syscall(446, ruleset, 0))                                                 # landlock_restrict_self
+    os.close(ruleset)
+
+
+def egg_xyzzy(sh, args, stdin):
+    return "Nothing happens.\n", 0
+
+
+def egg_advent(sh, args, stdin):
+    game = next((g for g in GAMES if os.access(g, os.X_OK)), None)
+    if game is None:
+        raise ShellError("No such file or directory")
+    if args or not sh.last or stdin is not None:
+        raise ShellError("it needs the terminal to itself (no arguments, no pipes)")
+    env = {"PATH": SAFE_PATH, "LANG": os.environ.get("LANG", "C.UTF-8"), "TERM": "xterm-256color", "HOME": sh.scratch,
+           "COLUMNS": str(shutil.get_terminal_size((80, 24)).columns)}
+    try:
+        rc = subprocess.run([game], cwd=sh.scratch, env=env, timeout=GAME_TIMEOUT,
+                            preexec_fn=lambda: jail_writes(sh.scratch)).returncode
+    except subprocess.TimeoutExpired:
+        raise ShellError("you have been in the cave too long")
+    except subprocess.SubprocessError:                    # an exception in the child before exec, i.e. no Landlock
+        raise ShellError("cannot be started safely on this machine")
+    except OSError as e:
+        raise ShellError(str(e))
+    if sh.interactive:
+        sh.out.write("\033[0m\033[?25h")
+        sh.out.flush()
+    return "", rc
+
+
+EGGS = {"xyzzy": egg_xyzzy, ADVENT: egg_advent}
 
 
 # --- the terminal ------------------------------------------------------------------------------------------------------

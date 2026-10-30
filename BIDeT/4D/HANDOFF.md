@@ -161,6 +161,15 @@ knows the cropped one; the whole-pixel pen then rounds differently, about 10% of
    four chunk-case bits.
 8. v3 quirk kept on purpose (parity): a row of only dashes, or one `x`, is classed `tone` and draws nothing.
 9. Reverse-video default colours in the `cells` layer are stored as an attribute bit only (lossy).
+10. **Web shell (`ttyd/bidetsh.py`, at https://192.168.10.1:8444/bidet/): the prompt can stay hidden after a picture.**
+    In the user's browser (Windows, window about 1240x950) the picture is drawn and the prompt never shows; more Returns
+    only scroll the picture up, and `clear` brings the prompt back.  Reproduced here only when the picture was taller than
+    the window (the browser draws an image over the text, so prompt lines under it are invisible), and `fit_size()` now keeps
+    pictures to (rows - 3) rows; with that, the same window sizes in the in-app browser show every prompt.  The user's
+    browser still hides it, cause unknown.  Suspects: Windows display scaling (device pixel ratio above 1), a different
+    font and cell size, `frame.html`'s iframe.  Next step: the user runs `termsize` in that window (rows, columns, cell size
+    the browser reports, picture size chosen) and sends it with a screenshot.  Workaround in place: after a picture the shell
+    prints "press Enter to clear" and clears the screen.  Remove that when the cause is fixed.
 
 ## Findings worth remembering
 
