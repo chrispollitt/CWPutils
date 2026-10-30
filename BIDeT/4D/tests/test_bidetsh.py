@@ -267,6 +267,27 @@ class TestEggs(ShellCase):
         self.run_("type xyzzy")
         self.assertIn("not found", self.err.getvalue())
 
+    def test_the_game_shows_in_its_directory(self):
+        self.assertIn("advent", self.run_("ls /usr/games"))
+        self.assertEqual(self.run_("ls -l /usr/games").split()[0], "-rwxr-xr-x")
+        self.assertTrue(self.run_("ls -l /usr/games").rstrip().endswith("advent"))
+        self.assertEqual(self.run_("ls -F /usr/games"), "advent*\n")
+        self.assertEqual(self.run_("cd /usr/games; ls -l"), self.run_("ls -l /usr/games"))
+        self.assertIn("games/", self.run_("ls -F /usr"))
+        self.run_("cat /usr/games/advent")
+        self.assertIn("binary file", self.err.getvalue())
+
+    def test_advent_runs_by_a_relative_path_too(self):
+        calls = []
+        with mock.patch.object(bidetsh.os, "access", lambda p, m: p == bidetsh.GAMES[1]), \
+                mock.patch.object(bidetsh.subprocess, "run", lambda argv, **kw: calls.append(argv) or mock.Mock(returncode=0)):
+            self.run_("cd /usr/games; ./advent")
+            self.run_("advent")                            # not in PATH, even from its own directory
+            self.assertEqual(self.sh.status, 127)
+            self.assertIn("command not found", self.err.getvalue())
+            self.run_("/usr/games/../games/advent")
+        self.assertEqual(calls, [[bidetsh.GAMES[1]]] * 2)
+
     def test_advent_only_by_its_full_path(self):
         self.run_("advent")
         self.assertIn("command not found", self.err.getvalue())

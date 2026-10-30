@@ -39,6 +39,11 @@ NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 HOME = "/home/guest"
 START = time.time()
 
+class Exe(str):
+    """A program in the pretend file system: listed as executable, and `cat` will not show it."""
+    size = 38128
+
+
 MOTD = """\
 BIDeT 4D web shell: an imitation of bash, not the real thing.
   fortune -s | cowsay                    figlet -f slant Hello | rev
@@ -55,7 +60,7 @@ FS = {
     "home": {"guest": {"README": README, "hello.txt": "Hello, World\n", "pictures": {}}},
     "etc": {"motd": MOTD, "hostname": "bidet\n", "shells": "/usr/bin/bidetsh\n"},
     "tmp": {},
-    "usr": {"games": {}},
+    "usr": {"games": {"advent": Exe()}},
 }
 # named like tools people try, but not offered: say so instead of "command not found"
 REFUSED = set("""bash sh zsh dash ksh csh tcsh fish python python3 perl ruby node php lua gcc make vi vim nano emacs ed ssh scp
@@ -404,7 +409,8 @@ class Shell(object):
         for k, argv in enumerate(stages):
             self.last = k == len(stages) - 1
             name = argv[0]
-            fn = cmds.get(name) or EGGS.get(name)
+            # a path counts too (./advent from /usr/games, as in bash); plain `advent` never does
+            fn = cmds.get(name) or EGGS.get(resolve(self.cwd, name) if "/" in name else name)
             if fn is None:
                 if name in REFUSED:
                     self.err("bidetsh: %s: not available (this is an imitation shell)" % name)
@@ -725,12 +731,13 @@ def b_ls(sh, args, stdin):
         if "a" in flags and isinstance(node, dict):
             items = [(".", {}), ("..", {})] + items
         for name, item in items:
+            d, x = isinstance(item, dict), isinstance(item, Exe)
+            shown = name + ("/" if d and "F" in flags else "") + ("*" if x and "F" in flags else "")
             if "l" in flags:
-                d = isinstance(item, dict)
-                out.append("%s 1 guest guest %5d Oct 29 12:00 %s" % ("drwxr-xr-x" if d else "-rw-r--r--", 4096 if d else len(item),
-                                                                      name + ("/" if d and "F" in flags else "")))
+                out.append("%s 1 guest guest %5d Oct 29 12:00 %s" % (
+                    "drwxr-xr-x" if d else "-rwxr-xr-x" if x else "-rw-r--r--", 4096 if d else item.size if x else len(item), shown))
             else:
-                out.append(name + ("/" if isinstance(item, dict) and "F" in flags else ""))
+                out.append(shown)
     if out and not ("l" in flags or "1" in flags) and sh.last and sh.interactive:
         width = max(map(len, out)) + 2
         per = max(1, shutil.get_terminal_size((80, 24)).columns // width)
@@ -750,6 +757,9 @@ def b_cat(sh, args, stdin):
             rc = 1
         elif isinstance(node, dict):
             sh.err("cat: %s: Is a directory" % a)
+            rc = 1
+        elif isinstance(node, Exe):
+            sh.err("cat: %s: binary file, not shown" % a)
             rc = 1
         else:
             out.append(node)
