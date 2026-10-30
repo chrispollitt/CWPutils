@@ -27,6 +27,7 @@ done
 "$PY" -W ignore tests/test_anim.py || exit 1
 "$PY" -W ignore tests/test_3d.py || exit 1
 "$PY" -W ignore tests/test_scroll.py || exit 1
+"$PY" -W ignore tests/test_bidetsh.py || exit 1
 "$PY" -W ignore tests/test_mixed.py || exit 1
 "$PY" -W ignore tests/test_gfx.py || exit 1
 "$PY" -W ignore tests/test_docs.py || exit 1

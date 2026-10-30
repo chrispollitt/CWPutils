@@ -1,6 +1,6 @@
 #!/bin/sh
 # Serve bidet in a browser tab through ttyd (xterm.js), with SIXEL turned on in
-# the client.  The session runs bidet-web.sh (a prompt, not a shell), but it is
+# the client.  The session runs bidet-web.sh (bidetsh.py, an imitation shell, not a real one), but it is
 # still a writable terminal, so keep it on one interface, "lo" by default, and
 # put an SSH tunnel or an authenticating reverse proxy in front of it.
 #
