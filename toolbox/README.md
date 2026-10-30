@@ -16,6 +16,7 @@ or bash for `fixperms` and `gitcheck`); no build step or third-party packages ar
 | [`wincygterm`](#wincygterm) | Run Cygwin programs on a real pty inside Windows Terminal (fixes OSC colour queries and ncurses input) |
 | [`fixperms`](#fixperms) | Repair owner, mode and ACL of files created from an elevated (administrator) Cygwin shell |
 | [`gitcheck`](#gitcheck) | Report uncommitted changes and unpushed commits in every repo under a directory, and optionally commit, push and clone missing GitHub repos |
+| [`clean-user-cache.ps1`](#clean-user-cacheps1) | Preview or remove old per-user temporary files and browser caches; optionally schedule daily cleanup |
 
 Full details for each tool are in its man page (`cut2.1`, `pullout.1`,
 `rpullout.1`, `ghgrep.1`, `tcping.1`, `termprobe.1`, `wincygterm.1`,
@@ -28,6 +29,7 @@ Python 3.8+ and nothing else. All the Python scripts use only the standard
 library (`argparse`, `re`, `socket`, `sys`). `fixperms` needs bash 4+ and
 the usual coreutils plus `getfacl`/`setfacl` (part of Cygwin's base install).
 `gitcheck` needs bash 4.4+ and git; the GitHub CLI `gh` is optional.
+`clean-user-cache.ps1` uses built-in Windows PowerShell and Task Scheduler cmdlets.
 
 ## Installation
 
@@ -271,6 +273,42 @@ Processing CWPutils...
 - `-u` lists your GitHub repositories that have no directory of the same name here (needs `gh`); with `-i` it offers to clone each one.
 - Subdirectories that are not repositories are flagged, except names like `tmp`, `BAK`, `old` or `*.bak` (any case) and anything listed in `~/.config/gitcheck/ignore` (name patterns, or full paths starting with `/`). With `-i`, answering `g` to a flagged directory makes it a new repo (`git init`, add or ignore its files, an initial commit, then optionally `gh repo create` as private or public and push); answering `i` adds it to the ignore file.
 - Answering `n` to setting an upstream marks the branch local-only (`branch.NAME.gitcheckNoUpstream` in the repo's config), and `n` to cloning adds the repo to `~/.config/gitcheck/noclone`, so neither is asked about again.
+
+## clean-user-cache.ps1
+
+For Windows, preview or clean this user's old temporary files and browser
+cache files, and archive inactive files from the configured OneDrive folder.
+It does not need administrator rights.
+
+```powershell
+# Preview cache cleanup and old-file archiving; changes nothing
+powershell.exe -NoProfile -File .\clean-user-cache.ps1
+
+# Install a per-user task to clean daily at 7:00 PM
+powershell.exe -NoProfile -File .\clean-user-cache.ps1 -Install
+
+# Clean caches and archive eligible documents now
+powershell.exe -NoProfile -File .\clean-user-cache.ps1 -Apply -Confirm
+
+# Remove the task created by this script
+powershell.exe -NoProfile -File .\clean-user-cache.ps1 -Uninstall
+```
+
+Only files at least 7 days old are eligible (change this with
+`-MinimumAgeDays`). Cleanup is limited to the current user's
+`AppData\Local\Temp`, Chrome/Edge cache folders, and Firefox `cache2`.
+Browser cache is skipped while its browser process is running. Cookies,
+history, downloads, and browser profiles are not touched. The script also
+checks `OneDrive - Local\Documents\!Office\Clients\!ARCHIVE` for files whose
+last-access time is at least 60 days old, recursively. In Apply mode, these
+files are placed in a dated ZIP alongside `!ARCHIVE`; each entry is verified
+against its source before unchanged originals are removed. If verification
+fails, originals are kept. Windows may not update last-access timestamps
+reliably, depending on system settings. Links/reparse points are skipped,
+and directories are left in place. The task runs as the current user with
+limited privileges; keep the script at its installed path while the task is
+enabled, and the task runs while that user is signed in. Run the default
+preview first to see what would be cleaned or archived.
 
 ## Testing
 
