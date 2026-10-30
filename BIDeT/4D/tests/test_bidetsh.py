@@ -191,20 +191,29 @@ class TestOutsidePrograms(ShellCase):
 
 
 class TestBidet(ShellCase):
-    def draw(self, line):
+    def draw(self, line, window=(30, 100, 0, 0)):
         calls = []
 
         def fake_run(argv, **kw):
             calls.append(argv)
             return mock.Mock(returncode=0)
-        with mock.patch.object(bidetsh.subprocess, "run", fake_run):
+        with mock.patch.object(bidetsh.subprocess, "run", fake_run), mock.patch.object(bidetsh, "window_size", lambda: window):
             self.run_(line)
         return calls
 
     def test_text_is_forced_and_after_double_dash(self):
         argv = self.draw("bidet -P arc,gold --3d -w 600 --sway=20 --scroll=up Hello there")[0]
-        self.assertEqual(argv[2:], ["-t", "-P", "arc", "-P", "gold", "--3d", "-w", "600", "--sway=20", "--scroll=up",
-                                    "--", "Hello there"])
+        self.assertEqual(argv[2:], ["-t", "-P", "arc", "-P", "gold", "--3d", "--sway=20", "--scroll=up",
+                                    "--bifout=--width 600 --height 459", "--", "Hello there"])
+
+    def test_picture_is_kept_shorter_than_the_window(self):
+        # 100 columns of 8 px, 30 rows: all but the last 3 rows (17 px each) are for the picture
+        self.assertEqual(self.draw("bidet Hi")[0][-3], "--bifout=--width 800 --height 459")
+        # a window that reports pixels: 95% of the width, rows as tall as they are
+        self.assertEqual(self.draw("bidet Hi", (40, 200, 1800, 880))[0][-3], "--bifout=--width 1710 --height 814")
+        # a tiny window still gets a picture, and a wide one is capped as bidet does
+        self.assertEqual(self.draw("bidet Hi", (4, 300, 0, 0))[0][-3], "--bifout=--width 2400 --height 100")
+        self.assertEqual(self.draw("bidet Hi", (0, 0, 0, 0))[0][-3], "--bifout=--width 640 --height 357")
 
     def test_text_from_a_pipe(self):
         self.assertEqual(self.draw("echo Hi | bidet")[0][-2:], ["--", "Hi"])

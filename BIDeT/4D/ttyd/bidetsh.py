@@ -490,6 +490,30 @@ TOOLS = {
     "banner": text_tool("banner"),
 }
 
+def window_size():
+    """(rows, columns, width px, height px) of the terminal; the pixels are 0 if it does not say (ttyd does not), and 24x80 if
+    there is no terminal."""
+    try:
+        import fcntl
+        import struct
+        import termios
+        return struct.unpack("HHHH", fcntl.ioctl(1, termios.TIOCGWINSZ, b"\0" * 8))
+    except Exception:
+        return (24, 80, 0, 0)
+
+
+def fit_size(width=None):
+    """(width, height) in pixels to draw within.  The width is bidet's own rule (95% of the window, or 8 px a column when the
+    terminal gives no pixels); the height leaves the last three rows free.  A picture as tall as the window hides the prompt
+    under it (the browser draws images over the text), and a wide window gives a tall picture.  A row is taken as 17 px when
+    the terminal does not say."""
+    rows, cols, xp, yp = window_size()
+    rows, cols = rows or 24, cols or 80
+    w = width or max(320, min(2400, int(0.95 * xp) if xp else 8 * cols))
+    cell_h = yp / float(rows) if yp else 17
+    return w, max(100, int((rows - 3) * cell_h))
+
+
 def bidet(sh, args, stdin):
     presets = sh.presets()
 
@@ -522,13 +546,16 @@ def bidet(sh, args, stdin):
     if not sh.last:
         raise ShellError("it draws on the terminal, so it has to be the last command in a pipeline")
     argv = [bidet_python(), BIDET, "-t"]
+    width = None
     for name, val in opts:
         if name in ("-P", "--preset"):
             for p in val.split(","):
                 argv += ["-P", p]
+        elif name in ("-w", "--width"):
+            width = int(val)
         else:
             argv += flat([(name, val)])
-    argv += ["--", text]
+    argv += ["--bifout=--width %d --height %d" % fit_size(width), "--", text]
     try:
         # inherits the terminal (it asks it for its size, then draws SIXEL); same process group, so no SIGTTIN
         rc = subprocess.run(argv, cwd=sh.scratch, timeout=TIMEOUT).returncode
