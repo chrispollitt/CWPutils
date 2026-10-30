@@ -514,6 +514,21 @@ def fit_size(width=None):
     return w, max(100, int((rows - 3) * cell_h))
 
 
+def termsize(sh, args, stdin):
+    """What the terminal reports and the picture size bidet is given: for finding out why a picture does not fit a window."""
+    rows, cols, xp, yp = window_size()
+    sys.path.insert(0, os.path.dirname(HERE))
+    try:
+        import bifterm
+        reply = bifterm.query(want_bg=False, want_cell=True)
+        cell = "%s (width, height) px, asked: %s, sixel: %s" % (reply.cell, reply.asked, reply.sixel)
+    except Exception as e:
+        cell = "not asked (%s)" % e
+    w, h = fit_size()
+    return ("window:   %d rows x %d columns, %d x %d px reported (0 = not said)\ncell:     %s\npicture:  at most %d x %d px "
+            "(%d px per row assumed)\n" % (rows, cols, xp, yp, cell, w, h, 17)), 0
+
+
 def bidet(sh, args, stdin):
     presets = sh.presets()
 
@@ -587,6 +602,9 @@ def builtin(*names):
     return deco
 
 
+builtin("termsize")(termsize)
+
+
 def need_stdin(stdin):
     if stdin is None:
         raise ShellError("no file given, and nothing piped in")
@@ -624,7 +642,7 @@ bidetsh, an imitation of bash.  Join commands with | (pipe), ; && ||.  Quotes, $
   bidet -l                       list the presets      bidet -h   all the options
   text toys:  %s
   text tools: cat rev tac nl wc head tail sort uniq tr grep seq
-  the rest:   echo ls cd pwd date cal whoami hostname uname id uptime env history clear fonts type help exit
+  the rest:   echo ls cd pwd date cal whoami hostname uname id uptime env history clear fonts termsize type help exit
 
   fortune -s | cowsay                  figlet -f slant Hello | rev
   fortune -s | bidet -P gold           echo "Hello" | toilet --gay
