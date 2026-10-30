@@ -529,6 +529,16 @@ def termsize(sh, args, stdin):
             "(%d px per row assumed)\n" % (rows, cols, xp, yp, cell, w, h, 17)), 0
 
 
+def pause_and_clear(sh):
+    """Keep the picture on the screen until Enter, then clear it: in the browser a picture can hide the prompt under it."""
+    try:
+        input("-- press Enter to clear --")
+    except (EOFError, KeyboardInterrupt):
+        pass
+    sh.out.write("\033[H\033[2J\033[3J")
+    sh.out.flush()
+
+
 def bidet(sh, args, stdin):
     presets = sh.presets()
 
@@ -583,6 +593,7 @@ def bidet(sh, args, stdin):
     if sh.interactive:
         sh.out.write("\033[0m\033[?25h")      # an animation cut short can leave the cursor hidden
         sh.out.flush()
+        pause_and_clear(sh)
     return "", rc
 
 

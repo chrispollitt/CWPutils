@@ -218,6 +218,23 @@ class TestBidet(ShellCase):
     def test_text_from_a_pipe(self):
         self.assertEqual(self.draw("echo Hi | bidet")[0][-2:], ["--", "Hi"])
 
+    def test_on_a_terminal_it_waits_for_enter_and_clears(self):
+        asked = []
+        self.sh.interactive = True
+        with mock.patch("builtins.input", lambda prompt="": asked.append(prompt) or ""):
+            self.draw("echo Hi | bidet")
+        self.assertEqual(len(asked), 1)
+        self.assertIn("Enter", asked[0])
+        self.assertTrue(self.out.getvalue().endswith("\033[H\033[2J\033[3J"))
+        with mock.patch("builtins.input", mock.Mock(side_effect=EOFError)):        # Ctrl-D at the pause still clears
+            self.draw("echo Hi | bidet")
+        self.assertTrue(self.out.getvalue().endswith("\033[H\033[2J\033[3J"))
+
+    def test_without_a_terminal_it_does_not_wait(self):
+        with mock.patch("builtins.input", mock.Mock(side_effect=AssertionError("asked"))):
+            self.draw("echo Hi | bidet")
+        self.assertNotIn("\033[2J", self.out.getvalue())
+
     def test_must_be_last(self):
         self.assertEqual(self.draw("echo Hi | bidet | cat"), [])
         self.assertIn("last command", self.err.getvalue())
