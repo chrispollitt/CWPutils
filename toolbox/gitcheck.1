@@ -101,6 +101,11 @@ Branches marked "don't ask again" by
 .B \-i
 are shown with
 .BR "(local only)" .
+A repository marked local-only (see
+.B Local-only repository
+under
+.BR "INTERACTIVE MODE" )
+is not checked for unpushed commits at all, and says so.
 .PP
 Without
 .BR \-f ,
@@ -156,7 +161,7 @@ at any prompt exits
 .B gitcheck
 at once, leaving everything done so far in place. The "Not a repository" prompt comes with any
 .BR \-i ,
-the "Clean-up pending" prompt and the five after the next one with
+the "Clean-up pending" prompt and the six after the next one with
 .BR \-c ,
 and the last with
 .BR \-u .
@@ -298,6 +303,20 @@ otherwise a real merge, but only while the main branch is checked out; a merge t
 and leaves everything as it was. After a merge it asks whether to delete the branch. A merged or deleted
 branch needs no upstream or push of its own: its commits go with the main branch, which is offered for
 pushing in its turn.
+.TP
+.B Local-only repository
+For a repository with no remote at all, where unpushed commits have nowhere to go (and not every
+unpushed branch is already marked "local only"), asked once per repository:
+.B y
+marks the whole repository local-only by setting
+.B gitcheck.localOnly
+to true in its own git config, after which its unpushed commits are no longer checked or flagged;
+.B s
+skips it for this run only. The mark can be set or removed by hand, also for a repository that has
+a remote:
+.B git config \-\-bool gitcheck.localOnly true
+and
+.BR "git config \-\-unset gitcheck.localOnly" .
 .TP
 .B Push
 For each branch with unpushed commits and an upstream (including one just set):

@@ -11,7 +11,9 @@
 # new repositories.
 #
 # For a branch with no upstream it can also merge the branch into the main
-# branch, or delete it when its commits are already there.  And with -c, if DIR
+# branch, or delete it when its commits are already there.  A repository with no
+# remote can be marked local-only (git config gitcheck.localOnly true): its
+# unpushed commits are then not flagged.  And with -c, if DIR
 # has a non-empty tmp-branches.txt and a clean-up-branches.sh, it says so and (with
 # -i) offers to run that script first.
 #
@@ -247,6 +249,16 @@ handle_pull() {
 # Per-branch git config key recording "never set an upstream for this branch"
 NO_UPSTREAM_KEY=gitcheckNoUpstream
 
+# Per-repository config key recording "this repository is local-only": it is not
+# checked for unpushed commits (set by answering y for a repository with no remote,
+# or by hand: git config --bool gitcheck.localOnly true)
+LOCAL_ONLY_KEY=gitcheck.localOnly
+
+# True if repository $1 was marked local-only
+is_local_only_repo() {
+  [ "$(git -C "$1" config --bool "$LOCAL_ONLY_KEY")" = true ]
+}
+
 # True if branch $2 in repo $1 was marked as never needing an upstream
 is_local_only() {
   [ "$(git -C "$1" config --bool "branch.$2.$NO_UPSTREAM_KEY")" = true ]
@@ -296,6 +308,25 @@ handle_push() {
   local dir=$1 b n remote merge def state
   local -a branches
   mapfile -t branches < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
+
+  # A repository with no remote at all has nowhere to push: offer to mark the whole
+  # repository local-only (once), unless every unpushed branch is already marked
+  if ! git -C "$dir" remote | grep -q .; then
+    local open=false
+    for b in "${branches[@]}"; do
+      n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
+      [ -n "$n" ] && [ "$n" -gt 0 ] && ! is_local_only "$dir" "$b" && open=true
+    done
+    [ "$open" = true ] || return 0
+    ask "'${dir##*/}' has no remote. Mark the repository local-only, so its unpushed commits are no longer flagged? [y]es, [s]kip, [q]uit" "ysq"
+    case $reply in
+      y ) git -C "$dir" config --bool "$LOCAL_ONLY_KEY" true
+          echo "  │    '${dir##*/}' marked local-only (undo: git config --unset $LOCAL_ONLY_KEY)" ;;
+      q ) exit 0 ;;
+    esac
+    return 0
+  fi
+
   for b in "${branches[@]}"; do
     n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
     [ -n "$n" ] && [ "$n" -gt 0 ] || continue
@@ -554,6 +585,8 @@ for dir in */; do
       else
         echo "Yes (but NOT on GitHub)"
       fi
+    elif is_local_only_repo "$dir"; then
+      echo "  ├─ Linked to GitHub: No (local-only repository)"
     else
       echo "  ├─ Linked to GitHub: No"
     fi
@@ -583,20 +616,24 @@ for dir in */; do
 
       # Commits on local branches that are on no remote-tracking branch
       unpushed=""
-      while IFS= read -r b; do
-        n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
-        if [ -n "$n" ] && [ "$n" -gt 0 ]; then
-          unpushed+="  │  └─ $b: $n"
-          is_local_only "$dir" "$b" && unpushed+=" (local only)"
-          unpushed+=$'\n'
-        fi
-      done < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
-      if [ -n "$unpushed" ]; then
-        echo "  ├─ Unpushed commits: Yes"
-        printf '%s' "$unpushed"
-        [ "$interactive" = true ] && handle_push "$dir"
+      if is_local_only_repo "$dir"; then
+        echo "  ├─ Unpushed commits: not checked (local-only repository)"
       else
-        echo "  ├─ Unpushed commits: No"
+        while IFS= read -r b; do
+          n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
+          if [ -n "$n" ] && [ "$n" -gt 0 ]; then
+            unpushed+="  │  └─ $b: $n"
+            is_local_only "$dir" "$b" && unpushed+=" (local only)"
+            unpushed+=$'\n'
+          fi
+        done < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
+        if [ -n "$unpushed" ]; then
+          echo "  ├─ Unpushed commits: Yes"
+          printf '%s' "$unpushed"
+          [ "$interactive" = true ] && handle_push "$dir"
+        else
+          echo "  ├─ Unpushed commits: No"
+        fi
       fi
     fi
     

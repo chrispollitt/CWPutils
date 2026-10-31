@@ -470,6 +470,54 @@ class GitcheckTest(unittest.TestCase):
         self.assertEqual(self.git("status", "--porcelain"), "")
         self.assertNotIn("f1", self.git("log", "--format=%s", "main"))
 
+    # --- repositories with no remote: local-only -------------------------------
+
+    def make_local_repo(self, name="loc"):
+        """A repository with a commit and no remote at all (sorts before 'proj')."""
+        path = os.path.join(self.top, name)
+        self.git("init", "-q", path, cwd=self.base)
+        self.git("symbolic-ref", "HEAD", "refs/heads/main", cwd=path)
+        with open(os.path.join(path, "a.txt"), "w") as f:
+            f.write("a\n")
+        self.git("add", "a.txt", cwd=path)
+        self.git("commit", "-q", "-m", "first", cwd=path)
+        return path
+
+    def test_repo_without_remote_can_be_marked_local_only(self):
+        path = self.make_local_repo()
+        r = self.run_gitcheck("-c", "-i", answers=["y"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.git("config", "--bool", "gitcheck.localOnly", cwd=path).strip(), "true")
+        self.assertIn("marked local-only", r.stdout)
+        # next run: nothing to ask (an answer would be needed otherwise), and it says why
+        r = self.run_gitcheck("-c", "-i")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Unpushed commits: not checked (local-only repository)", r.stdout)
+        self.assertIn("Linked to GitHub: No (local-only repository)", r.stdout)
+        self.assertNotIn("Unpushed commits: Yes", r.stdout)
+
+    def test_skipping_the_local_only_question_asks_again(self):
+        path = self.make_local_repo()
+        r = self.run_gitcheck("-c", "-i", answers=["s"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.git("config", "--bool", "--default", "false", "gitcheck.localOnly", cwd=path).strip(), "false")
+        r = self.run_gitcheck("-c", "-i")
+        self.assertEqual(r.returncode, 1)   # asked again and could not read an answer
+
+    def test_local_only_set_by_hand_is_respected_even_with_a_remote(self):
+        self.git("config", "--bool", "gitcheck.localOnly", "true")
+        self.git("commit", "-q", "--allow-empty", "-m", "unpushed")
+        r = self.run_gitcheck("-c", "-i")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Unpushed commits: not checked (local-only repository)", r.stdout)
+
+    def test_no_remote_question_when_every_branch_is_already_marked(self):
+        path = self.make_local_repo()
+        self.git("config", "--bool", "branch.main.gitcheckNoUpstream", "true", cwd=path)
+        r = self.run_gitcheck("-c", "-i")                         # no answers: any prompt fails
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("main: 1 (local only)", r.stdout)
+
     # --- finished branches waiting for the clean-up script ----------------------
 
     def cleanup_files(self, entries="CWPutils somebranch\n", script=True):
