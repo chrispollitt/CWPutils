@@ -156,10 +156,32 @@ at any prompt exits
 .B gitcheck
 at once, leaving everything done so far in place. The "Not a repository" prompt comes with any
 .BR \-i ,
-the next five with
+the "Clean-up pending" prompt and the five after the next one with
 .BR \-c ,
 and the last with
 .BR \-u .
+.TP
+.B Clean-up pending
+With
+.BR \-c ,
+if the directory being checked holds a non-empty
+.B tmp-branches.txt
+(one "repo branch" per line; blank lines and # comments are ignored) and an executable
+.BR clean-up-branches.sh ,
+the number of listed branches is reported before any repository is processed. Without
+.B \-i
+that is all. With it, asked once:
+.B y
+runs the script (in that directory) now, so branches that are done are removed instead of being
+offered a push of their own;
+.B d
+runs it with
+.B \-n
+(a dry run) and asks again;
+.B n
+goes on without it;
+.B q
+exits.
 .TP
 .B Not a repository
 For each flagged subdirectory that is not a repository:

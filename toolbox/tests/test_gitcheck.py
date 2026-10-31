@@ -470,6 +470,68 @@ class GitcheckTest(unittest.TestCase):
         self.assertEqual(self.git("status", "--porcelain"), "")
         self.assertNotIn("f1", self.git("log", "--format=%s", "main"))
 
+    # --- finished branches waiting for the clean-up script ----------------------
+
+    def cleanup_files(self, entries="CWPutils somebranch\n", script=True):
+        with open(os.path.join(self.top, "tmp-branches.txt"), "w") as f:
+            f.write(entries)
+        if script:
+            path = os.path.join(self.top, "clean-up-branches.sh")
+            with open(path, "w") as f:
+                f.write('#!/bin/sh\necho "args: $*" >> "$(dirname "$0")/cleanup-ran"\n')
+            os.chmod(path, 0o755)
+        return os.path.join(self.top, "cleanup-ran")
+
+    def test_cleanup_is_reported_without_i(self):
+        ran = self.cleanup_files("# note\n\nCWPutils a\nCWPutils b\n")
+        r = self.run_gitcheck("-c")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Clean-up pending: 2 finished branch(es)", r.stdout)
+        self.assertFalse(os.path.exists(ran))
+
+    def test_cleanup_offered_and_run_first(self):
+        ran = self.cleanup_files()
+        r = self.run_gitcheck("-c", "-i", answers=["y"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Clean-up pending: 1", r.stdout)
+        self.assertTrue(r.stdout.index("Clean-up pending") < r.stdout.index("Processing proj"))
+        with open(ran) as f:
+            self.assertEqual(f.read(), "args: \n")
+
+    def test_cleanup_dry_run_then_no(self):
+        ran = self.cleanup_files()
+        r = self.run_gitcheck("-c", "-i", answers=["d", "n"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(ran) as f:
+            self.assertEqual(f.read(), "args: -n\n")     # only the dry run
+
+    def test_cleanup_declined(self):
+        ran = self.cleanup_files()
+        r = self.run_gitcheck("-c", "-i", answers=["n"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(ran))
+        self.assertIn("Processing proj", r.stdout)
+
+    def test_cleanup_quit(self):
+        self.cleanup_files()
+        r = self.run_gitcheck("-c", "-i", answers=["q"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("Processing proj", r.stdout)
+
+    def test_no_cleanup_note_when_nothing_to_do(self):
+        self.cleanup_files("# only a comment\n\n")
+        r = self.run_gitcheck("-c")
+        self.assertNotIn("Clean-up", r.stdout)
+        self.cleanup_files("CWPutils a\n", script=False)     # a list but no script
+        os.remove(os.path.join(self.top, "clean-up-branches.sh"))
+        r = self.run_gitcheck("-c")
+        self.assertNotIn("Clean-up", r.stdout)
+
+    def test_no_cleanup_without_c(self):
+        self.cleanup_files()
+        r = self.run_gitcheck("-b")
+        self.assertNotIn("Clean-up", r.stdout)
+
     # --- GitHub repositories not cloned (-u) ----------------------------------
 
     def fake_gh(self, names):

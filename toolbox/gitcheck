@@ -11,7 +11,9 @@
 # new repositories.
 #
 # For a branch with no upstream it can also merge the branch into the main
-# branch, or delete it when its commits are already there.
+# branch, or delete it when its commits are already there.  And with -c, if DIR
+# has a non-empty tmp-branches.txt and a clean-up-branches.sh, it says so and (with
+# -i) offers to run that script first.
 #
 # "Don't ask again" answers to setting an upstream are kept in the repo's own
 # config as branch.<name>.gitcheckNoUpstream; to cloning, in
@@ -487,6 +489,35 @@ if [ $# -eq 1 ]; then
   cd -- "$1" || exit 2
 fi
 top=$(pwd -P)
+
+# Finished branches waiting for a clean-up script: with -c, if DIR holds a non-empty
+# tmp-branches.txt (one "repo branch" per line; blank lines and # comments ignored) and
+# an executable clean-up-branches.sh, say so, and with -i offer to run it before the
+# branches are checked (so branches that are done are removed, not offered a push).
+CLEANUP_LIST=tmp-branches.txt
+CLEANUP_SCRIPT=clean-up-branches.sh
+handle_cleanup() {
+  local list=$top/$CLEANUP_LIST script=$top/$CLEANUP_SCRIPT n
+  [ -f "$list" ] && [ -x "$script" ] || return 0
+  n=$(grep -cvE '^[[:space:]]*(#|$)' "$list")
+  [ "${n:-0}" -gt 0 ] || return 0
+  echo "Clean-up pending: $n finished branch(es) listed in $CLEANUP_LIST"
+  if [ "$interactive" != true ]; then
+    echo "  (run ./$CLEANUP_SCRIPT, or use -i to be offered it here)"
+    echo
+    return 0
+  fi
+  while true; do
+    ask "Run $CLEANUP_SCRIPT first? [y]es, [d]ry run (-n) first, [n]o, [q]uit" "ydnq"
+    case $reply in
+      y ) (cd "$top" && "./$CLEANUP_SCRIPT"); echo; return 0 ;;
+      d ) (cd "$top" && "./$CLEANUP_SCRIPT" -n) ;;
+      n ) echo; return 0 ;;
+      q ) exit 0 ;;
+    esac
+  done
+}
+[ "$check_changes" = true ] && handle_cleanup
 
 # List the signed-in user's GitHub repositories (skipped without gh)
 have_gh=false
