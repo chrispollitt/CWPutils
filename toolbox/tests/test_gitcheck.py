@@ -511,17 +511,35 @@ class GitcheckTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("Unpushed commits: not checked (local-only repository)", r.stdout)
 
-    def test_no_remote_question_is_asked_even_when_the_branch_is_marked(self):
-        # the per-branch mark leaves the repository flagged "Unpushed commits: Yes", so ask anyway
+    def test_no_remote_question_when_every_branch_is_already_marked(self):
         path = self.make_local_repo()
         self.git("config", "--bool", "branch.main.gitcheckNoUpstream", "true", cwd=path)
-        r = self.run_gitcheck("-c", "-i", answers=["y"])
+        r = self.run_gitcheck("-c", "-i")                         # no answers: any prompt fails
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("main: 1 (local only)", r.stdout)
-        self.assertEqual(self.git("config", "--bool", "gitcheck.localOnly", cwd=path).strip(), "true")
-        r = self.run_gitcheck("-c", "-i")                         # now nothing is asked or flagged
+        self.assertIn("Unpushed commits: No (only on local-only branches)", r.stdout)
+
+    def test_local_only_branch_does_not_flag_the_repository(self):
+        # a repository with a remote: a marked branch is listed, but "Unpushed commits" stays No
+        self.git("checkout", "-q", "-b", "media")
+        self.git("commit", "-q", "--allow-empty", "-m", "m1")
+        self.git("checkout", "-q", "main")
+        self.git("config", "--bool", "branch.media.gitcheckNoUpstream", "true")
+        r = self.run_gitcheck("-c", "-i")                         # no answers: nothing may be asked
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("not checked (local-only repository)", r.stdout)
+        self.assertIn("Unpushed commits: No (only on local-only branches)", r.stdout)
+        self.assertIn("media: 1 (local only)", r.stdout)
+
+    def test_unmarked_branch_still_flags_next_to_a_marked_one(self):
+        self.git("checkout", "-q", "-b", "media")
+        self.git("commit", "-q", "--allow-empty", "-m", "m1")
+        self.git("checkout", "-q", "main")
+        self.git("commit", "-q", "--allow-empty", "-m", "unpushed on main")
+        self.git("config", "--bool", "branch.media.gitcheckNoUpstream", "true")
+        r = self.run_gitcheck("-c")
+        self.assertIn("Unpushed commits: Yes", r.stdout)
+        self.assertIn("media: 1 (local only)", r.stdout)
+        self.assertIn("main: 1", r.stdout)
 
     # --- finished branches waiting for the clean-up script ----------------------
 

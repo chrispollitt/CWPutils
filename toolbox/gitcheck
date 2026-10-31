@@ -310,9 +310,14 @@ handle_push() {
   mapfile -t branches < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
 
   # A repository with no remote at all has nowhere to push: offer to mark the whole
-  # repository local-only (once).  A branch already marked "local only" does not stop
-  # the question: that mark leaves the repository flagged as having unpushed commits.
+  # repository local-only (once), unless every unpushed branch is already marked
   if ! git -C "$dir" remote | grep -q .; then
+    local open=false
+    for b in "${branches[@]}"; do
+      n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
+      [ -n "$n" ] && [ "$n" -gt 0 ] && ! is_local_only "$dir" "$b" && open=true
+    done
+    [ "$open" = true ] || return 0
     ask "'${dir##*/}' has no remote. Mark the repository local-only, so its unpushed commits are no longer flagged? [y]es, [s]kip, [q]uit" "ysq"
     case $reply in
       y ) git -C "$dir" config --bool "$LOCAL_ONLY_KEY" true
@@ -614,16 +619,22 @@ for dir in */; do
       if is_local_only_repo "$dir"; then
         echo "  ├─ Unpushed commits: not checked (local-only repository)"
       else
+        flagged=false
         while IFS= read -r b; do
           n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
           if [ -n "$n" ] && [ "$n" -gt 0 ]; then
             unpushed+="  │  └─ $b: $n"
-            is_local_only "$dir" "$b" && unpushed+=" (local only)"
+            if is_local_only "$dir" "$b"; then unpushed+=" (local only)"; else flagged=true; fi
             unpushed+=$'\n'
           fi
         done < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
         if [ -n "$unpushed" ]; then
-          echo "  ├─ Unpushed commits: Yes"
+          # branches marked "local only" are listed but do not count as unpushed
+          if [ "$flagged" = true ]; then
+            echo "  ├─ Unpushed commits: Yes"
+          else
+            echo "  ├─ Unpushed commits: No (only on local-only branches)"
+          fi
           printf '%s' "$unpushed"
           [ "$interactive" = true ] && handle_push "$dir"
         else
