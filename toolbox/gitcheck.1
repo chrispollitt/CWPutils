@@ -305,8 +305,8 @@ branch needs no upstream or push of its own: its commits go with the main branch
 pushing in its turn.
 .TP
 .B Local-only repository
-For a repository with no remote at all, where unpushed commits have nowhere to go (and not every
-unpushed branch is already marked "local only"), asked once per repository:
+For a repository with no remote at all, where unpushed commits have nowhere to go (even if its
+branches are already marked "local only", which leaves the repository flagged), asked once per repository:
 .B y
 marks the whole repository local-only by setting
 .B gitcheck.localOnly

@@ -511,12 +511,17 @@ class GitcheckTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("Unpushed commits: not checked (local-only repository)", r.stdout)
 
-    def test_no_remote_question_when_every_branch_is_already_marked(self):
+    def test_no_remote_question_is_asked_even_when_the_branch_is_marked(self):
+        # the per-branch mark leaves the repository flagged "Unpushed commits: Yes", so ask anyway
         path = self.make_local_repo()
         self.git("config", "--bool", "branch.main.gitcheckNoUpstream", "true", cwd=path)
-        r = self.run_gitcheck("-c", "-i")                         # no answers: any prompt fails
+        r = self.run_gitcheck("-c", "-i", answers=["y"])
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("main: 1 (local only)", r.stdout)
+        self.assertEqual(self.git("config", "--bool", "gitcheck.localOnly", cwd=path).strip(), "true")
+        r = self.run_gitcheck("-c", "-i")                         # now nothing is asked or flagged
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("not checked (local-only repository)", r.stdout)
 
     # --- finished branches waiting for the clean-up script ----------------------
 

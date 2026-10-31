@@ -310,14 +310,9 @@ handle_push() {
   mapfile -t branches < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
 
   # A repository with no remote at all has nowhere to push: offer to mark the whole
-  # repository local-only (once), unless every unpushed branch is already marked
+  # repository local-only (once).  A branch already marked "local only" does not stop
+  # the question: that mark leaves the repository flagged as having unpushed commits.
   if ! git -C "$dir" remote | grep -q .; then
-    local open=false
-    for b in "${branches[@]}"; do
-      n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
-      [ -n "$n" ] && [ "$n" -gt 0 ] && ! is_local_only "$dir" "$b" && open=true
-    done
-    [ "$open" = true ] || return 0
     ask "'${dir##*/}' has no remote. Mark the repository local-only, so its unpushed commits are no longer flagged? [y]es, [s]kip, [q]uit" "ysq"
     case $reply in
       y ) git -C "$dir" config --bool "$LOCAL_ONLY_KEY" true
