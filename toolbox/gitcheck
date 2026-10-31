@@ -10,6 +10,9 @@
 # or BAK and any listed in ~/.config/gitcheck/ignore; -i offers to make them
 # new repositories.
 #
+# For a branch with no upstream it can also merge the branch into the main
+# branch, or delete it when its commits are already there.
+#
 # "Don't ask again" answers to setting an upstream are kept in the repo's own
 # config as branch.<name>.gitcheckNoUpstream; to cloning, in
 # ~/.config/gitcheck/noclone; to flagging a directory, in
@@ -247,10 +250,48 @@ is_local_only() {
   [ "$(git -C "$1" config --bool "branch.$2.$NO_UPSTREAM_KEY")" = true ]
 }
 
-# Offer to set upstreams, then to push, for each local branch in repo $1
-# that has unpushed commits
+# The main branch of repo $1: what origin/HEAD points to, else main, else master
+# (only if it exists locally); prints nothing when there is none
+default_branch() {
+  local dir=$1 d
+  d=$(git -C "$dir" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
+  d=${d#*/}
+  if [ -n "$d" ] && git -C "$dir" show-ref -q --verify "refs/heads/$d"; then echo "$d"; return; fi
+  for d in main master; do
+    if git -C "$dir" show-ref -q --verify "refs/heads/$d"; then echo "$d"; return; fi
+  done
+}
+
+# Merge branch $2 into the main branch $3 of repo $1: a fast-forward where that
+# is all it takes, else a real merge, but only while $3 is checked out (a merge
+# needs the working tree).  Returns non-zero, after saying why, if it did not merge.
+merge_into_default() {
+  local dir=$1 b=$2 def=$3 cur
+  cur=$(git -C "$dir" symbolic-ref -q --short HEAD)
+  if git -C "$dir" merge-base --is-ancestor "refs/heads/$def" "refs/heads/$b"; then
+    if [ "$cur" = "$def" ]; then
+      git -C "$dir" merge -q --ff-only "refs/heads/$b" || return 1
+    else
+      git -C "$dir" fetch -q . "refs/heads/$b:refs/heads/$def" || return 1
+    fi
+    echo "  │    Fast-forwarded '$def' to '$b'"
+  elif [ "$cur" != "$def" ]; then
+    echo "  │    Not merging '$b': '$def' has moved on and is not checked out (check it out first)"
+    return 1
+  elif git -C "$dir" merge -q --no-edit "refs/heads/$b"; then
+    echo "  │    Merged '$b' into '$def'"
+  else
+    git -C "$dir" merge --abort 2>/dev/null
+    echo "  │    Merging '$b' into '$def' failed (conflicts?); aborted, nothing changed"
+    return 1
+  fi
+}
+
+# Offer to set upstreams (or merge a branch into the main branch, or delete one
+# already merged), then to push, for each local branch in repo $1 that has
+# unpushed commits
 handle_push() {
-  local dir=$1 b n remote merge
+  local dir=$1 b n remote merge def state
   local -a branches
   mapfile -t branches < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
   for b in "${branches[@]}"; do
@@ -267,12 +308,34 @@ handle_push() {
         echo "  │    '$b' has $n unpushed commit(s) but no remote is configured"
         continue
       fi
-      ask "'$b' has no upstream. Set it to $remote/$b? [y]es, [n]o (don't ask again), [s]kip, [q]uit" "ynsq"
+      # Is the branch's work already in the main branch, or could it be merged there?
+      def=$(default_branch "$dir")
+      state=none
+      if [ -n "$def" ] && [ "$b" != "$def" ]; then
+        if git -C "$dir" merge-base --is-ancestor "refs/heads/$b" "refs/heads/$def"; then
+          state=merged
+        else
+          state=unmerged
+        fi
+      fi
+      case $state in
+        merged )   ask "'$b' has no upstream, but its commits are already in '$def'. [d]elete the branch, [y]es set upstream $remote/$b anyway, [n]o (don't ask again), [s]kip, [q]uit" "ydnsq" ;;
+        unmerged ) ask "'$b' has no upstream. Set it to $remote/$b? [y]es, [m]erge it into '$def' instead, [n]o (don't ask again), [s]kip, [q]uit" "ymnsq" ;;
+        * )        ask "'$b' has no upstream. Set it to $remote/$b? [y]es, [n]o (don't ask again), [s]kip, [q]uit" "ynsq" ;;
+      esac
       case $reply in
         y ) merge="refs/heads/$b"
             git -C "$dir" config "branch.$b.remote" "$remote"
             git -C "$dir" config "branch.$b.merge" "$merge"
             echo "  │    Upstream of '$b' set to $remote/$b" ;;
+        d ) # every commit of the branch is reachable from $def, so -D loses nothing
+            git -C "$dir" branch -D "$b" && echo "  │    Deleted '$b' (its commits are in '$def')"
+            continue ;;
+        m ) if merge_into_default "$dir" "$b" "$def"; then
+              ask "Delete the merged branch '$b'? [y]es, [n]o (keep it)" "yn"
+              [ "$reply" = y ] && git -C "$dir" branch -D "$b" && echo "  │    Deleted '$b'"
+            fi
+            continue ;;
         n ) git -C "$dir" config --bool "branch.$b.$NO_UPSTREAM_KEY" true
             echo "  │    '$b' marked local-only (undo: git config --unset branch.$b.$NO_UPSTREAM_KEY)"
             continue ;;

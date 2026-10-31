@@ -259,6 +259,23 @@ without pushing;
 marks the branch local-only and never asks about it again;
 .B s
 skips it for this run only. Branches with no remote at all are reported and skipped.
+.IP
+The main branch is what
+.B origin/HEAD
+points to, else
+.B main
+or
+.BR master .
+A branch whose commits are all in it already is said to be so, and
+.B d
+deletes the branch (nothing is lost: every commit stays reachable from the main branch).
+For a branch with commits that are not in the main branch,
+.B m
+merges it there: a fast-forward when that is all it takes (also when the main branch is not checked out),
+otherwise a real merge, but only while the main branch is checked out; a merge that conflicts is aborted
+and leaves everything as it was. After a merge it asks whether to delete the branch. A merged or deleted
+branch needs no upstream or push of its own: its commits go with the main branch, which is offered for
+pushing in its turn.
 .TP
 .B Push
 For each branch with unpushed commits and an upstream (including one just set):

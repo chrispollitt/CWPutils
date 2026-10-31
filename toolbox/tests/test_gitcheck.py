@@ -390,6 +390,86 @@ class GitcheckTest(unittest.TestCase):
         r = self.run_gitcheck("-c", "-i")
         self.assertEqual(r.returncode, 1)   # it asked again and could not read an answer
 
+    # --- merging a branch into the main branch ---------------------------------
+
+    def commit_file(self, name, text, msg):
+        self.write(name, text)
+        self.git("add", name)
+        self.git("commit", "-q", "-m", msg)
+
+    def test_merged_branch_offers_delete(self):
+        self.git("checkout", "-q", "-b", "done")
+        self.commit_file("d.txt", "d\n", "d1")
+        self.git("checkout", "-q", "main")
+        self.git("merge", "-q", "--ff-only", "done")
+        # 'done' comes first (no upstream, already in main), then main (1 unpushed commit)
+        r = self.run_gitcheck("-c", "-i", answers=["d", "n"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Deleted 'done' (its commits are in 'main')", r.stdout)
+        self.assertEqual(self.git("branch", "--list", "done").strip(), "")
+        self.assertIn("d1", self.git("log", "--format=%s", "main"))
+
+    def test_unmerged_branch_can_be_merged_fast_forward(self):
+        self.git("checkout", "-q", "-b", "feat")
+        self.commit_file("f.txt", "f\n", "f1")
+        self.git("checkout", "-q", "main")
+        # feat: merge, keep the branch; then main: do not push
+        r = self.run_gitcheck("-c", "-i", answers=["m", "n", "n"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Fast-forwarded 'main' to 'feat'", r.stdout)
+        self.assertIn("f1", self.git("log", "--format=%s", "main"))
+        self.assertIn("feat", self.git("branch", "--list", "feat"))
+
+    def test_merge_then_delete_the_branch(self):
+        self.git("checkout", "-q", "-b", "feat")
+        self.commit_file("f.txt", "f\n", "f1")
+        self.git("checkout", "-q", "main")
+        r = self.run_gitcheck("-c", "-i", answers=["m", "y", "n"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("f1", self.git("log", "--format=%s", "main"))
+        self.assertEqual(self.git("branch", "--list", "feat").strip(), "")
+
+    def test_merge_fast_forwards_main_when_it_is_not_checked_out(self):
+        self.git("checkout", "-q", "-b", "feat")
+        self.commit_file("f.txt", "f\n", "f1")     # stays checked out
+        r = self.run_gitcheck("-c", "-i", answers=["m", "n", "n"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("f1", self.git("log", "--format=%s", "main"))
+        self.assertEqual(self.git("rev-parse", "--abbrev-ref", "HEAD").strip(), "feat")
+
+    def test_merge_diverged_when_main_is_checked_out(self):
+        self.git("checkout", "-q", "-b", "feat")
+        self.commit_file("f.txt", "f\n", "f1")
+        self.git("checkout", "-q", "main")
+        self.commit_file("g.txt", "g\n", "g1")
+        r = self.run_gitcheck("-c", "-i", answers=["m", "n", "n"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Merged 'feat' into 'main'", r.stdout)
+        self.assertTrue(os.path.exists(os.path.join(self.repo, "f.txt")))
+        self.assertTrue(os.path.exists(os.path.join(self.repo, "g.txt")))
+
+    def test_no_merge_when_main_moved_on_and_is_not_checked_out(self):
+        self.git("checkout", "-q", "-b", "feat")
+        self.commit_file("f.txt", "f\n", "f1")
+        self.git("checkout", "-q", "main")
+        self.commit_file("g.txt", "g\n", "g1")
+        self.git("checkout", "-q", "feat")
+        r = self.run_gitcheck("-c", "-i", answers=["m", "n"])     # feat: merge refused; main: do not push
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("has moved on and is not checked out", r.stdout)
+        self.assertNotIn("f1", self.git("log", "--format=%s", "main"))
+
+    def test_conflicting_merge_is_aborted(self):
+        self.git("checkout", "-q", "-b", "feat")
+        self.commit_file("README", "feat side\n", "f1")
+        self.git("checkout", "-q", "main")
+        self.commit_file("README", "main side\n", "m1")
+        r = self.run_gitcheck("-c", "-i", answers=["m", "n"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("failed", r.stdout)
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assertNotIn("f1", self.git("log", "--format=%s", "main"))
+
     # --- GitHub repositories not cloned (-u) ----------------------------------
 
     def fake_gh(self, names):
