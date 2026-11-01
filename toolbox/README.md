@@ -247,7 +247,7 @@ has a GitHub remote (and, with `gh` signed in, whether the repo exists on
 GitHub), then whatever the options ask for.
 
 ```bash
-gitcheck -c ~/github/chrispollitt     # uncommitted changes, unpushed commits
+gitcheck -c ~/github/chrispollitt     # fetch; uncommitted changes, unpulled and unpushed commits (-N: no fetch)
 gitcheck -c -i ~/github/chrispollitt  # same, and offer to add/ignore, commit, push
 gitcheck -u -i ~/github/chrispollitt  # ...and offer to clone GitHub repos not here yet
 gitcheck -f -s                        # fetch; ahead/behind; summary (current dir)

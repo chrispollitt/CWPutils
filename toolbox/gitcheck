@@ -22,7 +22,12 @@
 # ~/.config/gitcheck/noclone; to flagging a directory, in
 # ~/.config/gitcheck/ignore.
 #
-# See gitcheck.1 for the full description.  Exit status: 0 done, 2 usage error.
+# With -c every repository is fetched (with --prune) first, so unpulled and unpushed
+# commits are judged against the remotes as they are now; -N skips that.  A branch is
+# never offered a push while it is behind its upstream: pull first.
+#
+# See gitcheck.1 for the full description.  Exit status: 0 done, 1 could not read an
+# answer, 2 usage error.
 
 VERSION=1.0
 PROG=${0##*/}
@@ -32,11 +37,11 @@ usage() {
   echo "Usage: $PROG [options] [DIR]"
   echo "Check each git repository directly under DIR (default: the current directory)."
   echo "Options:"
-  echo "  -u    List repositories linked to GitHub, and GitHub repositories not cloned"
-  echo "        here (with -i: offer to clone them)"
-  echo "  -c    Check for uncommitted changes, unpulled commits (flagging potential"
-  echo "        conflicts) and unpushed commits"
-  echo "  -f    Fetch first, then compare the current branch with its upstream"
+  echo "  -u    List GitHub repositories not cloned here (with -i: offer to clone them)"
+  echo "  -c    Fetch, then check for uncommitted changes, unpulled commits (flagging"
+  echo "        potential conflicts) and unpushed commits"
+  echo "  -f    Fetch, then compare the current branch with its upstream"
+  echo "  -N    Do not fetch (with -c/-f): use the remotes as of the last fetch"
   echo "  -b    List all branches"
   echo "  -l    Check for large files (>1MB)"
   echo "  -s    Display repository summary"
@@ -62,16 +67,19 @@ ask() {
 
 # Offer to add or ignore each untracked file/folder in repo $1
 handle_untracked() {
-  local dir=$1 f entry
+  local dir=$1 f entry pad
   local -a files
   mapfile -d '' files < <(git -C "$dir" ls-files --others --exclude-standard \
                             --directory --no-empty-directory -z)
   for f in "${files[@]}"; do
     ask "Untracked '$f': [a]dd, [i]gnore, [s]kip, [q]uit?" "aisq"
     case $reply in
-      a ) git -C "$dir" add -- "$f" && echo "  │    Added $f" ;;
+      a ) git -C "$dir" add -- ":(literal)$f" && echo "  │    Added $f" ;;
       i ) # Anchor to repo root and escape glob characters
           entry="/$(sed 's/[][*?\\]/\\&/g' <<< "$f")"
+          pad=                    # trailing spaces would be dropped, so escape them
+          while [[ $entry == *' ' ]]; do entry=${entry% } pad+='\ '; done
+          entry+=$pad
           if [ -s "$dir/.gitignore" ] && [ -n "$(tail -c1 "$dir/.gitignore")" ]; then
             echo >> "$dir/.gitignore"
           fi
@@ -126,14 +134,65 @@ list_names() {
   [ "$n" -gt 5 ] && printf ' and %d more' $((n - 5))
 }
 
-# List "branch<TAB>upstream-ref" for each local branch in repo $1 whose
-# upstream still exists
+# The remote repo $1 talks to by default: origin, else the first one
+default_remote() {
+  local r
+  r=$(git -C "$1" remote)
+  if grep -qx origin <<< "$r"; then echo origin; else head -n 1 <<< "$r"; fi
+}
+
+# Print the remote-tracking ref (refs/remotes/...) that local branch $2 of repo $1 is
+# compared with: its upstream if that still exists, else, unless the branch was marked
+# local-only, a branch of the same name on the default remote; nothing if neither
+branch_upstream() {
+  local dir=$1 b=$2 up remote
+  up=$(git -C "$dir" for-each-ref --format='%(upstream)' "refs/heads/$b")
+  if [[ $up == refs/remotes/* ]] && git -C "$dir" rev-parse -q --verify "$up" > /dev/null; then
+    echo "$up"
+    return 0
+  fi
+  is_local_only "$dir" "$b" && return 0
+  remote=$(default_remote "$dir")
+  [ -n "$remote" ] || return 0
+  up=refs/remotes/$remote/$b
+  git -C "$dir" rev-parse -q --verify "$up" > /dev/null && echo "$up"
+  return 0
+}
+
+# List "branch<TAB>upstream-ref" for each local branch in repo $1 that has one
 branches_with_upstream() {
   local b up
-  while IFS=$'\t' read -r b up; do
-    [ -n "$up" ] && git -C "$1" rev-parse -q --verify "$up" > /dev/null &&
-      printf '%s\t%s\n' "$b" "$up"
-  done < <(git -C "$1" for-each-ref --format='%(refname:short)%09%(upstream)' refs/heads)
+  while IFS= read -r b; do
+    up=$(branch_upstream "$1" "$b")
+    [ -n "$up" ] && printf '%s\t%s\n' "$b" "$up"
+  done < <(git -C "$1" for-each-ref --format='%(refname:lstrip=2)' refs/heads)
+}
+
+# Print how many commits of local branch $2 in repo $1 are not yet pushed: those not
+# on its upstream, or, with none, on no remote-tracking branch at all.  Prints nothing
+# if git could not count them.
+unpushed_count() {
+  local dir=$1 b=$2 up
+  up=$(branch_upstream "$dir" "$b")
+  if [ -n "$up" ]; then
+    git -C "$dir" rev-list --count "$up..refs/heads/$b" 2>/dev/null
+  else
+    git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null
+  fi
+}
+
+# Print the path of another worktree of repo $1 that has branch $2 checked out
+# (git will not move or delete a branch that is checked out elsewhere)
+other_worktree() {
+  local dir=$1 b=$2 here line wt=""
+  here=$(git -C "$dir" rev-parse --show-toplevel)
+  while IFS= read -r line; do
+    case $line in
+      "worktree "* ) wt=${line#worktree } ;;
+      "branch refs/heads/$b" ) [ "$wt" != "$here" ] && { printf '%s\n' "$wt"; return 0; } ;;
+    esac
+  done < <(git -C "$dir" worktree list --porcelain)
+  return 1
 }
 
 # Work out how local branch $2 in repo $1 stands against its upstream $3 (as
@@ -201,49 +260,60 @@ report_unpulled() {
 # rebase that merge-tree says will not conflict.  Never when uncommitted
 # changes touch files the upstream changed.
 handle_pull() {
-  local dir=$1 b up target cur pair
+  local dir=$1 pair
   local -a pairs
   mapfile -t pairs < <(branches_with_upstream "$dir")
   for pair in "${pairs[@]}"; do
-    b=${pair%%$'\t'*} up=${pair#*$'\t'} target=${up#refs/remotes/}
-    pull_state "$dir" "$b" "$up"
-    [ "$behind" -gt 0 ] || continue
-    cur=$(git -C "$dir" symbolic-ref --short -q HEAD)
-    if [ -n "$clash" ]; then
-      echo "  │    Not pulling '$b': commit or stash the changes to $(list_names "$clash") first"
-      continue
-    fi
-    if [ "$ahead" -eq 0 ]; then
-      ask "Pull $behind commit(s) from $target into '$b' (fast-forward)? [y]es, [n]o, [q]uit" "ynq"
-      case $reply in
-        y ) if [ "$b" = "$cur" ]; then
-              git -C "$dir" merge -q --ff-only "$up"
-            else
-              git -C "$dir" fetch -q . "$up:refs/heads/$b"
-            fi && echo "  │    '$b' is now at $(git -C "$dir" log -1 --format='%h %s' "refs/heads/$b")" ;;
-        q ) exit 0 ;;
-      esac
-    elif [ "$b" != "$cur" ]; then
-      echo "  │    Not pulling '$b': it has diverged and is not checked out"
-    elif [ $merge_rc -ne 0 ]; then
-      echo "  │    Not pulling '$b': it has diverged and would not merge cleanly; resolve by hand"
-    else
-      ask "'$b' has diverged from $target ($ahead local, $behind remote). [m]erge, [r]ebase, [n]o, [q]uit?" "mrnq"
-      case $reply in
-        m ) if git -C "$dir" merge -q --no-edit "$up"; then
-              echo "  │    Merged $target into '$b'"
-            else
-              git -C "$dir" merge --abort 2>/dev/null; echo "  │    Merge failed; aborted"
-            fi ;;
-        r ) if git -C "$dir" rebase -q --autostash "$up"; then
-              echo "  │    Rebased '$b' onto $target"
-            else
-              git -C "$dir" rebase --abort 2>/dev/null; echo "  │    Rebase failed; aborted"
-            fi ;;
-        q ) exit 0 ;;
-      esac
-    fi
+    pull_branch "$dir" "${pair%%$'\t'*}" "${pair#*$'\t'}"
   done
+}
+
+# The offer to pull branch $2 of repo $1 from its upstream $3 (a refs/remotes/ ref)
+pull_branch() {
+  local dir=$1 b=$2 up=$3 target=${3#refs/remotes/} cur wt
+  pull_state "$dir" "$b" "$up"
+  [ "$behind" -gt 0 ] || return 0
+  cur=$(git -C "$dir" symbolic-ref --short -q HEAD)
+  if [ -n "$clash" ]; then
+    echo "  │    Not pulling '$b': commit or stash the changes to $(list_names "$clash") first"
+    return 0
+  fi
+  if [ "$b" != "$cur" ] && wt=$(other_worktree "$dir" "$b"); then
+    echo "  │    Not pulling '$b': it is checked out in $wt; pull there"
+    return 0
+  fi
+  if [ "$ahead" -eq 0 ]; then
+    ask "Pull $behind commit(s) from $target into '$b' (fast-forward)? [y]es, [n]o, [q]uit" "ynq"
+    case $reply in
+      y ) if [ "$b" = "$cur" ]; then
+            git -C "$dir" merge -q --ff-only "$up"
+          else
+            git -C "$dir" fetch -q . "$up:refs/heads/$b"
+          fi && echo "  │    '$b' is now at $(git -C "$dir" log -1 --format='%h %s' "refs/heads/$b")" ;;
+      q ) exit 0 ;;
+    esac
+  elif [ "$b" != "$cur" ]; then
+    echo "  │    Not pulling '$b': it has diverged and is not checked out"
+  elif [ $merge_rc -eq 1 ]; then
+    echo "  │    Not pulling '$b': it has diverged and would not merge cleanly; resolve by hand"
+  elif [ $merge_rc -ne 0 ]; then
+    echo "  │    Not pulling '$b': it has diverged and git could not tell whether it merges cleanly; resolve by hand"
+  else
+    ask "'$b' has diverged from $target ($ahead local, $behind remote). [m]erge, [r]ebase, [n]o, [q]uit?" "mrnq"
+    case $reply in
+      m ) if git -C "$dir" merge -q --no-edit -m "Merge $target into $b" "$up"; then
+            echo "  │    Merged $target into '$b'"
+          else
+            git -C "$dir" merge --abort 2>/dev/null; echo "  │    Merge failed; aborted"
+          fi ;;
+      r ) if git -C "$dir" rebase -q --autostash "$up"; then
+            echo "  │    Rebased '$b' onto $target"
+          else
+            git -C "$dir" rebase --abort 2>/dev/null; echo "  │    Rebase failed; aborted"
+          fi ;;
+      q ) exit 0 ;;
+    esac
+  fi
 }
 
 # Per-branch git config key recording "never set an upstream for this branch"
@@ -280,8 +350,12 @@ default_branch() {
 # is all it takes, else a real merge, but only while $3 is checked out (a merge
 # needs the working tree).  Returns non-zero, after saying why, if it did not merge.
 merge_into_default() {
-  local dir=$1 b=$2 def=$3 cur
+  local dir=$1 b=$2 def=$3 cur wt
   cur=$(git -C "$dir" symbolic-ref -q --short HEAD)
+  if [ "$cur" != "$def" ] && wt=$(other_worktree "$dir" "$def"); then
+    echo "  │    Not merging '$b': '$def' is checked out in $wt; merge there"
+    return 1
+  fi
   if git -C "$dir" merge-base --is-ancestor "refs/heads/$def" "refs/heads/$b"; then
     if [ "$cur" = "$def" ]; then
       git -C "$dir" merge -q --ff-only "refs/heads/$b" || return 1
@@ -301,20 +375,33 @@ merge_into_default() {
   fi
 }
 
+# Delete branch $2 of repo $1 (its commits are known to be elsewhere) and print $3,
+# unless the branch is checked out somewhere, where git would refuse
+delete_branch() {
+  local dir=$1 b=$2 wt
+  if [ "$b" = "$(git -C "$dir" symbolic-ref -q --short HEAD)" ]; then
+    echo "  │    Not deleting '$b': it is checked out"
+  elif wt=$(other_worktree "$dir" "$b"); then
+    echo "  │    Not deleting '$b': it is checked out in $wt"
+  else
+    git -C "$dir" branch -D "$b" > /dev/null && echo "$3"
+  fi
+}
+
 # Offer to set upstreams (or merge a branch into the main branch, or delete one
 # already merged), then to push, for each local branch in repo $1 that has
 # unpushed commits
 handle_push() {
-  local dir=$1 b n remote merge def state
+  local dir=$1 b n remote merge def state up wt
   local -a branches
-  mapfile -t branches < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
+  mapfile -t branches < <(git -C "$dir" for-each-ref --format='%(refname:lstrip=2)' refs/heads)
 
   # A repository with no remote at all has nowhere to push: offer to mark the whole
   # repository local-only (once), unless every unpushed branch is already marked
   if ! git -C "$dir" remote | grep -q .; then
     local open=false
     for b in "${branches[@]}"; do
-      n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
+      n=$(unpushed_count "$dir" "$b")
       [ -n "$n" ] && [ "$n" -gt 0 ] && ! is_local_only "$dir" "$b" && open=true
     done
     [ "$open" = true ] || return 0
@@ -328,7 +415,7 @@ handle_push() {
   fi
 
   for b in "${branches[@]}"; do
-    n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
+    n=$(unpushed_count "$dir" "$b")
     [ -n "$n" ] && [ "$n" -gt 0 ] || continue
     is_local_only "$dir" "$b" && continue
     remote=$(git -C "$dir" config "branch.$b.remote")
@@ -336,7 +423,7 @@ handle_push() {
 
     # No upstream: ask whether to set one (no push yet)
     if [ -z "$remote" ] || [ -z "$merge" ]; then
-      remote=$(git -C "$dir" remote | grep -qx origin && echo origin || git -C "$dir" remote | head -n 1)
+      remote=$(default_remote "$dir")
       if [ -z "$remote" ]; then
         echo "  │    '$b' has $n unpushed commit(s) but no remote is configured"
         continue
@@ -362,11 +449,11 @@ handle_push() {
             git -C "$dir" config "branch.$b.merge" "$merge"
             echo "  │    Upstream of '$b' set to $remote/$b" ;;
         d ) # every commit of the branch is reachable from $def, so -D loses nothing
-            git -C "$dir" branch -D "$b" && echo "  │    Deleted '$b' (its commits are in '$def')"
+            delete_branch "$dir" "$b" "  │    Deleted '$b' (its commits are in '$def')"
             continue ;;
         m ) if merge_into_default "$dir" "$b" "$def"; then
               ask "Delete the merged branch '$b'? [y]es, [n]o (keep it)" "yn"
-              [ "$reply" = y ] && git -C "$dir" branch -D "$b" && echo "  │    Deleted '$b'"
+              [ "$reply" = y ] && delete_branch "$dir" "$b" "  │    Deleted '$b'"
             fi
             continue ;;
         n ) git -C "$dir" config --bool "branch.$b.$NO_UPSTREAM_KEY" true
@@ -375,6 +462,17 @@ handle_push() {
         s ) continue ;;
         q ) exit 0 ;;
       esac
+    fi
+
+    # Pull before pushing: a branch that is behind its upstream would be rejected, or
+    # (forced) would lose the commits it lacks
+    up=$(branch_upstream "$dir" "$b")
+    if [ -n "$up" ]; then
+      pull_state "$dir" "$b" "$up"
+      if [ "$behind" -gt 0 ]; then
+        echo "  │    Not pushing '$b': it is $behind commit(s) behind ${up#refs/remotes/}; pull first"
+        continue
+      fi
     fi
 
     ask "Push $n commit(s) on '$b' to $remote/${merge#refs/heads/}? [y]es, [n]o, [q]uit" "ynq"
@@ -422,7 +520,7 @@ handle_new_repo() {
   handle_untracked "$dir"
   handle_commit "$dir"
   [ "$have_gh" = true ] || return
-  if grep -qxF -- "$dir" <<< "$repos"; then
+  if grep -qixF -- "$dir" <<< "$repos"; then
     echo "  │    $owner/$dir already exists on GitHub; not creating it"
     return
   fi
@@ -477,21 +575,56 @@ handle_clone() {
   done
 }
 
+# Print "owner/name" of the GitHub repository that repo $1's remotes point to
+# (origin's if it is one, else the first), or nothing.  Understands https://, ssh://
+# and scp-style (git@github.com:owner/name.git) URLs, and ssh host aliases such as
+# github.com-work.
+github_slug() {
+  local key url first="" slug
+  local re='^([A-Za-z][A-Za-z0-9+.-]*://)?([^@/]+@)?github\.com[^:/]*(:[0-9]+)?[:/]+([^/]+)/([^/]+)$'
+  while read -r key url; do
+    url=${url%/}
+    [[ $url =~ $re ]] || continue
+    slug=${BASH_REMATCH[4]}/${BASH_REMATCH[5]%.git}
+    if [ "$key" = remote.origin.url ]; then echo "$slug"; return 0; fi
+    [ -n "$first" ] || first=$slug
+  done < <(git -C "$1" config --get-regexp '^remote\..*\.url$')
+  [ -z "$first" ] || echo "$first"
+  return 0
+}
+
+# True if GitHub repository $1 (owner/name) exists: it is in the signed-in user's
+# list (names compare without regard to case), or gh can look it up (which also covers
+# other owners, organisations, renamed repositories and a list cut off at its limit)
+github_exists() {
+  local slug=$1 slug_owner=${1%%/*}
+  if [ "${slug_owner,,}" = "${owner,,}" ]; then
+    grep -qixF -- "${slug#*/}" <<< "$repos" && return 0
+  fi
+  gh repo view "$slug" --json name > /dev/null 2>&1
+}
+
+# GitHub repositories (owner/name, lower case) that the directories processed are
+# clones of, so that they are not reported as "not cloned here"
+cloned=""
+
 # Flags
 list_repos=false
 check_changes=false
 fetch_compare=false
+no_fetch=false
 list_branches=false
 check_large_files=false
 display_summary=false
 interactive=false
 
 # Parse options
-while getopts "ucfblsiVh" opt; do
+while getopts "ucfNblsiVh" opt; do
   case ${opt} in
     u ) list_repos=true ;;
     c ) check_changes=true ;;
     f ) fetch_compare=true ;;
+    N ) no_fetch=true ;;
     b ) list_branches=true ;;
     l ) check_large_files=true ;;
     s ) display_summary=true ;;
@@ -569,18 +702,22 @@ for dir in */; do
   if [ -e "$dir/.git" ]; then
     echo "Processing $dir..."
 
-    # -f: fetch first, so the -c and -f checks see the remotes as they are now
-    if [ "$fetch_compare" = true ] && git -C "$dir" remote | grep -q .; then
-      git -C "$dir" fetch --all -q &>/dev/null ||
-        echo "  ├─ ${WARN}Fetch failed${NORM}"
+    # -c and -f: fetch first (and prune branches deleted on the remote), so the checks
+    # see the remotes as they are now rather than as of the last fetch
+    if { [ "$check_changes" = true ] || [ "$fetch_compare" = true ]; } &&
+       [ "$no_fetch" != true ] && git -C "$dir" remote | grep -q .; then
+      git -C "$dir" fetch --all --prune -q < /dev/null &>/dev/null ||
+        echo "  ├─ ${WARN}Fetch failed; remotes are as of the last successful fetch${NORM}"
     fi
 
     # Check GitHub connection
-    if git -C "$dir" remote -v | grep -q 'github.com'; then
+    slug=$(github_slug "$dir")
+    if [ -n "$slug" ]; then
+      cloned+=$'\n'"${slug,,}"
       echo -n "  ├─ Linked to GitHub: "
       if [ "$have_gh" != true ]; then
         echo "Yes"
-      elif grep -qxF -- "$dir" <<< "$repos"; then
+      elif github_exists "$slug"; then
         echo "Yes (exists on GitHub)"
       else
         echo "Yes (but NOT on GitHub)"
@@ -614,20 +751,24 @@ for dir in */; do
         handle_pull "$dir"
       fi
 
-      # Commits on local branches that are on no remote-tracking branch
+      # Commits on local branches that are not on their upstream (or, with none, on
+      # no remote-tracking branch at all)
       unpushed=""
       if is_local_only_repo "$dir"; then
         echo "  ├─ Unpushed commits: not checked (local-only repository)"
       else
         flagged=false
         while IFS= read -r b; do
-          n=$(git -C "$dir" rev-list --count "refs/heads/$b" --not --remotes 2>/dev/null)
-          if [ -n "$n" ] && [ "$n" -gt 0 ]; then
+          n=$(unpushed_count "$dir" "$b")
+          if [ -z "$n" ]; then
+            unpushed+="  │  └─ $b: ${WARN}could not count${NORM}"$'\n'
+            flagged=true
+          elif [ "$n" -gt 0 ]; then
             unpushed+="  │  └─ $b: $n"
             if is_local_only "$dir" "$b"; then unpushed+=" (local only)"; else flagged=true; fi
             unpushed+=$'\n'
           fi
-        done < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/heads)
+        done < <(git -C "$dir" for-each-ref --format='%(refname:lstrip=2)' refs/heads)
         if [ -n "$unpushed" ]; then
           # branches marked "local only" are listed but do not count as unpushed
           if [ "$flagged" = true ]; then
@@ -711,7 +852,8 @@ if [ "$list_repos" = true ]; then
   else
     missing=()
     while IFS= read -r name; do
-      [ -z "$name" ] || [ -e "$name" ] || missing+=("$name")
+      [ -z "$name" ] || [ -e "$name" ] ||
+        grep -qixF -- "$owner/$name" <<< "$cloned" || missing+=("$name")
     done <<< "$repos"
     if [ ${#missing[@]} -eq 0 ]; then
       echo "GitHub repositories not cloned here: None"

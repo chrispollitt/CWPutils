@@ -4,7 +4,7 @@ gitcheck \- report on, and optionally tidy up, every git repository in a directo
 
 .SH SYNOPSIS
 .B gitcheck
-[\-u] [\-c] [\-f] [\-b] [\-l] [\-s] [\-i]
+[\-u] [\-c] [\-f] [\-N] [\-b] [\-l] [\-s] [\-i]
 .RI [ dir ]
 .br
 .B gitcheck
@@ -41,7 +41,11 @@ Every report starts with whether the repository has a GitHub remote. If the GitH
 .BR gh (1)
 is installed and signed in,
 .B gitcheck
-also says whether a repository of the same name exists in the signed-in account
+also says whether the repository the remote points to
+.RI ( owner/name
+taken from the URL, whatever the local directory is called) exists, looking it up with
+.B gh repo view
+if it is not among the signed-in account's own repositories
 ("Yes (exists on GitHub)" or "Yes (but NOT on GitHub)"); without
 .B gh
 it just says "Yes". The options choose what else is reported; at least one must be given.
@@ -52,9 +56,10 @@ is also needed to list repositories that are on GitHub but not cloned
 .SH OPTIONS
 .TP
 .B \-u
-List repositories linked to GitHub (above). Then, after the repositories, list the signed-in account's
-GitHub repositories that have no directory of the same name in
-.IR dir .
+After the repositories, list the signed-in account's
+GitHub repositories that are not cloned in
+.I dir
+(no directory of that name, and no repository whose remote points to it, whatever its directory is called).
 Ones marked "don't ask again" by
 .B \-i
 are shown with
@@ -95,8 +100,11 @@ changed, so a pull would stop or conflict; those files are listed.
 .PP
 Then
 .B unpushed commits:
-each local branch that has commits found on no remote-tracking branch, with the number
-of such commits. This covers branches ahead of their upstream and branches that were never pushed.
+each local branch with commits that are not on its upstream, with the number of such
+commits. A branch with no upstream (or whose upstream was deleted) is compared with the branch of
+the same name on the default remote, if there is one, and otherwise counts the commits found on no
+remote-tracking branch at all. A branch is never judged by an unrelated remote branch that happens to
+contain its commits.
 Branches marked "don't ask again" by
 .B \-i
 are shown with
@@ -109,17 +117,25 @@ under
 .BR "INTERACTIVE MODE" )
 is not checked for unpushed commits at all, and says so.
 .PP
-Without
-.BR \-f ,
-no fetch is done, so unpulled and unpushed commits are counted against the remotes as of the last
-fetch.
+Each repository is first fetched from all its remotes (with
+.BR \-\-prune ,
+so branches deleted on the remote are forgotten), so that unpulled and unpushed commits are judged
+against the remotes as they are now. If a fetch fails, that is reported and the last successful fetch
+is used. See
+.BR \-N .
 .RE
 .TP
 .B \-f
-Fetch from all remotes first (before the
+Fetch from all remotes first, then say whether the current branch is up to date with, behind, ahead
+of, or diverged from its upstream.
+.TP
+.B \-N
+Do not fetch (with
 .B \-c
-checks), then say whether the current branch is up to date with, behind, ahead of, or diverged from
-its upstream.
+or
+.BR \-f ):
+work from the remotes as of the last fetch. Faster and works offline, but changes made on the remote
+since are not seen.
 .TP
 .B \-b
 List all local and remote-tracking branches.
@@ -325,7 +341,12 @@ For each branch with unpushed commits and an upstream (including one just set):
 .B y
 pushes the branch to its upstream,
 .B n
-doesn't.
+doesn't. Pull comes first: a branch that is still behind its upstream (because the pull above was
+declined or was not safe) is not offered a push, and the reason is given.
+.PP
+A branch checked out in another worktree is never pulled, merged into, or deleted by
+.BR gitcheck :
+git would refuse, so it says where the branch is checked out.
 .TP
 .B Clone
 With
