@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """termprobe: what survives the trip between a program and its terminal on THIS path?
 
-    termprobe [--timeout S] [--label TEXT] [--raw] [--input | --tvision] [--no-vt-input]
+    termprobe [--timeout S] [--label TEXT] [--raw] [--input | --tvision] [--dos [--no-visual]] [--no-vt-input]
 
 Run it in every terminal / shell / ssh combination you care about and compare.  It asks the terminal, in one burst,
 the questions a capability-negotiating TUI (tvision, notcurses, vim, ...) asks:
@@ -37,6 +37,13 @@ across reads, with the time the rest took.  A program that waits only a few ms f
 its read timeout, 10 ms by default) takes the ESC for the Escape key, and the rest shows on screen as
 "[68;32;100;1;0;1_".  That is how tvmail failed over ssh from Windows Terminal: the gaps were 16-33 ms.
 A program can turn 9001 on itself, so a plain printf of ESC [ ? 9001 l beforehand changes nothing for tvision.
+--dos tests the classic DOS / Windows screen-control set (see TUIs/tvcommon/TERMINAL-HISTORY.md, sections 2 and 4):
+the ANSI.SYS sequences (CUP HVP CUU CUD CUF CUB, SCP/RCP, ED, EL, SGR, DSR, line-wrap mode), the 16-colour attribute byte
+(bright foreground and background, blink), the DOS cursor shape, and the 256 CP437 glyphs (smileys, card suits, box lines,
+blocks).  Cursor behaviour is measured, not eyeballed: each sequence is followed by ESC[6n and the reported position is
+compared with what DOS would do.  Attributes are read back with DECRQSS.  Whatever cannot be measured (erase, how colours
+and CP437 look) is drawn on the screen afterwards with a line saying what you should see; --no-visual leaves that out.
+It never changes the exit code: a terminal without blink is a fact, not a fault.
 --no-vt-input (native Windows only) leaves ENABLE_VIRTUAL_TERMINAL_INPUT off, as for a program that reads key events.
 
 Talks to the controlling terminal (/dev/tty on POSIX: Linux, WSL, macOS, Cygwin, MSYS, mintty; CONIN$ / CONOUT$ with
@@ -129,7 +136,10 @@ class PosixTty(object):
         tty.setcbreak(self.fd, termios.TCSANOW)
 
     def write(self, text):
-        os.write(self.fd, text.encode("latin1"))
+        os.write(self.fd, text.encode("utf-8"))                                  # the queries are ASCII; --dos sends glyphs
+
+    def info(self):
+        return []
 
     def read(self, timeout):
         import select
@@ -218,7 +228,14 @@ class WindowsConsole(object):
             raise OSError("not a console")
         k.SetConsoleMode(self.hin, self.ENABLE_VT_INPUT if self.vt_input else 0)   # no line input, no echo, no processing
         k.SetConsoleMode(self.hout, self._old_out.value | self.ENABLE_PROCESSED_OUTPUT | self.ENABLE_VT_PROCESSING)
+        got = wintypes.DWORD()
+        self.vt_out = bool(k.GetConsoleMode(self.hout, ctypes.byref(got)) and got.value & self.ENABLE_VT_PROCESSING)
         k.FlushConsoleInputBuffer(self.hin)
+
+    def info(self):
+        return ["Windows console: ENABLE_VIRTUAL_TERMINAL_PROCESSING %s" % (
+            "accepted: conhost / ConPTY interpret the sequences below" if self.vt_out else
+            "REFUSED (legacy console): ANSI.SYS-style sequences print as junk; only the Win32 console API works")]
 
     def write(self, text):
         n = self.w.DWORD()
@@ -463,6 +480,279 @@ def input_test(tty, seconds=20.0, idle=4.0, tvision=False):
     return lines, ok
 
 
+# ---- DOS / ANSI.SYS screen control ---------------------------------------------------------------------------------
+CPR_RE = re.compile(r"\x1b\[(\d+);(\d+)R")
+DECRQSS_RE = re.compile(r"\x1bP([01])\$r(.*?)\x1b\\", re.S)
+DOS_CORE = ("cup", "hvp", "home", "cuu", "cud", "cuf", "cub", "cu1", "scp")       # what ANSI.SYS itself could do
+CP437_LOW = "☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼"                       # 0x01-0x1F: control codes, glyphs on a PC
+DOS2ANSI = (0, 4, 2, 6, 1, 5, 3, 7)                                            # DOS colour index -> ANSI (red/blue swap)
+GROUP_TITLE = {
+    "size": "Screen size", "cursor": "Cursor movement (ANSI.SYS: CUP HVP CUU CUD CUF CUB, SCP RCP, DSR)",
+    "edge": "Cursor at the screen edge", "erase": "Erase", "wrap": "Line wrap",
+    "sgr": "Colour and attributes, read back with DECRQSS (DOS attribute byte: 4-bit fg, 3-bit bg + blink)",
+    "shape": "DOS cursor shape and visibility", "cp437": "CP437 glyphs: does each take exactly one column?",
+}
+# (key, label, SGR parameters)
+SGR_TESTS = (
+    ("bold", "bold / high intensity", "1"), ("ul", "underline", "4"), ("blink", "blink", "5"),
+    ("rev", "reverse video", "7"), ("conceal", "conceal", "8"),
+    ("fg16", "foreground 30-37", "31"), ("bg16", "background 40-47", "44"),
+    ("fgb", "bright foreground 90-97", "91"), ("bgb", "bright background 100-107", "104"),
+    ("dos1f", "DOS 0x1F: bright white on blue", "1;37;44"),
+    ("c256", "256 colours", "38;5;208"), ("rgb", "true colour", "38;2;255;128;0"),
+)
+
+
+def cp437_glyph(b):
+    """The character a PC shows for byte `b` (0x01-0x1F and 0x7F are glyphs there, not control codes)."""
+    if b == 0:
+        return " "
+    if b < 32:
+        return CP437_LOW[b - 1]
+    return "⌂" if b == 127 else bytes(bytearray([b])).decode("cp437")
+
+
+class Screen(object):
+    """Send a sequence, then ask where the cursor is: the answer is a position, so there is nothing to eyeball."""
+    def __init__(self, tty, timeout):
+        self.tty, self.timeout, self.buf = tty, timeout, ""
+
+    def send(self, text):
+        self.tty.write(text)
+
+    def wait(self, pat, timeout):
+        end = time.time() + timeout
+        while True:
+            m = pat.search(self.buf)
+            if m:
+                self.buf = self.buf[m.end():]
+                return m
+            left = end - time.time()
+            if left <= 0:
+                self.buf = ""
+                return None
+            self.buf += self.tty.read(left)
+
+    def ask(self, seq, pat, timeout):
+        self.send(seq)
+        return self.wait(pat, timeout)
+
+    def cpr(self):
+        m = self.ask("\x1b[6n", CPR_RE, self.timeout)
+        return (int(m.group(1)), int(m.group(2))) if m else None
+
+    def mode(self, n):
+        m = self.ask("\x1b[?%d$p" % n, re.compile(r"\x1b\[\?%d;(\d)\$y" % n), self.timeout)
+        return int(m.group(1)) if m else None
+
+
+def _pos(p):
+    return "row %d, col %d" % p
+
+
+def cursor_tests(rows, cols):
+    """(group, key, name, sequence, {position: note}) - every listed position counts as a pass."""
+    sys_note = "not supported here; only real ANSI.SYS and DOS emulators take it"
+    return (
+        ("cursor", "cup", "CUP  ESC[5;10H", "\x1b[1;1H\x1b[5;10H", {(5, 10): ""}),
+        ("cursor", "hvp", "HVP  ESC[6;12f", "\x1b[1;1H\x1b[6;12f", {(6, 12): ""}),
+        ("cursor", "home", "CUP  ESC[H (home), default parameters", "\x1b[7;7H\x1b[H", {(1, 1): ""}),
+        ("cursor", "cuu", "CUU  ESC[3A", "\x1b[10;10H\x1b[3A", {(7, 10): ""}),
+        ("cursor", "cud", "CUD  ESC[2B", "\x1b[10;10H\x1b[2B", {(12, 10): ""}),
+        ("cursor", "cuf", "CUF  ESC[4C", "\x1b[10;10H\x1b[4C", {(10, 14): ""}),
+        ("cursor", "cub", "CUB  ESC[5D", "\x1b[10;10H\x1b[5D", {(10, 5): ""}),
+        ("cursor", "cu1", "CUU CUD CUD CUF CUB CUB with no number (= 1)",
+         "\x1b[10;10H\x1b[A\x1b[B\x1b[B\x1b[C\x1b[D\x1b[D", {(11, 9): ""}),
+        ("cursor", "scp", "SCP / RCP  ESC[s ... ESC[u  (ANSI.SYS)", "\x1b[4;8H\x1b[s\x1b[9;2H\x1b[u", {(4, 8): ""}),
+        ("cursor", "decsc", "DECSC / DECRC  ESC7 ... ESC8  (VT100)", "\x1b[4;8H\x1b7\x1b[9;2H\x1b8", {(4, 8): ""}),
+        ("cursor", "cnl", "CNL  ESC[2E (next line; ANSI, not ANSI.SYS)", "\x1b[5;9H\x1b[2E", {(7, 1): ""}),
+        ("cursor", "cha", "CHA  ESC[12G (column)", "\x1b[5;9H\x1b[12G", {(5, 12): ""}),
+        ("cursor", "vpa", "VPA  ESC[8d (row)", "\x1b[5;9H\x1b[8d", {(8, 9): ""}),
+        ("edge", "clamp_up", "CUU  ESC[9A from row 3", "\x1b[3;3H\x1b[9A",
+         {(1, 3): "stops at the top edge", (3, 3): "ignored, as the ANSI.SYS manual says"}),
+        ("edge", "clamp_dn", "CUD  ESC[999B from row 3", "\x1b[3;3H\x1b[999B",
+         {(rows, 3): "stops at the bottom edge", (3, 3): "ignored, as the ANSI.SYS manual says"}),
+        ("edge", "clamp_lt", "CUB  ESC[99D from column 3", "\x1b[3;3H\x1b[99D",
+         {(3, 1): "stops at the left edge", (3, 3): "ignored, as the ANSI.SYS manual says"}),
+        ("edge", "clamp_rt", "CUF  ESC[999C from column 3", "\x1b[3;3H\x1b[999C",
+         {(3, cols): "stops at the right edge", (3, 3): "ignored, as the ANSI.SYS manual says"}),
+        ("erase", "ed2", "ED   ESC[2J, where the cursor ends up", "\x1b[5;5H\x1b[2J",
+         {(1, 1): "homes the cursor, as ANSI.SYS does", (5, 5): "leaves the cursor, as VT100 / xterm do"}),
+        ("wrap", "wrap_on", "DECAWM  ESC[?7h: text wraps at the last column", "\x1b[?7h\x1b[2;%dHab" % cols, {(3, 2): ""}),
+        ("wrap", "wrap_off", "DECAWM  ESC[?7l: text stays on the last column", "\x1b[?7l\x1b[2;%dHab" % cols,
+         {(2, cols): ""}),
+        ("wrap", "wrap_sys_on", "ANSI.SYS  ESC[=7h: enable line wrap", "\x1b[?7l\x1b[=7h\x1b[2;%dHab" % cols, {(3, 2): ""}),
+        ("wrap", "wrap_sys_off", "ANSI.SYS  ESC[=7l: disable line wrap", "\x1b[?7h\x1b[=7l\x1b[2;%dHab" % cols,
+         {(2, cols): ""}),
+    ), sys_note
+
+
+def dos_screen(tty, timeout):
+    """-> (results, status, alt).  results = [(group, key, name, 'ok'|'DIFFERS'|'no reply'|'skipped', detail)];
+    status is None, or 'cpr' when the terminal never answered ESC[6n (nothing can be measured)."""
+    scr, res, qt = Screen(tty, timeout), [], min(timeout, 0.7)
+    m = scr.ask("\x1b[?1049$p", re.compile(r"\x1b\[\?1049;(\d)\$y"), qt)
+    alt = bool(m) and m.group(1) != "0"
+    try:
+        scr.send(("\x1b[?1049h" if alt else "") + "\x1b[0m\x1b[?7h\x1b[2J\x1b[999;999H")
+        ext = scr.cpr()
+        if ext is None:
+            return res, "cpr", alt
+        rows, cols = ext
+        size = tty.size()
+        note = "   <- the window is %dx%d" % (size[1], size[0]) if size and tuple(size[:2]) != ext else ""
+        res.append(("size", "extent", "Screen extent, measured with ESC[999;999H", "ok", "%d rows x %d cols%s" % (rows, cols, note)))
+        fits = rows >= 25 and cols >= 80
+        res.append(("size", "dos80x25", "Room for the DOS 80x25 text screen", "ok" if fits else "DIFFERS",
+                    "" if fits else "the window is smaller: DOS-style full-screen programs will not fit"))
+        if rows < 14 or cols < 40:
+            res.append(("cursor", "small", "Cursor tests", "skipped", "window too small (need 14 rows x 40 cols)"))
+            return res, None, alt
+        tests, sys_note = cursor_tests(rows, cols)
+        for group, key, name, seq, expect in tests:
+            scr.send(seq)
+            pos = scr.cpr()
+            if pos is None:
+                res.append((group, key, name, "no reply", ""))
+            elif pos in expect:
+                res.append((group, key, name, "ok", _pos(pos) + ("   (%s)" % expect[pos] if expect[pos] else "")))
+            else:
+                detail = "%s; wanted %s" % (_pos(pos), " or ".join(_pos(p) for p in expect))
+                if key.startswith("wrap_sys"):
+                    detail = "%s - %s" % (_pos(pos), sys_note)
+                res.append((group, key, name, "DIFFERS", detail))
+        scr.send("\x1b[?7h\x1b[0m")
+        # attributes, read back with DECRQSS
+        asked = True
+        for key, label, params in SGR_TESTS:
+            name = "SGR %s  %s" % (params, label)
+            if not asked:
+                res.append(("sgr", "sgr_" + key, name, "skipped", "DECRQSS got no answer"))
+                continue
+            m = scr.ask("\x1b[0m\x1b[%sm\x1bP$qm\x1b\\" % params, DECRQSS_RE, qt)
+            scr.send("\x1b[0m")
+            if m is None or m.group(1) != "1":
+                asked = False
+                res.append(("sgr", "sgr_" + key, name, "no reply", "no DECRQSS: look at the picture below instead"))
+                continue
+            got = [t for t in re.split(r"[;:]", m.group(2).rstrip("m")) if t]
+            want = params.split(";")
+            hit = any(got[i:i + len(want)] == want for i in range(len(got) - len(want) + 1))
+            res.append(("sgr", "sgr_" + key, name, "ok" if hit else "DIFFERS", "read back %s" % ";".join(got)))
+        # cursor shape (DOS: INT 10h cursor start/end lines) and visibility
+        for n, label in ((3, "underline (the DOS cursor)"), (2, "steady block")):
+            m = scr.ask("\x1b[%d q\x1bP$q q\x1b\\" % n, DECRQSS_RE, qt)
+            ok = bool(m) and m.group(1) == "1" and m.group(2).strip() == "%d q" % n
+            res.append(("shape", "shape%d" % n, "DECSCUSR  ESC[%d SP q  %s" % (n, label),
+                        "ok" if ok else ("DIFFERS" if m else "no reply"), "" if ok or not m else "read back %r" % m.group(2)))
+        scr.send("\x1b[?25l")
+        hidden = scr.mode(25)
+        scr.send("\x1b[?25h")
+        shown = scr.mode(25)
+        ok = hidden in (2, 4) and shown in (1, 3)
+        res.append(("shape", "vis", "Hide / show cursor  ESC[?25l / ESC[?25h", "ok" if ok else
+                    ("no reply" if hidden is None else "DIFFERS"), "" if ok else "DECRQM said %s then %s" % (hidden, shown)))
+        # CP437: every glyph must take one column, or a DOS screen layout falls apart
+        rows437 = [("0x01-0x1F, 0x7F", CP437_LOW + "⌂")] + [
+            ("0x%02X-0x%02X" % (b, b + 15), "".join(cp437_glyph(c) for c in range(b, b + 16))) for b in range(0x80, 0x100, 16)]
+        for i, (label, chars) in enumerate(rows437):
+            scr.send("\x1b[3;1H\x1b[K" + chars)
+            pos = scr.cpr()
+            name = "CP437 %s" % label
+            if pos == (3, 1 + len(chars)):
+                res.append(("cp437", "cp437_%d" % i, name, "ok", "%d glyphs, %d columns" % (len(chars), len(chars))))
+                continue
+            if pos is None:
+                res.append(("cp437", "cp437_%d" % i, name, "no reply", ""))
+                continue
+            odd = []
+            for ch in chars:
+                scr.send("\x1b[3;1H" + ch)
+                p = scr.cpr()
+                d = p[1] - 1 if p and p[0] == 3 else None
+                if d != 1:
+                    odd.append("U+%04X %s=%s" % (ord(ch), ch, "?" if d is None else "%d col" % d))
+            res.append(("cp437", "cp437_%d" % i, name, "DIFFERS", "%s" % ", ".join(odd[:10] + (["..."] if len(odd) > 10 else []))))
+        return res, None, alt
+    finally:
+        scr.send("\x1b[0m\x1b[0 q\x1b[?25h\x1b[?7h" + ("\x1b[?1049l" if alt else ""))
+
+
+def dos_verdicts(res, status):
+    if status == "cpr":
+        return ["ANSI.SYS CORE: UNTESTED - ESC[6n (device status report) got no reply, so there is nothing to measure with"]
+    by = dict((r[1], r) for r in res)
+    out = []
+    core = [by[k] for k in DOS_CORE if k in by]
+    if core:
+        n = sum(1 for r in core if r[3] == "ok")
+        out.append("ANSI.SYS CORE: %s - %d of %d cursor sequences (CUP HVP CUU CUD CUF CUB SCP) landed where DOS would put it"
+                   % ("FULL" if n == len(core) else "MISSING" if n == 0 else "PARTIAL", n, len(core)))
+    sgr = [(k, l) for k, l, _ in SGR_TESTS if "sgr_" + k in by]
+    if sgr:
+        if any(by["sgr_" + k][3] in ("ok", "DIFFERS") for k, _ in sgr):
+            okl = [l for k, l in sgr if by["sgr_" + k][3] == "ok"]
+            bad = [l for k, l in sgr if by["sgr_" + k][3] not in ("ok",)]
+            out.append("ATTRIBUTES: confirmed %s%s" % (", ".join(okl) or "none",
+                                                      "; not confirmed: " + ", ".join(bad) if bad else ""))
+        else:
+            out.append("ATTRIBUTES: UNKNOWN - the terminal does not answer DECRQSS; judge by the picture")
+    cp = [r for r in res if r[0] == "cp437"]
+    if cp:
+        bad = [r for r in cp if r[3] != "ok"]
+        out.append("CP437: %s" % ("all 256 glyphs are one column wide" if not bad else
+                                  "%d of %d rows have glyphs that are not one column wide (see above)" % (len(bad), len(cp))))
+    return out
+
+
+def dos_report(res, status, alt, info):
+    out = ["", "DOS / ANSI.SYS SCREEN CONTROL",
+           "  (positions are measured with ESC[6n; under ConPTY some answers come from ConPTY itself, not the terminal)"]
+    out.extend("  " + i for i in info)
+    out.append("  ran on the %s" % ("alternate screen (restored afterwards)" if alt else
+                                    "main screen: this terminal has no alternate screen, so the top of it was overwritten"))
+    last = None
+    for group, key, name, st, detail in res:
+        if group != last:
+            out.append("  [%s]" % GROUP_TITLE[group])
+            last = group
+        out.append("    %-52s %-8s %s" % (name, st, detail))
+    out.extend("  " + v for v in dos_verdicts(res, status))
+    out.append("  not testable from the terminal side: direct video RAM (B800:0000) and BIOS INT 10h, which do not exist on a")
+    out.append("  pty; Win32 console API calls (SetConsoleCursorPosition etc.), which ConPTY turns into the sequences above;")
+    out.append("  ANSI.SYS key reassignment ESC[..p and screen mode ESC[=nh, left alone because they change terminal state.")
+    return "\n".join(out)
+
+
+def visual(tty):
+    """Draw what cannot be measured; each line says what you should see."""
+    def c(codes, text):
+        return "\x1b[%sm%s\x1b[0m" % (codes, text)
+    L = ["", "DOS / ANSI.SYS VISUAL CHECK - each line says what you should see", "",
+         "foreground 30-37 : " + "".join(c(30 + i, "██ ") for i in range(8)) + "  (black is invisible on a black screen)",
+         "bright fg   90-97 : " + "".join(c(90 + i, "██ ") for i in range(8)),
+         "background 40-47 : " + "".join(c(40 + i, "   ") + " " for i in range(8)),
+         "bright bg  100-107: " + "".join(c(100 + i, "   ") + " " for i in range(8)),
+         "attributes: " + c(1, "bold") + " " + c(4, "underline") + " " + c(5, "blink") + " " + c(7, "reverse")
+         + "   conceal: [" + c(8, "SECRET") + "] (the brackets should look empty)",
+         "EL  ESC[K : should read just OK :  XXXXXX\x1b[6D\x1b[KOK",
+         "DEC line drawing ESC(0 (a small box):", "    \x1b(0lqqqk\x1b(B", "    \x1b(0x   x\x1b(B", "    \x1b(0mqqqj\x1b(B", "",
+         "The 256 DOS attribute bytes: row = background 0-F, column = foreground 0-F, cell text is background+foreground.",
+         "On a DOS screen background 8-F would blink instead of being bright:"]
+    for bg in range(16):
+        cells = []
+        for fg in range(16):
+            f = (30 if fg < 8 else 90) + DOS2ANSI[fg & 7]
+            b = (40 if bg < 8 else 100) + DOS2ANSI[bg & 7]
+            cells.append("\x1b[%d;%dm%X%X " % (f, b, bg, fg))
+        L.append("".join(cells) + "\x1b[0m")
+    L += ["", "CP437 as Unicode: every row should end with | in the same column; a ragged edge is a glyph of the wrong width.",
+          "    " + " ".join("%X" % i for i in range(16)) + "  |"]
+    for r in range(16):
+        L.append(" %X_ " % r + " ".join(cp437_glyph(r * 16 + col) for col in range(16)) + "  |")
+    tty.write("\r\n".join(L) + "\r\n")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="What survives the trip between a program and its terminal?")
     ap.add_argument("--timeout", type=float, default=2.0, help="seconds to wait for the replies (default 2.0)")
@@ -472,6 +762,10 @@ def main(argv=None):
     ap.add_argument("--tvision", action="store_true",
                     help="like --input, but first set the terminal up as tvision does (win32-input-mode, kitty keys, "
                          "modifyOtherKeys) and decode the key records: reproduces tvmail's input problems")
+    ap.add_argument("--dos", action="store_true",
+                    help="also test classic DOS / ANSI.SYS screen control: cursor, erase, wrap, 16 colours, blink, "
+                         "cursor shape, CP437 glyph widths (cursor behaviour is measured with ESC[6n)")
+    ap.add_argument("--no-visual", action="store_true", help="with --dos: skip the colour / CP437 picture at the end")
     ap.add_argument("--no-vt-input", action="store_true",
                     help="native Windows only: do not set ENABLE_VIRTUAL_TERMINAL_INPUT (how a program that reads key events sees it)")
     args = ap.parse_args(argv)
@@ -486,6 +780,13 @@ def main(argv=None):
         rows, issues, notes = analyse(text, seen, size)
         msg, code = report(args.label, rows, issues, seen, text, args.timeout, args.raw, size, notes, tty.name())
         print(msg)
+        if args.dos:
+            res, status, alt = dos_screen(tty, args.timeout)
+            enc = getattr(sys.stdout, "encoding", None) or "ascii"
+            print(dos_report(res, status, alt, tty.info()).encode(enc, "replace").decode(enc))   # glyphs a pipe can't carry
+            sys.stdout.flush()
+            if not args.no_visual:
+                visual(tty)
         if args.input or args.tvision:
             lines, ok = input_test(tty, tvision=args.tvision)
             print("\n".join(lines))
