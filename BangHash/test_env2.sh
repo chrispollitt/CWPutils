@@ -159,6 +159,15 @@ function main {
     (( errs = errs + 1 ))
   fi
 
+  echo "==Test version"
+  for v in -v --version; do
+    got=$($prog $v 2>&1 | head -1)
+    if [[ $got != "env2 (CWPutils) version "* ]]; then
+      echo "Test version: '$v' gave '$got'"
+      (( errs = errs + 1 ))
+    fi
+  done
+
   echo "==Test no-interpreter"
   got=$($prog "-n" /bin/true 2>&1 | head -1)
   if [[ $got != *"No interpreter found" ]]; then

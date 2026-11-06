@@ -501,6 +501,10 @@ hash_t parse_flags(char *flags_str) {
         if     (*(flags_str+j) == 'h') {
           usage(0);
         }
+        // version
+        else if(*(flags_str+j) == 'v') {
+          usage(2);
+        }
         // allow split on '~' and allow ~ as non-dashed flag prefix marker
         else if(*(flags_str+j) == 'a') {
           flags["allow"] = string("~");
