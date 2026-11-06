@@ -166,11 +166,17 @@ as expected.
 
 =head1 QUOTING AND ESCAPES
 
-B<env2> splits the interpreter argument string itself. By default it does this
-like Perl's C<shellwords()>. Its original splitter, now called the legacy
-splitter, is still available with the B<L> flag (see B<COMPATIBILITY>).
+B<env2> splits the interpreter argument string itself, and has three modes for
+doing it. Choose one with a flag; at most one can be given:
 
-=head2 Shellwords splitting (the default)
+    -S  --shellwords   like Perl's shellwords()          (the default)
+    -C  --classic      env2's original splitter          (implied by -s, -p, -x)
+    -W  --wordexp      like a POSIX shell, via wordexp() (no commands run)
+
+(B<-L> is the old name of B<-C> and is still accepted.) See B<COMPATIBILITY> for
+what changed in version 2.0.
+
+=head2 Shellwords mode (the default)
 
 By default, B<env2> splits exactly as Perl's C<shellwords()> does (the B<S> flag
 also selects it, and is accepted for compatibility):
@@ -201,13 +207,13 @@ B<DEVELOPER_NOTES.txt> in the source.
 
 The B<c> flag works with shellwords splitting (a B<#> that starts an argument,
 and everything after it, is ignored). The B<s>, B<p> and B<x> flags only mean
-something to the legacy splitter (they select it, see below), because the rules
+something to the classic splitter (they select it, see below), because the rules
 above already say what happens to backslashes and empty arguments. The B<a> flag
 (the B<~> hint) works as usual.
 
-=head2 The legacy splitter (the L flag)
+=head2 Classic mode (the C flag)
 
-With B<L> (or with any of B<s>, B<p>, B<x>, unless B<S> is given too), B<env2>
+With B<C> (or with any of B<s>, B<p>, B<x>, unless a mode is given too), B<env2>
 uses the splitter it had before version 2.0. It follows these rules:
 
 * Space, tab, newline and carriage return separate arguments. Runs of them
@@ -249,6 +255,56 @@ C<shellwords()> gives just B<abc>.
 * A single quote or double quote with nothing after it (a lone double quote,
 for example) is silently ignored, where C<shellwords()> reports an error.
 
+=head2 Wordexp mode (the W flag)
+
+With B<W>, B<env2> splits the string the way a POSIX shell would, using the
+C<wordexp()> function of the C library. That means the shell's own rules for
+quoting and backslashes, and also the shell's expansions:
+
+* B<$NAME> and B<${NAME}> are replaced by the variable's value. As in a shell, an
+unquoted value is split on its spaces and a double-quoted one is not.
+
+* A B<~> at the start of an argument becomes the home directory.
+
+* Wildcards (B<*>, B<?>, B<[...]>) are replaced by the matching file names, if
+there are any.
+
+* B<$((1+2))> is calculated.
+
+The shell's rules differ from Perl's in two places: inside double quotes a
+backslash only escapes B<$>, a backquote, B<">, B<\> and a newline (so B<"a\b"> is
+B<a\b>), and a single-quoted string has no escapes at all (so B<'a\'> is B<a\>).
+
+Commands are never run: B<$(...)> and backquotes are refused with an error,
+because a C<#!> line must not run anything while it is being read. An unquoted
+B<( ) ; & | E<lt> E<gt>> or a newline, and an unclosed quote, are errors too.
+
+Because the shell already does these things, B<E> (B<${NAME}> expansion), B<a>
+(the B<~> hint) and B<c> (comments) cannot be used with B<W> and give an error.
+The B<s>, B<p> and B<x> flags have no effect.
+
+This mode is whatever the C library's C<wordexp()> does, so the details differ
+a little between systems. B<env2> takes care of two differences itself:
+Cygwin's cannot cope with a first word that starts with a dash (every B<env2>
+line starts with its own flags), and it passes command substitution through as
+text where glibc reports an error, so B<env2> refuses command substitution
+before calling the library.
+
+I compared the mode with a real shell (C<sh>) on every string of up to six
+characters made of the letters a and b, space, tab, single quote, double quote
+and backslash (about 137,000 strings). On Cygwin, with its bash, there are no
+differences. With glibc (tested with 2.31 and 2.39, against dash) there are two:
+
+* An empty pair of quotes touching other text gives an extra empty argument:
+B<""a> is two arguments, an empty one and B<a>, where a shell gives just B<a>.
+
+* A backslash at the very end of the string is an error, where a shell keeps it
+as a literal backslash.
+
+These are glibc's behaviour, not B<env2>'s. If they matter, use the default
+shellwords mode, which has neither. B<make test> repeats a shorter version of the
+comparison and accepts these two glibc differences but nothing else.
+
 =head1 ENVIRONMENT VARIABLES IN THE #! LINE
 
 With the B<E> flag, B<env2> replaces B<${NAME}> with the value of the
@@ -279,8 +335,8 @@ with B<E> the configuration file is read before the C<#!> line is split.
 Interpreter-argument lines in the configuration file are expanded too. The script
 name and the arguments the user gives are never expanded.
 
-* B<E> needs the shellwords splitter. Using it with B<L>, B<s>, B<p> or B<x>, which
-select the legacy splitter, is an error.
+* B<E> needs the shellwords splitter. Using it with B<C>, B<W>, B<s>, B<p> or B<x>, which
+select another mode, is an error.
 
 Because the value comes from the environment of whoever runs the script,
 expansion lets that person influence which interpreter runs and with what
@@ -289,11 +345,11 @@ script asks for it with B<E>.
 
 =head1 COMPATIBILITY
 
-Before version 2.0 the legacy splitter was the only one. Starting with 2.0 the
+Before version 2.0 the classic splitter was the only one. Starting with 2.0 the
 default is shellwords splitting, so a C<#!> line (or an interpreter-argument line
 in the config file) that contains quotes or backslashes can split differently.
 
-* A line that uses B<s>, B<p> or B<x> is unchanged: those flags select the legacy
+* A line that uses B<s>, B<p> or B<x> is unchanged: those flags select the classic
 splitter, so it behaves exactly as before. (Give B<S> as well to get shellwords
 splitting anyway; the flags then have no effect on splitting.)
 
@@ -304,7 +360,7 @@ splitters give the same arguments.
 removed (C<a\ b> is the one argument B<a b>), quoted pieces next to text join into
 one argument, and empty quotes are kept as empty arguments.
 
-* To get the old behaviour exactly, add B<L> to the flags.
+* To get the old behaviour exactly, add B<C> to the flags (B<L>, its old name, also works).
 
 =head1 CONFIG FILE
 
@@ -343,7 +399,7 @@ by the kernel as is done on Solaris and macOS.
 =head1 BUGS
 
 A HOME path (or program name) longer than about 250 characters makes the config file be silently ignored.
-In the legacy splitter (B<L>, or B<s>, B<p>, B<x>):
+In the classic splitter (B<C>, or B<s>, B<p>, B<x>):
 the B<s> flag does not remove a backslash that comes before whitespace or a quote;
 with B<s>, backslashes inside single quotes are removed too (the shell keeps them);
 with B<p>, an empty quote pair directly followed by text gives an extra empty argument;

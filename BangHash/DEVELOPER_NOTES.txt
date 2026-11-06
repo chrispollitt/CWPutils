@@ -21,7 +21,7 @@ Comparing the splitters with Perl's shellwords()
   Text::ParseWords::shellwords() disagree.  `make splitcheck` builds the harness.
     perl t/splitcompare.pl ./splitcheck "" 6        # default splitter (shellwords): must be 0 differences
                                                     #   (run by make test, at length 5)
-    perl t/splitcompare.pl ./splitcheck Lsp 6       # the legacy splitter (flags: L s p x c)
+    perl t/splitcompare.pl ./splitcheck Csp 6       # the classic splitter (flags: C s p x c)
     SPLITCMP_WS=1 perl t/splitcompare.pl ./splitcheck "" 5  # CR, FF, VT as whitespace
   The original splitter's differences are listed in the man page (QUOTING AND ESCAPES, BUGS).
 
@@ -33,3 +33,8 @@ Ideas (not currently needed)
   Display stack trace on exception (only StdException for user errors is
   thrown; for crashes use ASan or `gdb` with `catch throw`)
     https://stackoverflow.com/questions/691719/c-display-stack-trace-on-exception
+
+====2026-11-06 redesign
+
+Not in scope
+Real kernel binfmt hooks; installing or building other env implementations; changing env2's compile-time KERNEL_SPLIT mechanism.

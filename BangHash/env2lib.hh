@@ -29,6 +29,13 @@ class flag_t {
 };
 typedef std::map<std::string, flag_t> hash_t;
 
+// How to split the arguments of a #! line (the C, S and W flags)
+enum Splitter {
+  SPLIT_SHELLWORDS = 0,   // like Perl's shellwords() (the default)
+  SPLIT_CLASSIC,          // env2's original splitter, split_classic() in classic.cc
+  SPLIT_WORDEXP           // POSIX wordexp(), as a shell would (no command substitution)
+};
+
 // env2 flags (set by parse_flags(), or by a library caller)
 struct Flags {
   int         nstart = 0;      // [internal] end of env2 args
@@ -38,7 +45,7 @@ struct Flags {
   bool        norc   = false;  // do not read rc file
   bool        pre    = false;  // preserve empty args
   bool        sbs    = false;  // strip backslashes
-  bool        legacy = false;      // use the legacy split_string() instead of shellwords (L flag; implied by s, p, x)
+  Splitter    splitter = SPLIT_SHELLWORDS;   // how to split the #! args: -C classic, -S shellwords (default), -W wordexp
   bool        expand = false;      // expand ${NAME} environment variables (E flag; shellwords splitter only)
   bool        win    = false;  // convert script path to Windows format
   std::string delim;           // delimiter to separate interpreter args from script args
@@ -83,9 +90,10 @@ extern SwitchResult parse_switches(const char *text, const std::vector<SwitchSpe
 extern std::string switch_help(const std::vector<SwitchSpec> &spec);
 extern argv_t read_hashbang(const Flags &flags, argv_t i);
 extern argv_t split_and_merge(const Flags &flags, argv_t argvi, char *stri=NULL, int at=1);
-extern argv_t split_string(const Flags &flags, char *input);
+extern argv_t split_classic(const Flags &flags, char *input);   // classic.cc
 extern argv_t split_shellwords(const char *input, bool comments=false, bool expand=false);
-extern argv_t split_args(const Flags &flags, char *input);   // split_string() or split_shellwords(), per flags
+extern argv_t split_wordexp(const char *input);
+extern argv_t split_args(const Flags &flags, char *input);   // split_classic(), split_shellwords() or split_wordexp(), per flags.splitter
 extern hash_t vars2(const Flags &flags);
 
 // Global vars

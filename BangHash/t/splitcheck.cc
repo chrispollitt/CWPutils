@@ -1,11 +1,11 @@
-// t/splitcheck.cc - a test harness for split_string() / split_shellwords()
+// t/splitcheck.cc - a test harness for the splitters: split_classic(), split_shellwords(), split_wordexp()
 // (see t/splitcompare.pl)
 //
 // splitcheck [flags]  -- read lines on stdin, split each with env2's splitter
 // flags: (none) = env2's default splitter, split_shellwords() (like Perl's shellwords())
-//        L = the legacy split_string().  s, p, x (strip backslashes, preserve empty args,
+//        C = the classic split_classic() (L is the old name).  s, p, x (strip backslashes, preserve empty args,
 //        expand \n etc.) only mean something to it, so they select it too, as in env2,
-//        unless S is also given
+//        unless a mode (C, S or W) is given;  W = wordexp;  S = shellwords (the default)
 //        c = comments
 // output per line:  <U|M>\x1ftoken1\x1ftoken2...
 //   M = the splitter complained (unmatched quote), U = it did not
@@ -24,20 +24,21 @@ int   Debug = 0;
 
 int main(int argc, char **argv) {
   Flags flags;
-  bool seenS = false;
+  bool haveMode = false;
   if(argc > 1) {
     for(const char *p = argv[1]; *p; p++) {
-      if(*p == 'L') flags.legacy = true;
-      if(*p == 'S') seenS = true;
+      if(*p == 'C' || *p == 'L') { flags.splitter = SPLIT_CLASSIC;    haveMode = true; }
+      if(*p == 'S')                  { flags.splitter = SPLIT_SHELLWORDS; haveMode = true; }
+      if(*p == 'W')                  { flags.splitter = SPLIT_WORDEXP;    haveMode = true; }
       if(*p == 's') flags.sbs = true;
       if(*p == 'p') flags.pre = true;
       if(*p == 'x') flags.exp = true;
       if(*p == 'c') flags.cmt = true;
       if(*p == 'E') flags.expand = true;
     }
-    if(!seenS && (flags.sbs || flags.pre || flags.exp)) flags.legacy = true;
+    if(!haveMode && (flags.sbs || flags.pre || flags.exp)) flags.splitter = SPLIT_CLASSIC;
   }
-  // split_string() reports problems on stderr: capture it to see whether it complained
+  // split_classic() reports problems on stderr: capture it to see whether it complained
   FILE *tf = tmpfile();
   fflush(stderr);
   dup2(fileno(tf), 2);

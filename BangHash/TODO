@@ -14,7 +14,7 @@
    - -p: empty quotes directly followed by text give an extra empty arg
    - a quote with nothing after it is not reported as unmatched
    - -s also strips backslashes inside single quotes (the shell and shellwords keep them)
-* remove the legacy splitter and the -L/-s/-p/-x implication eventually (3.0?)
+* remove the classic splitter and the -C/-s/-p/-x implication eventually (3.0?)
 * experiments/minsh (gh_cp/experiments/minsh/minsh*.c) is a minimal shell that handles #! lines itself using
   POSIX wordexp(): a real-process "perfect split" emulator.  It could complement t/fakekernel.pl, but note
   wordexp() follows sh rules (inside double quotes a backslash only escapes $ ` " \ and newline; a
@@ -29,11 +29,14 @@
 * unit-test split_string() directly
 
 DONE
+* version 2.2: three selectable splitter modes - classic (-C), shellwords (-S, default), wordexp (-W) - with long
+  names (--classic etc.).  wordexp mode never runs commands; checked against a real sh like shellwords is against Perl.
+  The classic parser moved from array_utils.cc to classic.cc (renamed split_classic), with comments.
 * version 2.1: env2 -E expands ${NAME} environment variables in the #! line (shellwords splitter only; GNU env -S
   style: braced form only, any other $ is an error, no expansion in single quotes, values never re-split,
   unset = empty and an unquoted unset-only word vanishes, set-but-empty keeps an empty argument).  The rc file is read first so its variables are usable.
 * version 2.0: split_shellwords(), a port of Perl's shellwords() verified against Perl on all strings
-  up to length 6 (make test), is the DEFAULT splitter.  The original splitter is "legacy": -L selects
+  up to length 6 (make test), is the DEFAULT splitter.  The original splitter is now "classic": -C (formerly -L) selects
   it, and -s, -p, -x imply it (so older #! lines are unchanged).  -S is still accepted.
 * test_env2.sh runs with a private HOME (it used to leave a copy of t/env2rc in the real ~/.env2rc)
 * parse_switches(): table-driven, Perl-style switch parser in the library; env2 uses it;

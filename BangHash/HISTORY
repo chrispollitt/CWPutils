@@ -25,6 +25,7 @@ VERSIONS
   1.4   2026-11-05   version bumped in the source (no git tag)
   2.0   2026-11-06   shellwords splitting becomes the default (no git tag yet)
   2.1   2026-11-06   -E: optional ${NAME} expansion in the #! line (no git tag yet)
+  2.2   2026-11-06   three selectable splitter modes: classic, shellwords, wordexp (no git tag yet)
 
 
 TIMELINE
@@ -76,6 +77,7 @@ TIMELINE
 2026-11-05         A modernisation pass (with Claude).  See the next section.
 
 2026-11-06         Versions 2.0 and 2.1.
+2026-11-06         Version 2.2.
 
 
 THE 2026 WORK
@@ -95,13 +97,22 @@ Features
     of up to six characters over a small alphabet (about 137,000 strings), and
     the check runs in "make test".
   * Version 2.0 makes shellwords splitting the default.  The original splitter
-    is "legacy": -L selects it, and -s, -p and -x (which only mean something to
+    is "classic": -C (formerly -L) selects it, and -s, -p and -x (which only mean something to
     it) imply it, so older #! lines behave as before.  -S is still accepted.
     See the COMPATIBILITY section of the man page.
   * Version 2.1 adds -E: ${NAME} in the #! line (and in the rc file's interpreter-
     argument lines) is replaced by the environment variable's value, much as GNU
     env -S does.  The expansion happens inside the tokenizer, so quoting is
     respected and values are never split again.  Off unless asked for.
+  * Version 2.2 makes the splitter a choice of three modes: -C classic (the original, renamed from
+    "legacy"), -S shellwords (the default) and -W wordexp (a POSIX shell's rules; commands are never
+    run).  The classic parser moved to its own file, classic.cc.  Cygwin's wordexp() turned out to
+    choke on a first word like -n and to let command substitution through as text, so wordexp.cc handles
+    both itself.
+  * wordexp mode is "whatever the C library's wordexp() does": checked against a real sh, it agrees on Cygwin
+    (bash) but glibc (2.31 and 2.39, against dash) differs in two ways - an empty pair of quotes touching
+    text gives an extra empty word, and a trailing backslash is an error.  Documented in the man page; the
+    test accepts exactly those two.
 
 Bugs found and fixed
   * Heap overflows in split_string() and env2() on long arguments or many
@@ -133,7 +144,7 @@ What the shellwords comparison found
   a backslash in front of whitespace or a quote; -s also strips backslashes inside
   single quotes; empty quotes are dropped (or, with -p, make an extra empty
   argument next to text); and a lone quote is not reported as an error.  These
-  were left as they are in the legacy splitter and documented in the man page.
+  were left as they are in the classic splitter and documented in the man page.
   The tool that finds them is t/splitcheck.cc with t/splitcompare.pl.
 
 
@@ -156,4 +167,4 @@ IDEAS NOT YET DONE
 
 See the TODO file: environment-variable expansion (${VAR}) in the #! line,
 a vector<string> conversion, splitting env2() into phases, a namespace, and
-eventually removing the legacy splitter.
+eventually removing the classic splitter.

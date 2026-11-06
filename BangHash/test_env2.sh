@@ -117,8 +117,8 @@ function main {
   
   # Run Test 6 - debug, norc 
   echo "==Test 6"
-  # (L: this test covers the legacy splitter keeping the backslash in "tab\ttab")
-  set_sample_script '-dnLf bash -x ~~ "tab\ttab"' 'echo -E "Hi from 6 $1"'
+  # (C: this test covers the classic splitter keeping the backslash in "tab\ttab")
+  set_sample_script '-dnCf bash -x ~~ "tab\ttab"' 'echo -E "Hi from 6 $1"'
   script_args=''
   ./sample_script.si $script_args >& t/out6
   diff t/out6 t/exp6
@@ -216,7 +216,7 @@ function main {
   fi
 
   ### shellwords (Perl-compatible splitting, split_shellwords) is the default ###
-  # -L (or -s, -p, -x, which imply it) selects the legacy splitter; -S is accepted.
+  # -C (or -s, -p, -x, which imply it) selects the classic splitter; -S is accepted; -W is wordexp.
 
   echo "==Test default-shellwords"
   got=$($prog "-n /bin/echo 'two words' a\\ b \"\" x" /bin/true 2>&1)
@@ -246,18 +246,109 @@ function main {
     (( errs = errs + 1 ))
   fi
 
-  # a backslash-escaped space: shellwords makes it part of the word; the legacy splitter keeps the backslash
-  echo "==Test L-legacy"
-  got=$($prog "-Ln /bin/echo a\\ b" /bin/true 2>&1)
-  if [[ $got != 'a\ b /bin/true' ]]; then
-    echo "Test L-legacy: got '$got'"
+  # a backslash-escaped space: shellwords makes it part of the word; the classic splitter keeps the backslash
+  echo "==Test C-classic"
+  for f in -Cn --classic -Ln; do      # -L is the old name of -C
+    got=$($prog "$f /bin/echo a\\ b" /bin/true 2>&1)
+    if [[ $got != 'a\ b /bin/true' ]]; then
+      echo "Test C-classic: '$f' gave '$got'"
+      (( errs = errs + 1 ))
+    fi
+  done
+  got=$($prog "--shellwords -n /bin/echo a\\ b" /bin/true 2>&1)
+  if [[ $got != 'a b /bin/true' ]]; then
+    echo "Test C-classic: --shellwords gave '$got'"
     (( errs = errs + 1 ))
   fi
 
-  echo "==Test s-implies-legacy"
+  ### -W: wordexp mode (a POSIX shell's rules; no command substitution) ###
+  # (printf '[%s]' with no newline shows where each argument starts and ends)
+
+  echo "==Test wordexp-basics"
+  s=$'-Wn /usr/bin/printf [%s] a "b c" \'d e\' f\\ g'
+  got=$($prog "$s" /bin/true 2>&1)
+  if [[ $got != '[a][b c][d e][f g][/bin/true]' ]]; then
+    echo "Test wordexp-basics: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  # unlike shellwords: an unquoted $VAR is split on its spaces, a quoted one is not
+  echo "==Test wordexp-variables"
+  s=$'-Wn /usr/bin/printf [%s] $FOO_W "$FOO_W" \'$FOO_W\''
+  got=$(FOO_W='two words' $prog "$s" /bin/true 2>&1)
+  if [[ $got != '[two][words][two words][$FOO_W][/bin/true]' ]]; then
+    echo "Test wordexp-variables: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test wordexp-tilde-arith"
+  got=$($prog '-Wn /usr/bin/printf [%s] ~ $((1+2))' /bin/true 2>&1)
+  if [[ $got != "[$HOME][3][/bin/true]" ]]; then
+    echo "Test wordexp-tilde-arith: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  # shell rules differ from Perl's: inside double quotes a backslash only escapes $ ` " \
+  echo "==Test wordexp-shell-rules"
+  s=$'-Wn /usr/bin/printf [%s] "a\\b"'
+  got=$($prog "$s" /bin/true 2>&1)
+  if [[ $got != '[a\b][/bin/true]' ]]; then
+    echo "Test wordexp-shell-rules: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test wordexp-no-commands"
+  for bad in '$(echo HI)' '`echo HI`' 'x$(echo HI)y' '"$(echo HI)"'; do
+    got=$($prog "-Wn /usr/bin/printf [%s] $bad" /bin/true 2>&1 | head -1)
+    if [[ $got != *"command substitution is not allowed" ]]; then
+      echo "Test wordexp-no-commands: '$bad' gave '$got'"
+      (( errs = errs + 1 ))
+    fi
+  done
+  # ... but a $( inside single quotes is just text, and $(( )) is arithmetic
+  got=$($prog "-Wn /usr/bin/printf [%s] '\$(echo HI)'" /bin/true 2>&1)
+  if [[ $got != '[$(echo HI)][/bin/true]' ]]; then
+    echo "Test wordexp-no-commands: single-quoted gave '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test wordexp-errors"
+  got=$($prog '-Wn /usr/bin/printf [%s] "oops' /bin/true 2>&1 | head -1)
+  if [[ $got != *"error: wordexp: unmatched quote"* ]]; then
+    echo "Test wordexp-errors: unmatched quote gave '$got'"
+    (( errs = errs + 1 ))
+  fi
+  got=$($prog '-Wn /usr/bin/printf [%s] (x)' /bin/true 2>&1 | head -1)
+  if [[ $got != *"error: wordexp: unquoted"* ]]; then
+    echo "Test wordexp-errors: ( ) gave '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test mode-conflicts"
+  for f in -CS -CW -SW -WC; do
+    got=$($prog "${f}n /usr/bin/printf [%s] x" /bin/true 2>&1 | head -1)
+    if [[ $got != *"only one of -C"* ]]; then
+      echo "Test mode-conflicts: '$f' gave '$got'"
+      (( errs = errs + 1 ))
+    fi
+  done
+  for f in -WE -Wa -Wc; do
+    got=$($prog "${f}n /usr/bin/printf [%s] x" /bin/true 2>&1 | head -1)
+    if [[ $got != *"is not supported with -W"* ]]; then
+      echo "Test mode-conflicts: '$f' gave '$got'"
+      (( errs = errs + 1 ))
+    fi
+  done
+  got=$($prog "--wordexp -n /usr/bin/printf [%s] a\\ b" /bin/true 2>&1)
+  if [[ $got != '[a b][/bin/true]' ]]; then
+    echo "Test mode-conflicts: --wordexp gave '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test s-implies-classic"
   got=$($prog "-sn /bin/echo a\\ b" /bin/true 2>&1)
   if [[ $got != 'a\ b /bin/true' ]]; then
-    echo "Test s-implies-legacy: got '$got'"
+    echo "Test s-implies-classic: got '$got'"
     (( errs = errs + 1 ))
   fi
 
@@ -314,7 +405,7 @@ function main {
   done
 
   echo "==Test expand-needs-shellwords"
-  for f in -ELn -Esn -Epn -Exn; do
+  for f in -ECn -ELn -Esn -Epn -Exn; do
     got=$($prog "$f /usr/bin/printf [%s] x" /bin/true 2>&1 | head -1)
     if [[ $got != *"-E needs the shellwords splitter"* ]]; then
       echo "Test expand-needs-shellwords: '$f' gave '$got'"
@@ -354,6 +445,15 @@ function main {
     }
     out=$(SPLITCMP_WS=1 perl t/splitcompare.pl ./splitcheck "" 4 2>&1) || {
       echo "Test shellwords-vs-perl (whitespace): disagrees with Perl:"; echo "$out" | head -20
+      (( errs = errs + 1 ))
+    }
+  fi
+
+  # wordexp mode must agree with a real POSIX sh on every short string
+  if [[ -x ./splitcheck && -x /bin/sh ]]; then
+    echo "==Test wordexp-vs-sh"
+    out=$(perl t/splitcompare.pl ./splitcheck W 4 2>&1) || {
+      echo "Test wordexp-vs-sh: disagrees with sh:"; echo "$out" | head -20
       (( errs = errs + 1 ))
     }
   fi

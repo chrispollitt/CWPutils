@@ -41,7 +41,7 @@ int   Debug;                   // Debug flag
 #define DEF_TO_STR(s) DEF_TO_STR2(s)
 
 // Constants
-#define VERSION   "2.1"
+#define VERSION   "2.2"
 #define YEAR      "2020-2026"
 
 #ifndef PREFIX
@@ -477,22 +477,24 @@ static const std::vector<SwitchSpec> &env2_spec() {
     //  letter longname   optarg  help
     {'a', NULL,      false, "Allow ~ to mark non-dashed flag AND allow space sep flag args"},
     {'c', NULL,      false, "Comments mode (stuff after # is discarded)"},
+    {'C', "classic", false, "Classic splitter, env2's original (implied by s, p, x)"},
+    {'L', NULL,      false, NULL},   // the old name of -C, still accepted
     {'d', NULL,      false, "Debug mode (repeat for more)"},
     {'e', NULL,      false, "Emit mode (call dumpargs)"},
     {'D', NULL,      false, NULL},   // emit, old spelling
-    {'E', NULL,      false, "Expand ${NAME} environment variables (not with L, s, p, x)"},
+    {'E', NULL,      false, "Expand ${NAME} environment variables (shellwords only)"},
 #ifdef F_TAKES_ARG
     {'f', NULL,      true,  "Find script opts separated by delim (S=~~ if not specified)"},
 #else
     {'f', NULL,      false, "Find script opts separated by delimiter ~~"},
 #endif
-    {'L', NULL,      false, "Legacy splitter, not shellwords (implied by s, p, x)"},
-    {'n', NULL,      false, "No rc file read"},
-    {'p', NULL,      false, "Preserve empty args (legacy splitter)"},
-    {'s', NULL,      false, "Strip backslashes (legacy splitter)"},
-    {'S', NULL,      false, "Shellwords splitting, like Perl (the default)"},
-    {'w', NULL,      false, "Windows path: convert script path like cygpath -w (Cygwin)"},
-    {'x', NULL,      false, "eXpand backslash-escaped characters (legacy splitter)"},
+    {'n', NULL,         false, "No rc file read"},
+    {'p', NULL,         false, "Preserve empty args (classic splitter)"},
+    {'s', NULL,         false, "Strip backslashes (classic splitter)"},
+    {'S', "shellwords", false, "Shellwords splitting, like Perl (the default)"},
+    {'w', NULL,         false, "Windows path: convert script path like cygpath -w (Cygwin)"},
+    {'W', "wordexp",    false, "Wordexp splitting, like a POSIX shell (no commands)"},
+    {'x', NULL,         false, "eXpand backslash-escaped characters (classic splitter)"},
     {'v', "version", false, "print the Version of this program"},
     {'h', "help",    false, "this Help"},
   };
@@ -504,7 +506,7 @@ static const std::vector<SwitchSpec> &env2_spec() {
  **************************************************************/
 Flags parse_flags(char *flags_str) {
   Flags flags;
-  bool seenS = false;                // -S given explicitly
+  bool haveMode = false;             // a splitter was chosen explicitly (-C, -S or -W)
   const std::vector<SwitchSpec> &spec = env2_spec();
 
   // strip off args meant for me (from #! line) ////////////////////////////////
@@ -567,16 +569,23 @@ Flags parse_flags(char *flags_str) {
         flags.sbs = true;
         if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
         break;
-      // split like Perl's shellwords() (the default; blocks the s/p/x implication below)
-      case 'S':
-        seenS = true;
-        if(Debug) fprintf(stderr, "Debug: Shellwords mode activated\n");
-        break;
-      // use the legacy splitter
+      // choose how to split the args: classic (-C, or the old name -L), shellwords (-S, the
+      // default) or wordexp (-W).  An explicit choice blocks the s/p/x implication below.
+      case 'C':
       case 'L':
-        flags.legacy = true;
-        if(Debug) fprintf(stderr, "Debug: Legacy splitter activated\n");
+      case 'S':
+      case 'W': {
+        Splitter chosen = (g.letter == 'S') ? SPLIT_SHELLWORDS :
+                          (g.letter == 'W') ? SPLIT_WORDEXP : SPLIT_CLASSIC;
+        if(haveMode && chosen != flags.splitter) {
+          throw StdException("only one of -C (classic), -S (shellwords) and -W (wordexp) can be used");
+        }
+        flags.splitter = chosen;
+        haveMode = true;
+        if(Debug) fprintf(stderr, "Debug: %s splitter activated\n",
+          chosen == SPLIT_CLASSIC ? "Classic" : chosen == SPLIT_WORDEXP ? "Wordexp" : "Shellwords");
         break;
+      }
       // convert script path to Windows format (Cygwin only)
       case 'w':
         flags.win = true;
@@ -589,15 +598,21 @@ Flags parse_flags(char *flags_str) {
         break;
     }
   }
-  // -s, -p and -x only mean something to the legacy splitter, so they select it
-  // (unless -S was given explicitly), which keeps older #! lines working as before
-  if(!seenS && !flags.legacy && (flags.sbs || flags.pre || flags.exp)) {
-    flags.legacy = true;
-    if(Debug) fprintf(stderr, "Debug: Legacy splitter implied by s, p or x\n");
+  // -s, -p and -x only mean something to the classic splitter, so they select it
+  // (unless a mode was given explicitly), which keeps older #! lines working as before
+  if(!haveMode && (flags.sbs || flags.pre || flags.exp)) {
+    flags.splitter = SPLIT_CLASSIC;
+    if(Debug) fprintf(stderr, "Debug: Classic splitter implied by s, p or x\n");
   }
-  // expansion is a feature of the shellwords splitter only
-  if(flags.expand && flags.legacy) {
-    throw StdException("-E needs the shellwords splitter (it cannot be used with -L, -s, -p or -x)");
+  // some flags only make sense with some splitters
+  if(flags.expand && flags.splitter == SPLIT_CLASSIC) {
+    throw StdException("-E needs the shellwords splitter (it cannot be used with -C, -s, -p or -x)");
+  }
+  if(flags.splitter == SPLIT_WORDEXP) {
+    // wordexp expands $VAR and ~ itself and has no comments
+    if(flags.expand)        throw StdException("-E is not supported with -W (wordexp expands $VAR itself)");
+    if(!flags.allow.empty()) throw StdException("-a is not supported with -W (wordexp expands ~ itself)");
+    if(flags.cmt)           throw StdException("-c is not supported with -W (wordexp has no comments)");
   }
   flags.nstart = r.clusters;
   if(Debug) fprintf( stderr, "Debug: nstart: %d\n", flags.nstart );

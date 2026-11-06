@@ -5,17 +5,18 @@ Usage:
 Where flags are one or more of:                                         
   a     : Allow ~ to mark non-dashed flag AND allow space sep flag args 
   c     : Comments mode (stuff after # is discarded)                    
+  C     : Classic splitter, env2's original (implied by s, p, x)        
   d     : Debug mode (repeat for more)                                  
   e     : Emit mode (call dumpargs)                                     
-  E     : Expand ${NAME} environment variables (not with L, s, p, x)    
+  E     : Expand ${NAME} environment variables (shellwords only)        
   f     : Find script opts separated by delimiter ~~                    
-  L     : Legacy splitter, not shellwords (implied by s, p, x)          
   n     : No rc file read                                               
-  p     : Preserve empty args (legacy splitter)                         
-  s     : Strip backslashes (legacy splitter)                           
+  p     : Preserve empty args (classic splitter)                        
+  s     : Strip backslashes (classic splitter)                          
   S     : Shellwords splitting, like Perl (the default)                 
   w     : Windows path: convert script path like cygpath -w (Cygwin)    
-  x     : eXpand backslash-escaped characters (legacy splitter)         
+  W     : Wordexp splitting, like a POSIX shell (no commands)           
+  x     : eXpand backslash-escaped characters (classic splitter)        
   v     : print the Version of this program                             
   h     : this Help                                                     
 

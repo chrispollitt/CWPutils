@@ -14,9 +14,14 @@ Windows format (like `cygpath -w`) for native Windows interpreters.
 
 Run `env2 -h` for the list of flags and `env2 -v` for the version.
 
-Since version 2.0 `env2` splits the `#!` arguments like Perl's `shellwords()` by default.
-The original splitter is still there as `-L` (and is selected by `-s`, `-p` and `-x`, so
-older `#!` lines keep working); see the COMPATIBILITY section of the man page.
+`env2` has three modes for splitting the `#!` arguments (version 2.2); pick one with a flag:
+
+    -S  --shellwords   like Perl's shellwords()           (the default since 2.0)
+    -C  --classic      env2's original splitter           (implied by -s, -p, -x, so
+                                                           older #! lines keep working)
+    -W  --wordexp      like a POSIX shell, via wordexp()  (no commands are ever run)
+
+See the QUOTING AND ESCAPES and COMPATIBILITY sections of the man page.
 
 With `-E` (version 2.1), `${NAME}` in the `#!` line is replaced by the value of that
 environment variable, as in GNU `env -S`; it is off unless a script asks for it.
@@ -34,7 +39,8 @@ BUILD AND TEST
 See INSTALL for requirements.
 
 SOURCES
-* array_utils.cc           - split string into array and merge arrays
+* array_utils.cc           - split_args() (picks the splitter), join and merge arrays
+* classic.cc               - split_classic(): env2's original splitter (-C)
 * dumpargs.cc              - Print the argv array
 * env2.cc                  - env2 itself (flag parsing, arg assembly, main)
 * shellwords.cc            - split_shellwords(): a port of Perl's shellwords(), env2's default splitter
@@ -42,6 +48,7 @@ SOURCES
                             how to parse your own #! switches with parse_switches())
 * switches.cc             - parse_switches(): table-driven #! switch parser (used by env2)
 * vars2.cc                 - read the config file and set env vars + interpreter flags
+* wordexp.cc               - split_wordexp(): a POSIX shell's rules via wordexp() (env2 -W)
 * da.cc                    - tiny helper that `configure` uses to probe kernel `#!` splitting
 
 EXECUTABLES

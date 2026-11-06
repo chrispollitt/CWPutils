@@ -20,7 +20,9 @@ LIBOBJ2 = array_utils.o
 LIBOBJ3 = vars2.o
 LIBOBJ4 = switches.o
 LIBOBJ5 = shellwords.o
-LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3) $(LIBOBJ4) $(LIBOBJ5)
+LIBOBJ6 = wordexp.o
+LIBOBJ7 = classic.o
+LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3) $(LIBOBJ4) $(LIBOBJ5) $(LIBOBJ6) $(LIBOBJ7)
 
 # Logical Targets ##################
 
@@ -80,7 +82,7 @@ $(PROG1).pod-middle: $(PROG1)
 $(PROG2): $(PROG2)_m.o
 	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 
-# splitcheck: test harness for split_string()/split_shellwords() (see t/splitcompare.pl)
+# splitcheck: test harness for the splitters (classic, shellwords, wordexp) (see t/splitcompare.pl)
 splitcheck: t/splitcheck.cc $(LIBOBJS)
 	$(CXX) $(CXXFLAGS) -I. -o $@ t/splitcheck.cc $(LIBOBJS) $(LDXXLIBS)
 

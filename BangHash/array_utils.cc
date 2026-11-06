@@ -1,5 +1,7 @@
 /*****************************************************************
- * split strings and merge arrays
+ * array helpers: split_args (picks the splitter), join_array, merge_arrays,
+ * split_and_merge.  The splitters themselves are in classic.cc, shellwords.cc
+ * and wordexp.cc.
  ****************************************************************/
 
 // Includes
@@ -14,204 +16,18 @@
 
 using namespace std;
 
-// Constants
-#define STRCMP_TRUE    0
-#define COMMENT       '#'
-#define ENDOFSTR      '\0'
-#define SPACE         ' '
-#define TAB           '\t'
-#define NEWLINE       '\n'
-#define RETURN        '\r'
-#define SINGLEQUOTE   '\''
-#define DOUBLEQUOTE   '\"'
-#define BACKSLASH     '\\'
-
-/****************************************************************
- * split out string into array
- *   input:   input   // Input string
- *   return:  o       // Output argv_t
- **************************************************************/
-argv_t split_string(const Flags &flags, char *input) {
-  argv_t o;
-  char **output;
-  char *output_tmp;   // tmp placeholder for output string
-  char *input_ptr;    // Input string pointer
-  char *output_ptr;   // Output string pointer
-  int count=0;        // Number of strings found
-  int ccnt=0;         // Character count of current string
-  int in_sq=0;        // Inside single quote
-  int in_dq=0;        // Inside double quote
-  int in_bs=0;        // Inside backslash
-  // No output string can be longer than the input, and there can't be more
-  //   strings than input chars + 1, so size buffers from the input.
-  size_t cap = strlen(input) + 2;
-
-  if(Debug>=2) printf("Debug: Func=split_string\n");
-
-  /****************************************
-   * inline helper function to reduce duplicated code for quote parsing
-   ****************************************/
-  auto found_q = [&](int sq) {
-    // set in_q1 and in_q2 refs
-    int *in_q1 =  sq ? &in_sq : &in_dq;
-    int *in_q2 = !sq ? &in_sq : &in_dq;
-
-    // if not in quoted string
-    if(!*in_q2 && !in_bs) {
-      // if closed on empty string, add to array and move to next argv
-      if(*in_q1 && ccnt==0 && flags.pre ) {
-        *output_ptr = ENDOFSTR;
-        output[count++] = output_tmp;
-        output_tmp = (char *)malloc(cap);
-        output_ptr = output_tmp;
-      }
-      // flip flag
-      *in_q1=1-*in_q1;
-    } else {
-      // add to string
-      *output_ptr++ = *input_ptr;
-      ccnt++;
-    }
-    // clear in_bs
-    in_bs=0;
-  };
-
-  /****************************************
-   * body of split_string()
-   ****************************************/
-  output = (char **)calloc(cap + 1, sizeof(char *));
-
-  // init in and out pointers
-  input_ptr = input;
-  output_tmp = (char *)malloc(cap);
-  output_ptr = output_tmp;
-  // loop over input string
-  while(*input_ptr) {
-    // whitespace //////////////////////////////////////
-    if(
-      *input_ptr==SPACE   ||
-      *input_ptr==TAB     ||
-      *input_ptr==NEWLINE ||
-      *input_ptr==RETURN
-    ) {
-      // not in single, double, or backslash
-      if(!in_sq && !in_dq && !in_bs) {
-        // and we have a string, term string and move to next argv
-        if(ccnt) {
-          *output_ptr = ENDOFSTR;
-          output[count++] = output_tmp;
-          output_tmp = (char *)malloc(cap);
-          output_ptr = output_tmp;
-          ccnt=0;
-        }
-        // discard unquoted whitespace
-      }
-      // add to string
-      else {
-        *output_ptr++ = *input_ptr;
-        ccnt++;
-      }
-      in_bs=0;
-    }
-    // not whitespace or quote (regular character) //////////////////////
-    else if (
-      *input_ptr != SPACE       &&
-      *input_ptr != TAB         &&
-      *input_ptr != NEWLINE     &&
-      *input_ptr != RETURN      &&
-      *input_ptr != BACKSLASH   &&
-      *input_ptr != DOUBLEQUOTE &&
-      *input_ptr != SINGLEQUOTE
-    ) {
-      // comment
-      if(
-        (flags.cmt )       &&
-        (*input_ptr     == COMMENT)   &&
-        (*(input_ptr-1) == SPACE)     &&
-        (*(input_ptr-2) != BACKSLASH) &&
-        !in_sq                        &&
-        !in_dq                        &&
-        ccnt == 0
-      ) {
-        break;
-        // regular character
-      } else {
-        char expa[] = "abefnrtv";
-        char expc[] = {7,8,27,12,10,13,9,11};
-        char *pos;
-
-        if(
-          flags.exp &&
-          in_bs                 &&
-          (pos = strchr(expa, *input_ptr))
-        ) {
-          long posd = pos - expa;
-          output_ptr--;
-          *output_ptr++ = expc[posd];
-        } else {
-          if(
-            flags.sbs &&
-            in_bs
-          ) {
-            output_ptr--;
-          }
-          *output_ptr++ = *input_ptr;
-          ccnt++;
-        }
-      }
-      in_bs=0;
-    }
-    // single quote //////////////////////////////////
-    else if (*input_ptr==SINGLEQUOTE) {
-      found_q(1);
-    }
-    // double quote ///////////////////////////////////
-    else if (*input_ptr==DOUBLEQUOTE) {
-      found_q(0);
-    }
-    // back slash (escape char) ///////////////////////
-    else if (*input_ptr==BACKSLASH) {
-      if(
-        flags.sbs &&
-        in_bs
-      ) {
-        output_ptr--;
-      }
-      in_bs=1-in_bs;
-      *output_ptr++ = *input_ptr;
-      ccnt++;
-    }
-    // move to next input char
-    input_ptr++;
-  } // while
-  // catch final string ///////////////////////////
-  if(!in_sq && !in_dq && !in_bs) {
-    // and we have a string, term string and increase count
-    if(ccnt) {
-      *output_ptr = ENDOFSTR;
-      output[count++] = output_tmp;
-    }
-  }
-  // dangling quote or escape /////////////////////
-  else if(ccnt) {
-    fprintf(stderr, "%s error: unmatched quote\n", Argv0);
-//  throw StdException("split_string(): unmatched quote");
-  }
-  output[count] = NULL;
-  // return number of strings found
-  o.argc = count;
-  o.argv = output;
-  return(o);
-}
-
 /****************************************************************
  * split_args - split a string into args using the splitter the flags ask for
- *   default: split_shellwords() (Perl-compatible; honours only -c)
- *   L flag (or s, p, x): split_string() (env2's original "legacy" splitter)
+ *   shellwords (default): split_shellwords() (Perl-compatible; honours -c and -E)
+ *   classic (-C, or s, p, x): split_classic() (env2's original splitter, classic.cc)
+ *   wordexp (-W): split_wordexp() (a POSIX shell's rules; no command substitution)
  **************************************************************/
 argv_t split_args(const Flags &flags, char *input) {
-  if(flags.legacy) return split_string(flags, input);
-  return split_shellwords(input, flags.cmt, flags.expand);
+  switch(flags.splitter) {
+    case SPLIT_CLASSIC:  return split_classic(flags, input);
+    case SPLIT_WORDEXP:  return split_wordexp(input);
+    default:             return split_shellwords(input, flags.cmt, flags.expand);
+  }
 }
 
 /******************************************************
@@ -312,7 +128,7 @@ argv_t split_and_merge(const Flags &flags, argv_t argvi, char *stri, int at) {
     ovr  = 1;
   }
 
-  //  split_string()
+  //  split_args()
   argvs = split_args(flags, stri);
 
   //  merge_arrays()

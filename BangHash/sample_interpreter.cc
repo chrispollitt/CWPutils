@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
     usage(1);
   }
 
-  // set flags (S=split_string E=env2 V=vars2)
+  // set flags (S=split_args E=env2 V=vars2)
   Flags flags;
   flags.delim = "~~";  // E search
 
@@ -203,7 +203,7 @@ int main(int argc, char **argv) {
     usage(1);
   }
 
-  // set flags (S=split_string E=env2 V=vars2)
+  // set flags (S=split_args E=env2 V=vars2)
   Flags flags;
 
   try {
