@@ -42,6 +42,9 @@ argv_t split_string(char *input) {
   int in_sq=0;        // Inside single quote
   int in_dq=0;        // Inside double quote
   int in_bs=0;        // Inside backslash
+  // No output string can be longer than the input, and there can't be more
+  //   strings than input chars + 1, so size buffers from the input.
+  size_t cap = strlen(input) + 2;
 
   if(Debug>=2) printf("Debug: Func=split_string\n");
 
@@ -59,7 +62,7 @@ argv_t split_string(char *input) {
       if(*in_q1 && ccnt==0 && flags["pre"].i() ) {
         *output_ptr = ENDOFSTR;
         output[count++] = output_tmp;
-        output_tmp = (char *)malloc(MAX_STR_CONST);
+        output_tmp = (char *)malloc(cap);
         output_ptr = output_tmp;
       }
       // flip flag
@@ -76,11 +79,11 @@ argv_t split_string(char *input) {
   /****************************************
    * body of split_string()
    ****************************************/
-  output = (char **)calloc(MAX_STR_CONST, sizeof(char *));
+  output = (char **)calloc(cap + 1, sizeof(char *));
 
   // init in and out pointers
   input_ptr = input;
-  output_tmp = (char *)malloc(MAX_STR_CONST);
+  output_tmp = (char *)malloc(cap);
   output_ptr = output_tmp;
   // loop over input string
   while(*input_ptr) {
@@ -97,7 +100,7 @@ argv_t split_string(char *input) {
         if(ccnt) {
           *output_ptr = ENDOFSTR;
           output[count++] = output_tmp;
-          output_tmp = (char *)malloc(MAX_STR_CONST);
+          output_tmp = (char *)malloc(cap);
           output_ptr = output_tmp;
           ccnt=0;
         }

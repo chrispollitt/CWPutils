@@ -142,30 +142,35 @@ argv_t read_hashbang(argv_t ia) {
   if( script != NULL) {
     if((fh = fopen(script,"r")) == NULL) {
       throw StdException("script file not readable: ", script);
-      fh = NULL;
     }
   }
   else {
     throw StdException("unable to determine script filename");
-    fh = NULL;
   }
-  if(fh != NULL) {
-    read = getline(&line, &linesze, fh);
-    if(
-      (read < 5)                      ||
-      ( strncmp(line, "#!/", 3) != 0 )
-    ) {
-      throw StdException("script file #! line not correct: ", script);
-    }
-    fclose(fh);
+  read = getline(&line, &linesze, fh);
+  fclose(fh);
+  if(
+    (read < 5)                      ||
+    ( strncmp(line, "#!/", 3) != 0 )
+  ) {
+    throw StdException("script file #! line not correct: ", script);
   }
-  
-  line = strchr(line, ' ')+1; // skip over interpreter
-  linep = line+strlen(line)-1;
+
+  // skip over interpreter
+  linep = strchr(line, ' ');
+  if(linep == NULL) {
+    throw StdException("script file #! line has no interpreter arguments: ", script);
+  }
+  line = linep+1;
+  // strip trailing newline (and CR), but nothing else
+  linep = line+strlen(line);
+  while(linep > line && (linep[-1] == '\n' || linep[-1] == '\r')) {
+    linep--;
+  }
   *linep = '\0';
   if(Debug>=2) printf("Debug: hashbang='%s'\n", line);
   oa.argc = 0;
-  oa.argv = (char **)calloc(MAX_STR_CONST, sizeof(char *));
+  oa.argv = (char **)calloc(ia.argc + 3, sizeof(char *));
   oa.argv[0] = ia.argv[0];
   oa.argv[1] = strdup(line);
   j=2;
@@ -269,6 +274,14 @@ argv_t env2(argv_t o) {
 #error "Must define KERNEL_SPLIT as 0, 1, or 2"
 #endif
 
+  // make room in n for the script and user args added below (+2 for script, NULL)
+  {
+    char **grown = (char **)calloc(n.argc + o.argc + 2, sizeof(char *));
+    for(i=0; i < n.argc; i++) grown[i] = n.argv[i];
+    free(n.argv);
+    n.argv = grown;
+  }
+
   // check that we have an interpreter from #! /////////////////////////////////
 #ifdef MAKE_EXE
   // flags["nstart"]  set by parse_flags()      // E after env2 flags
@@ -276,6 +289,9 @@ argv_t env2(argv_t o) {
   // Set flags for exe call
   nstart           = flags["nstart"].i();       // after env2 flags
   int_loc          = nstart;                    // interpreter
+  if(int_loc >= n.argc) {
+    throw StdException("No interpreter found");
+  }
   interpreter_base = basename(n.argv[int_loc]); // from n
 #else
   flags["nstart"]  = 0;                         // direct call
@@ -317,11 +333,11 @@ argv_t env2(argv_t o) {
   // add script  ///////////////////////////////////////////////////////////////
   if(found) {
     nscr_loc = found-1;
-    n.argv[nscr_loc] = strndup( o.argv[oscr_loc], MAX_STR_CONST-1);
+    n.argv[nscr_loc] = strdup( o.argv[oscr_loc] );
   } else {
     if(oscr_loc == 2) {
       nscr_loc = n.argc;
-      n.argv[nscr_loc] = strndup( o.argv[oscr_loc], MAX_STR_CONST-1);
+      n.argv[nscr_loc] = strdup( o.argv[oscr_loc] );
       n.argc++;
     } else {
       nscr_loc = n.argc + (oscr_loc-2);
@@ -331,7 +347,7 @@ argv_t env2(argv_t o) {
 
   // add remaining args for script (from user) /////////////////////////////////
   for(j = (oscr_loc == 2) ? 3 : 2; j<o.argc; j++) {
-    n.argv[n.argc] = strndup( o.argv[j], MAX_STR_CONST-1);
+    n.argv[n.argc] = strdup( o.argv[j] );
     n.argc++;
   }
 
@@ -352,7 +368,8 @@ argv_t env2(argv_t o) {
   i=nstart; // nargv (nstart is first non-env2 flag arg)
   j=0;      // eargv
   k=0;      // cargv
-  e.argv = (char **)calloc(MAX_STR_CONST, sizeof(char *));
+  // each arg may be split in two by '~' (allow mode), so allow twice e.argc
+  e.argv = (char **)calloc(2*e.argc + 2, sizeof(char *));
 
   // add interpreter
   e.argv[j++] = n.argv[i++];

@@ -142,6 +142,30 @@ function main {
     (( i = i + 1 ))
   done
     
+  ### regressions: fixed-size buffers ############
+
+  echo "==Test long-arg"
+  long=$(printf 'a%.0s' $(seq 300))
+  got=$($prog "-n /bin/echo $long" /bin/true 2>&1)
+  if [[ $got != "$long /bin/true" ]]; then
+    echo "Test long-arg: unexpected output (${#got} chars)"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test many-args"
+  got=$($prog "-n /bin/echo" /bin/true $(seq 300) 2>&1 | wc -w)
+  if [[ $got != 301 ]]; then
+    echo "Test many-args: expected 301 words got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test no-interpreter"
+  got=$($prog "-n" /bin/true 2>&1 | head -1)
+  if [[ $got != *"No interpreter found" ]]; then
+    echo "Test no-interpreter: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
   ### windows path (Cygwin only) ############
 
   if [[ $(uname -s) == CYGWIN* ]]; then
