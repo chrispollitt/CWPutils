@@ -1,6 +1,14 @@
 # Variables ###########################
 
+# config.mk is made by ./configure.  Don't require it when the only goals are
+# clean/distclean, so that distclean can remove it.  (No goals = default target.)
+NEED_CONFIG := $(if $(MAKECMDGOALS),$(filter-out clean distclean,$(MAKECMDGOALS)),all)
+ifneq ($(NEED_CONFIG),)
 include config.mk
+endif
+
+# Generate header dependencies (*.d) as a side effect of compiling
+CXXFLAGS += -MMD -MP
 
 # Internal variables (change at your peril)
 PROG1   = env2
@@ -35,12 +43,11 @@ install: build
 
 clean:
 	-rm -f $(PROG1) $(PROG2) $(SAMPLE) $(SAMPLE)1 $(SAMPLE)2 $(PROG1).pod *.pod-middle sample_script.si da
-	-rm -f *.man *.o *.exe *~ *.stackdump core
+	-rm -f *.man *.o *.d *.exe *~ *.stackdump core
 	-rm -f t/out*
 
 distclean: clean
-	-rm -f t/exp* config.hh
-# Can't rm config.mk as we need it to run!
+	-rm -f t/exp* config.hh config.mk
 
 uninstall:
 	-rm -f $(PREFIX)/bin/$(PROG1)
@@ -82,9 +89,6 @@ $(SAMPLE)2: $(SAMPLE)2.o $(LIBOBJS) $(LIBOBJ0)
 
 # Generic Rules ##############
 
-%.cc: %.hh env2lib.hh config.hh
-	touch $@
-
 %_m.o: %.cc
 	$(CXX) $(CXXFLAGS) -DMAKE_EXE -o $@ -c $<
 
@@ -99,6 +103,8 @@ $(SAMPLE)2: $(SAMPLE)2.o $(LIBOBJS) $(LIBOBJ0)
 	perl -lpi -e 's,PREFIX,'"$(PREFIX)"',g' $@
 
 # Special Rules ##############
+
+-include $(wildcard *.d)
 
 .PHONY: all build rebuild progs samples test check install clean uninstall fixpaths
 
