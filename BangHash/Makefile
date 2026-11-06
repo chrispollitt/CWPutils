@@ -32,6 +32,7 @@ samples: $(SAMPLE)1 $(SAMPLE)2
 
 test check: all
 	./test_$(PROG1).sh ./$(PROG1)
+	./test_configure.sh
 
 install: build
 	mkdir -p $(PREFIX)/bin

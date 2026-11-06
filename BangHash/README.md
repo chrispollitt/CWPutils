@@ -17,7 +17,8 @@ Run `env2 -h` for the list of flags and `env2 -v` for the version.
 BUILD AND TEST
 * `./configure`   - detect platform and kernel `#!` behaviour
 * `make`          - build
-* `make test`     - run the unit tests (`make check` is the same)
+* `make test`     - run the unit tests, plus configure tested against simulated
+                    kernels (`make check` is the same; slow under Cygwin)
 * `make install`  - install under `PREFIX` (default /usr/local)
 * `make clean` / `make distclean` - remove built files / also configure output
 

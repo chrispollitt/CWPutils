@@ -103,7 +103,13 @@ _HERE_
 	OIFS="$IFS"
 	IFS='
 '
-  args=($(./sample_script.si 2>/dev/null))
+  # KERNEL_SHIM=linux|naive|perfect pretends to be a different kernel
+  #   (used by test_configure.sh); normally the real kernel runs the script
+  if [[ -n $KERNEL_SHIM ]]; then
+    args=($(perl t/fakekernel.pl "$KERNEL_SHIM" ./sample_script.si 2>/dev/null))
+  else
+    args=($(./sample_script.si 2>/dev/null))
+  fi
 	IFS="$OIFS"
 	# test split
   if   [[ ${args[1]} == *"d'" ]]; then                      # Linux/FreeBSD
