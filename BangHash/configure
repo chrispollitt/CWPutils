@@ -89,7 +89,9 @@ _HERE_
 
   # Clean #################################################
   echo "=== 2. Cleaning"
-  make distclean
+  # (clean, not distclean: that would delete the config.mk made in step 1;
+  #  config.hh and t/exp* are regenerated below)
+  make clean
 
   # Test to see kernel behaviour of #! splitting ##########
   echo "=== 3. Testing kernel #! parsing"
