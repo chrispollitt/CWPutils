@@ -104,6 +104,10 @@ Features
     argument lines) is replaced by the environment variable's value, much as GNU
     env -S does.  The expansion happens inside the tokenizer, so quoting is
     respected and values are never split again.  Off unless asked for.
+  * shebanglab (new, 1.0): t/fakekernel.pl grew into a proper tool.  Give it a #! line (or a script) and it
+    shows the arguments the interpreter receives under kernels 0, 1, 2 and solaris, through each helper:
+    direct, every env it can find (plain and -S), and env2 in each mode.  Each result is marked ok or X
+    against the intended arguments.  "make lab" builds the env2 variants it needs.
   * Version 2.2 makes the splitter a choice of three modes: -C classic (the original, renamed from
     "legacy"), -S shellwords (the default) and -W wordexp (a POSIX shell's rules; commands are never
     run).  The classic parser moved to its own file, classic.cc.  Cygwin's wordexp() turned out to

@@ -30,13 +30,25 @@ build all: progs samples
 
 rebuild: clean all
 
-progs: $(PROG1) $(PROG1).man $(PROG2) $(PROG2).man
+progs: $(PROG1) $(PROG1).man $(PROG2) $(PROG2).man shebanglab.man
 
 samples: $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3
 
 test check: all splitcheck
 	./test_$(PROG1).sh ./$(PROG1)
 	./test_configure.sh
+	./test_shebanglab.sh
+
+# lab: build env2 for each KERNEL_SPLIT, for shebanglab (it needs the right build per kernel)
+lab: env2
+	@for ks in 0 1; do \
+	  d=lab/ks$$ks; mkdir -p $$d; \
+	  cp *.cc *.hh Makefile config.mk $$d; \
+	  sed "s/KERNEL_SPLIT [0-9]/KERNEL_SPLIT $$ks/" config.hh > $$d/config.hh; \
+	  $(MAKE) -C $$d env2 || exit 1; \
+	  cp $$d/env2 lab/env2-ks$$ks; \
+	done
+	@echo "built lab/env2-ks0 and lab/env2-ks1"
 
 install: build
 	mkdir -p $(PREFIX)/bin
@@ -45,11 +57,14 @@ install: build
 	cp $(PROG1).man $(PREFIX)/share/man/man1/$(PROG1).1
 	cp $(PROG2) $(PREFIX)/bin
 	cp $(PROG2).man $(PREFIX)/share/man/man1/$(PROG2).1
+	cp shebanglab $(PREFIX)/bin
+	cp shebanglab.man $(PREFIX)/share/man/man1/shebanglab.1
 
 clean:
 	-rm -f $(PROG1) $(PROG2) $(SAMPLE) $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3 splitcheck $(PROG1).pod *.pod-middle sample_script.si da
 	-rm -f *.man *.o *.d *.exe *~ *.stackdump core
 	-rm -f t/out*
+	-rm -rf lab
 
 distclean: clean
 	-rm -f t/exp* config.hh config.mk
@@ -59,6 +74,8 @@ uninstall:
 	-rm -f $(PREFIX)/share/man/man1/$(PROG1).1
 	-rm -f $(PREFIX)/bin/$(PROG2)
 	-rm -f $(PREFIX)/share/man/man1/$(PROG2).1
+	-rm -f $(PREFIX)/bin/shebanglab
+	-rm -f $(PREFIX)/share/man/man1/shebanglab.1
 
 fixpaths:
 	@for f in t/exp*; do \
@@ -119,7 +136,7 @@ $(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
 
 -include $(wildcard *.d)
 
-.PHONY: all build rebuild progs samples test check install clean uninstall fixpaths
+.PHONY: all build rebuild progs samples test check install clean uninstall fixpaths lab
 
 .PRECIOUS: %.o %.cc
 

@@ -1,0 +1,501 @@
+#!/usr/bin/env perl
+#
+# shebanglab - see how a #! line behaves under different kernels and helper programs
+#
+# Part of BangHash.  See shebanglab(1) (shebanglab.pod) for the full description.
+#
+# The problem: what an interpreter actually receives from a #! line depends on
+#   - the KERNEL, which hands the text after the interpreter to it in different ways, and
+#   - the HELPER program on the line (nothing at all, env, env2 ...), which may or may not
+#     put things right.
+# This tool simulates the kernels (so you can try all of them on one machine), runs your
+# line through each helper, and shows the arguments the interpreter ends up with.
+#
+use strict;
+use warnings;
+use Getopt::Long qw(GetOptions);
+use File::Temp qw(tempdir);
+use File::Basename qw(basename dirname);
+use File::Spec;
+use Text::ParseWords qw(shellwords);
+use JSON::PP ();
+use POSIX qw(:sys_wait_h);
+
+our $VERSION = '1.0';
+
+# ---------------------------------------------------------------------------
+# options
+# ---------------------------------------------------------------------------
+my %opt = (
+  kernels  => '0,1,2',
+  modes    => 'classic,shellwords,wordexp',
+  format   => 'list',
+  timeout  => 10,
+);
+my @env_opts;
+my @user_args;
+
+sub usage {
+  my $code = shift;
+  my $out = $code ? \*STDERR : \*STDOUT;
+  print $out <<"EOT";
+Usage: shebanglab [options] SHEBANG|FILE [SCRIPT-ARG ...]
+
+  SHEBANG   text like  php -n -q -d 'x=a b'   (interpreter and its arguments)
+  FILE      a script; its first line (#!...) is used
+
+Shows the arguments the interpreter receives under each kernel and helper.
+
+Options:
+  -k, --kernels LIST   kernels to simulate: 0,1,2,solaris   (default 0,1,2)
+        0 = whole string as one argument (Linux, Cygwin)
+        1 = split on whitespace only (quotes and backslashes ignored)
+        2 = split like a shell (quotes and backslashes honoured)
+        solaris = only the first argument is kept
+      --env LABEL=PATH   add an env(1) to test (repeatable); the env on PATH is always tried
+      --find-envs        also try every env-like program on PATH (env, genv, benv, env832 ...)
+      --no-env           do not test env
+      --env2 PATH        an env2 to use for every kernel
+      --env2-ks0 PATH    an env2 built for KERNEL_SPLIT 0 (used for kernel 0)
+      --env2-ks1 PATH    an env2 built for KERNEL_SPLIT 1 (used for kernels 1, 2, solaris)
+      --modes LIST       env2 modes to try: classic,shellwords,wordexp  (default: all three)
+      --flags LETTERS    extra env2 flags on every env2 row, e.g. a, or E (default none)
+      --no-env2          do not test env2
+      --no-direct        do not test the plain "direct" line
+      --line             SHEBANG is a complete line (#!HELPER args): test exactly that, one row
+      --want 'a|b|c'     the intended arguments (default: what a perfect kernel gives the direct line)
+      --rc FILE          an env2 rc file to use (default: none; env2 rows run with -n)
+      --format FMT       list (default), table or json
+      --strict           exit 1 if any cell is not ok
+  -v, --verbose          show the exact #! line used for each row
+      --timeout SECS     per-run time limit (default 10)
+      --keep             keep the temporary directory
+  -h, --help             this help
+      --version          print the version
+EOT
+  exit $code;
+}
+
+GetOptions(
+  'k|kernels=s' => \$opt{kernels},
+  'env=s'       => \@env_opts,
+  'find-envs'   => \$opt{find_envs},
+  'no-env'      => \$opt{no_env},
+  'env2=s'      => \$opt{env2},
+  'env2-ks0=s'  => \$opt{env2_ks0},
+  'env2-ks1=s'  => \$opt{env2_ks1},
+  'modes=s'     => \$opt{modes},
+  'flags=s'     => \$opt{flags},
+  'no-env2'     => \$opt{no_env2},
+  'no-direct'   => \$opt{no_direct},
+  'line'        => \$opt{line},
+  'want=s'      => \$opt{want},
+  'rc=s'        => \$opt{rc},
+  'format=s'    => \$opt{format},
+  'strict'      => \$opt{strict},
+  'v|verbose'   => \$opt{verbose},
+  'timeout=i'   => \$opt{timeout},
+  'keep'        => \$opt{keep},
+  'h|help'      => sub { usage(0) },
+  'version'     => sub { print "shebanglab $VERSION\n"; exit 0 },
+) or usage(2);
+
+usage(2) unless @ARGV;
+my $subject = shift @ARGV;
+@user_args = @ARGV;
+
+die "shebanglab: --format must be list, table or json\n" unless $opt{format} =~ /^(list|table|json)$/;
+
+# ---------------------------------------------------------------------------
+# the line under test
+# ---------------------------------------------------------------------------
+my ($text, $from_file);
+if (-f $subject) {
+  open(my $fh, '<', $subject) or die "shebanglab: $subject: $!\n";
+  $text = <$fh>;
+  close $fh;
+  defined $text or die "shebanglab: $subject is empty\n";
+  chomp $text; $text =~ s/\r$//;
+  $text =~ s/^#!\s*// or die "shebanglab: $subject: first line is not a #! line\n";
+  $from_file = $subject;
+} else {
+  $text = $subject;
+  $text =~ s/^#!\s*//;
+}
+$text =~ s/^\s+//;
+length $text or die "shebanglab: empty shebang\n";
+my ($first, $rest) = split(/\s+/, $text, 2);
+$rest = '' unless defined $rest;
+
+# Does the line start with a helper (env, env2 ...)?  Then the real interpreter and its
+# arguments come after the helper's own flags.  $interp/$iargs are the interpreter and
+# its arguments either way; $first/$rest stay as written.
+my ($interp, $iargs, $helper_given) = ($first, $rest, 0);
+my $helper_kind = '';
+{
+  (my $b = basename($first)) =~ s/\.exe$//;
+  if ($b eq 'env2' || $b =~ /^[gb]?env[0-9]*$/) {
+    $helper_kind = ($b eq 'env2') ? 'env2' : 'env';
+    my $r = $rest;
+    if ($helper_kind eq 'env2') {
+      1 while $r =~ s/^-\S*\s*//;                    # env2's flags: -Sn, --classic ...
+    } else {
+      1 while $r =~ s/^(?:-S|--split-string|-i|--ignore-environment|-0|-v|--debug|--)\s+//
+           || $r =~ s/^(?:-u|--unset)\s+\S+\s+//
+           || $r =~ s/^\w+=\S*\s+//;                 # env's flags and NAME=VALUE settings
+    }
+    my ($i, $a) = split(/\s+/, $r, 2);
+    if (defined $i && length $i) { ($interp, $iargs, $helper_given) = ($i, $a // '', 1) }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# kernels
+# ---------------------------------------------------------------------------
+my %kernel_name = (
+  0       => 'kernel 0 (one argument)',
+  1       => 'kernel 1 (split on whitespace)',
+  2       => 'kernel 2 (shell-like split)',
+  solaris => 'kernel solaris (first argument only)',
+);
+my @kernels = grep { length } split(/,/, $opt{kernels});
+for my $k (@kernels) { die "shebanglab: unknown kernel '$k' (use 0, 1, 2, solaris)\n" unless exists $kernel_name{$k} }
+
+# what the kernel passes as arguments between the helper and the script name
+sub kernel_args {
+  my ($k, $str) = @_;
+  return () unless length $str;
+  return ($str)                       if $k eq '0';
+  return split(' ', $str)             if $k eq '1';
+  return shellwords($str)             if $k eq '2';
+  if ($k eq 'solaris') { my @w = split(' ', $str); return @w ? ($w[0]) : () }
+  die "bad kernel $k";
+}
+
+# ---------------------------------------------------------------------------
+# temporary world: a probe interpreter, a private PATH and HOME
+# ---------------------------------------------------------------------------
+my $tmp = tempdir('shebanglab.XXXXXX', TMPDIR => 1, CLEANUP => !$opt{keep});
+my $bin = "$tmp/bin";  mkdir $bin;
+my $home = "$tmp/home"; mkdir $home;
+print STDERR "shebanglab: keeping $tmp\n" if $opt{keep};
+
+if ($opt{rc}) {
+  require File::Copy;
+  File::Copy::copy($opt{rc}, "$home/.env2rc") or die "shebanglab: $opt{rc}: $!\n";
+}
+
+# The probe takes the interpreter's place.  It is named like the real interpreter so that
+# PATH lookups (env, env2) and env2's per-interpreter rc settings behave as they would.
+my $interp_name = basename($interp);
+my $probe = "$bin/$interp_name";
+{
+  open(my $p, '>', $probe) or die "shebanglab: $probe: $!\n";
+  print $p "#!$^X\n";
+  print $p 'print "ARGV ", scalar(@ARGV), ":", join("\x1f", @ARGV), "\n";', "\n";
+  close $p;
+  chmod 0755, $probe;
+}
+
+# ---------------------------------------------------------------------------
+# helpers to test
+# ---------------------------------------------------------------------------
+sub which {
+  my $name = shift;
+  return $name if $name =~ m{/} && -x $name;
+  for my $d (File::Spec->path) {
+    for my $n ($name, "$name.exe") {
+      my $f = "$d/$n";
+      return $f if -f $f && -x $f;
+    }
+  }
+  return;
+}
+
+sub run_capture {   # command output (first line) with a time limit; used for version labels
+  my @cmd = @_;
+  my $out = '';
+  my $pid = open(my $fh, '-|') // return '';
+  if (!$pid) { open STDERR, '>&', \*STDOUT; exec { $cmd[0] } @cmd; exit 127 }
+  eval { local $SIG{ALRM} = sub { die "timeout\n" }; alarm 3; $out = <$fh> // ''; alarm 0; };
+  kill 'KILL', $pid if $@;
+  close $fh;
+  chomp $out;
+  return $out;
+}
+
+# "env", "env 9.0 (GNU coreutils)" ...: the name, and the version if env can tell us
+sub env_label {
+  my ($path, $name) = @_;
+  my $v = run_capture($path, '--version');
+  return $name if !length($v) || $v =~ /No such file|unknown option|invalid option|unrecognized/i;
+  $v =~ s/^\S+ \(GNU coreutils\) /GNU coreutils /;
+  return "$name, $v";
+}
+
+my @envs;      # { label, path }
+unless ($opt{no_env}) {
+  my %seen;
+  my $add = sub {
+    my ($label, $path) = @_;
+    (my $key = File::Spec->rel2abs($path)) =~ s/\.exe$//;     # env and env.exe are the same program
+    return if $seen{$key}++;
+    push @envs, { label => $label, path => $path };
+  };
+  for my $e (@env_opts) {
+    my ($label, $path) = $e =~ /^([^=]+)=(.+)$/ ? ($1, $2) : (basename($e), $e);
+    my $abs = which($path) or die "shebanglab: --env $e: not found\n";
+    $add->($label, $abs);
+  }
+  if (my $e = which('env')) { $add->(env_label($e, 'env'), $e) }
+  if ($opt{find_envs}) {
+    my %cand;
+    for my $d (File::Spec->path) {
+      opendir(my $dh, $d) or next;
+      for my $n (readdir $dh) {
+        (my $base = $n) =~ s/\.exe$//;
+        next unless $base =~ /^[gb]?env[0-9]*$/;
+        next if $base eq 'env2';
+        my $f = "$d/$n";
+        $cand{$base} //= $f if -f $f && -x $f;
+      }
+      closedir $dh;
+    }
+    for my $base (sort keys %cand) { $add->(env_label($cand{$base}, $base), $cand{$base}) }
+  }
+}
+
+# env2 builds: KERNEL_SPLIT is fixed when env2 is compiled, so the right build is used per kernel
+my %env2_for;     # kernel => path
+unless ($opt{no_env2} && $helper_kind ne 'env2') {
+  my $here = dirname(File::Spec->rel2abs($0));
+  my $find = sub { for my $c (@_) { my $f = which($c); return File::Spec->rel2abs($f) if $f && -x $f } return };
+  my $ks0 = $opt{env2_ks0} // $opt{env2};
+  my $ks1 = $opt{env2_ks1} // $opt{env2};
+  $ks0 //= $find->("$here/lab/env2-ks0");
+  $ks1 //= $find->("$here/lab/env2-ks1");
+  if (!defined $ks0 || !defined $ks1) {
+    # fall back to an env2 next to this script, or on PATH, whichever KERNEL_SPLIT it was built with
+    my $one = $find->("$here/env2", 'env2');
+    if ($one) {
+      my $built = 0;
+      if (open(my $ch, '<', "$here/config.hh")) { while (<$ch>) { $built = $1 if /KERNEL_SPLIT\s+(\d)/ } close $ch }
+      $ks0 //= $one if $built == 0;
+      $ks1 //= $one if $built == 1;
+    }
+  }
+  for my $k (@kernels) { $env2_for{$k} = ($k eq '0') ? $ks0 : $ks1 }
+}
+my %mode_flag = (classic => 'C', shellwords => 'S', wordexp => 'W');
+my @modes = grep { length } split(/,/, $opt{modes});
+for my $m (@modes) { die "shebanglab: unknown mode '$m' (classic, shellwords, wordexp)\n" unless $mode_flag{$m} }
+
+# ---------------------------------------------------------------------------
+# build the rows: each has a label, and a function (kernel -> helper path, argument text)
+# ---------------------------------------------------------------------------
+my @rows;
+my $iargs_sp = length $iargs ? " $iargs" : '';
+
+# the line exactly as written (a line that names a helper, or any line with --line)
+if ($opt{line} || $helper_given) {
+  my $kind = $helper_kind;
+  push @rows, {
+    label  => "as written: #!$text",
+    args   => $rest,
+    helper => sub {
+      my $k = shift;
+      return $env2_for{$k}                          if $kind eq 'env2';
+      return (-x $first ? $first : which(basename($first))) if $kind eq 'env';
+      return $probe;                                # a plain interpreter line: the probe stands in
+    },
+  };
+}
+
+if (!$opt{line}) {
+  push @rows, { label => 'direct', helper => sub { $probe }, args => $iargs } unless $opt{no_direct};
+  for my $e (@envs) {
+    push @rows, { label => "env  ($e->{label})",      helper => sub { $e->{path} }, args => "$interp_name$iargs_sp" };
+    push @rows, { label => "env -S  ($e->{label})",   helper => sub { $e->{path} }, args => "-S $interp_name$iargs_sp" };
+  }
+  unless ($opt{no_env2}) {
+    my $extra = $opt{flags} // '';
+    $extra =~ s/^-//;
+    $extra .= 'n' unless $opt{rc};         # -n: ignore any rc file, unless one was asked for
+    for my $m (@modes) {
+      my $flag = "-$mode_flag{$m}$extra";
+      push @rows, {
+        label  => "env2 $flag  ($m)",
+        helper => sub { my $k = shift; $env2_for{$k} },
+        args   => "$flag $interp_name$iargs_sp",
+      };
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# run one cell: simulate the kernel, exec the helper, read what the probe saw
+# ---------------------------------------------------------------------------
+my $cell_no = 0;
+sub run_cell {
+  my ($helper, $args, $kernel) = @_;
+  return { status => 'n/a', error => 'no env2 built for this kernel (see --env2-ks0/--env2-ks1, make lab)' }
+    unless defined $helper;
+
+  my $script = sprintf('%s/script.%d.sh', $tmp, ++$cell_no);
+  open(my $sf, '>', $script) or die "shebanglab: $script: $!\n";
+  print $sf "#!$helper", (length $args ? " $args" : ''), "\n";
+  close $sf;
+  # Deliberately NOT executable: a helper that misreads the line may try to run the script
+  # itself, and then the REAL kernel would step in and apply its own rules, spoiling the
+  # simulation.  Without the execute bit that attempt just fails ("Permission denied"),
+  # which is the honest result.  (Readers of the file, such as env2 on kernel 1, still work.)
+  chmod 0644, $script;
+
+  my @kargs = kernel_args($kernel, $args);
+  pipe(my $r, my $w) or die "pipe: $!";
+  my $pid = fork();
+  die "fork: $!" unless defined $pid;
+  if (!$pid) {
+    close $r;
+    open STDOUT, '>&', $w;
+    open STDERR, '>&', $w;
+    close STDIN;
+    setpgrp(0, 0);              # own process group, so a runaway loop can be killed whole
+    $ENV{PATH} = "$bin:$ENV{PATH}";
+    $ENV{HOME} = $home;
+    $ENV{LC_ALL} = 'C';
+    { no warnings "exec"; exec { $helper } $helper, @kargs, $script, @user_args; }
+    print STDERR "exec of $helper failed: $!\n";
+    exit 127;
+  }
+  close $w;
+  my $out = '';
+  my $timed_out = 0;
+  eval {
+    local $SIG{ALRM} = sub { die "timeout\n" };
+    alarm $opt{timeout};
+    local $/;
+    $out = <$r> // '';
+    alarm 0;
+  };
+  if ($@) { $timed_out = 1; kill 'KILL', -$pid; kill 'KILL', $pid }
+  close $r;
+  waitpid($pid, 0);
+  my $rc = $? >> 8;
+
+  if ($timed_out) {
+    return { status => 'ERR', error => "timed out after $opt{timeout}s" };
+  }
+  if ($out =~ /^ARGV (\d+):(.*)$/m) {
+    my ($n, $str) = ($1, $2);
+    my @a = $n ? split(/\x1f/, $str, -1) : ();
+    s/\Q$script\E/<script>/g for @a;
+    return { status => 'ok?', args => \@a };
+  }
+  # the probe never ran: show the helper's complaint
+  $out =~ s/\Q$helper\E/<helper>/g;
+  my ($msg) = grep { /\S/ } split(/\n/, $out);
+  $msg //= "exit status $rc, no output";
+  $msg =~ s/\Q$script\E/<script>/g;
+  # e.g. env takes an argument containing = as NAME=VALUE and then tries to run the script itself
+  $msg .= '   [the helper tried to run the script itself, so it did not understand the line]'
+    if $msg =~ /<script>.*Permission denied|Permission denied.*<script>/i;
+  return { status => 'ERR', error => $msg };
+}
+
+# ---------------------------------------------------------------------------
+# the intended result
+# ---------------------------------------------------------------------------
+my @want;
+if (defined $opt{want}) {
+  @want = split(/\|/, $opt{want}, -1);
+} else {
+  @want = (shellwords($iargs), '<script>', @user_args);
+}
+
+# ---------------------------------------------------------------------------
+# run everything
+# ---------------------------------------------------------------------------
+for my $row (@rows) {
+  $row->{cells} = {};
+  for my $k (@kernels) {
+    my $helper = $row->{helper}->($k);
+    my $c = run_cell($helper, $row->{args}, $k);
+    if ($c->{status} eq 'ok?') {
+      my $same = (@{$c->{args}} == @want) && !grep { $c->{args}[$_] ne $want[$_] } 0 .. $#want;
+      $c->{status} = $same ? 'ok' : 'X';
+    }
+    $row->{line} //= {};
+    $row->{line}{$k} = defined $helper ? ("#!$helper" . (length $row->{args} ? " $row->{args}" : '')) : undef;
+    $row->{cells}{$k} = $c;
+  }
+}
+
+# ---------------------------------------------------------------------------
+# output
+# ---------------------------------------------------------------------------
+sub vis {
+  my $s = shift;
+  $s =~ s/\t/\\t/g; $s =~ s/\n/\\n/g; $s =~ s/\r/\\r/g;
+  $s =~ s/([\x00-\x08\x0b\x0c\x0e-\x1f])/sprintf('\\x%02x', ord $1)/ge;
+  return "[$s]";
+}
+sub argstr { join('', map { vis($_) } @{$_[0]}) || '(no arguments)' }
+
+my $any_bad = 0;
+for my $row (@rows) { for my $k (@kernels) { $any_bad = 1 if $row->{cells}{$k}{status} ne 'ok' } }
+
+if ($opt{format} eq 'json') {
+  my $data = {
+    shebang => $text,
+    from    => $from_file,
+    want    => \@want,
+    kernels => \@kernels,
+    rows    => [],
+  };
+  for my $row (@rows) {
+    my %cells;
+    for my $k (@kernels) {
+      my $c = $row->{cells}{$k};
+      $cells{$k} = { status => $c->{status},
+                     (defined $c->{args}  ? (args  => $c->{args})  : ()),
+                     (defined $c->{error} ? (error => $c->{error}) : ()),
+                     line => $row->{line}{$k} };
+    }
+    push @{$data->{rows}}, { label => $row->{label}, cells => \%cells };
+  }
+  print JSON::PP->new->canonical->pretty->encode($data);
+}
+elsif ($opt{format} eq 'table') {
+  my $w = 0;
+  for my $row (@rows) { $w = length $row->{label} if length $row->{label} > $w }
+  printf "%-*s", $w + 2, 'helper';
+  printf "%-10s", $_ for @kernels;
+  print "\n";
+  for my $row (@rows) {
+    printf "%-*s", $w + 2, $row->{label};
+    printf "%-10s", $row->{cells}{$_}{status} for @kernels;
+    print "\n";
+  }
+  print "\nok = the interpreter received the intended arguments; X = it received something else;\n",
+        "ERR = it never ran (see --format list for the message); n/a = no suitable env2 build.\n";
+}
+else {
+  print "Line under test : ", ($from_file ? "$text   (from $from_file)" : $text), "\n";
+  print "Intended args   : ", argstr(\@want), "\n";
+  print "Kernels         : ", join('; ', map { $kernel_name{$_} } @kernels), "\n\n";
+  for my $row (@rows) {
+    print "$row->{label}\n";
+    for my $k (@kernels) {
+      my $c = $row->{cells}{$k};
+      my $shown = defined $c->{args} ? argstr($c->{args}) : "($c->{error})";
+      printf "  %-15s %-4s %s\n", "kernel $k", $c->{status}, $shown;
+      printf "  %-15s      %s\n", '', $row->{line}{$k} if $opt{verbose} && defined $row->{line}{$k};
+    }
+    print "\n";
+  }
+  print "ok = the interpreter received the intended arguments; X = it received something else;\n",
+        "ERR = it never ran; n/a = no suitable env2 build (make lab).\n";
+}
+
+exit(($opt{strict} && $any_bad) ? 1 : 0);

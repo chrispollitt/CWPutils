@@ -4,7 +4,12 @@ Finding memory bugs
   LDXXFLAGS="-fsanitize=address,undefined" (edit config.mk), then `make test`.
 
 Testing against different kernels
-  t/fakekernel.pl MODE SCRIPT [ARGS] execs a script's interpreter the way a
+  shebanglab (the top-level tool; see its man page) shows what an interpreter receives from a #! line
+  under each kernel (0, 1, 2, solaris) and helper (direct, env versions, env2 modes).  Run `make lab`
+  first to build the two env2 variants (KERNEL_SPLIT 0 and 1) it needs for the env2 rows.
+  `make test` runs test_shebanglab.sh.
+
+  The older, smaller shim t/fakekernel.pl MODE SCRIPT [ARGS] execs a script's interpreter the way a
   linux (one arg), naive (split on whitespace) or perfect (shell-like split)
   kernel would.  Build env2 with the matching KERNEL_SPLIT and call it through
   the shim to test a flavour you do not have.  A second, real-process emulator

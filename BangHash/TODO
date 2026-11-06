@@ -29,6 +29,10 @@
 * unit-test split_string() directly
 
 DONE
+* shebanglab: a proper developer tool (Perl, installed, with a man page) that shows what an interpreter receives
+  from a #! line under each kernel (0, 1, 2, solaris) and helper (direct, env -- every version found with
+  --find-envs --, env2 in each mode).  Replaces the idea of extending t/fakekernel.pl, which stays as the small
+  shim test_configure.sh uses.  make lab builds the two env2 variants it needs; test_shebanglab.sh tests it.
 * version 2.2: three selectable splitter modes - classic (-C), shellwords (-S, default), wordexp (-W) - with long
   names (--classic etc.).  wordexp mode never runs commands; checked against a real sh like shellwords is against Perl.
   The classic parser moved from array_utils.cc to classic.cc (renamed split_classic), with comments.

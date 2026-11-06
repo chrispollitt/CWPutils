@@ -1,0 +1,240 @@
+=head1 NAME
+
+B<shebanglab> - see how a #! line behaves under different kernels and helper programs
+
+=head1 SYNOPSIS
+
+B<shebanglab> [I<options>] I<SHEBANG>|I<FILE> [I<script-arg> ...]
+
+=head1 DESCRIPTION
+
+What an interpreter receives from a C<#!> line depends on two things that are
+easy to forget:
+
+* the B<kernel>, which hands the text after the interpreter name over in different
+ways (Linux passes it as one argument, other systems split it, none of them splits
+it the way a shell would), and
+
+* the B<helper> program on the line (nothing at all, env(1), env2(1)), which may or
+may not put things right.
+
+B<shebanglab> takes a line, simulates the kernels so that you can try all of them
+on one machine, runs the line through each helper, and shows the arguments the
+interpreter really ends up with. It marks each result B<ok> if it is what you
+intended and B<X> if it is not.
+
+It uses a harmless stand-in for your interpreter (a small program that prints its
+arguments), so nothing you name is ever really run.
+
+=head1 ARGUMENTS
+
+I<SHEBANG> is the interpreter and its arguments, as you would write them after
+C<#!>, for example
+
+    shebanglab "php -n -q -d 'x=a b'"
+
+It may start with C<#!>. If the argument is the name of a file, the first line of
+that file is used instead. Any further arguments are passed on to the script, as
+if you had run it with them.
+
+With B<--line>, I<SHEBANG> is taken to be a complete line that names its own helper
+(C<#!/usr/bin/env2 -S php -n>), and just that line is tested.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-k>, B<--kernels> I<LIST>
+
+Comma-separated kernels to simulate (default C<0,1,2>). See B<KERNELS>.
+
+=item B<--env> I<LABEL>=I<PATH>
+
+Also test this env(1) (repeatable). The B<env> found on PATH is always tried, unless
+B<--no-env> is given.
+
+=item B<--find-envs>
+
+Also try every env-like program found on PATH: names such as env, genv, benv and
+env832. This is a way to compare several versions of env(1) that are installed
+side by side.
+
+=item B<--no-env>, B<--no-env2>, B<--no-direct>
+
+Leave out the env rows, the env2 rows, or the plain "direct" row.
+
+=item B<--env2> I<PATH>
+
+An env2(1) to use for every kernel. See B<ENV2 BUILDS> for why there can be more
+than one.
+
+=item B<--env2-ks0> I<PATH>, B<--env2-ks1> I<PATH>
+
+An env2 built for C<KERNEL_SPLIT> 0, used for kernel 0, and one built for
+C<KERNEL_SPLIT> 1, used for the other kernels.
+
+=item B<--modes> I<LIST>
+
+Which env2 modes to try (default C<classic,shellwords,wordexp>).
+
+=item B<--flags> I<LETTERS>
+
+Extra env2 flags for every env2 row, for example B<a> or B<E>.
+
+=item B<--rc> I<FILE>
+
+An env2 configuration file to use. Without it, env2 rows run with B<-n> (no
+configuration file) and the tool's private home directory, so your own
+F<~/.env2rc> never affects the result.
+
+=item B<--line>
+
+I<SHEBANG> is a complete C<#!> line (see B<ARGUMENTS>).
+
+=item B<--want> I<'a|b|c'>
+
+The intended arguments, separated by C<|>, including the script name as
+C<E<lt>scriptE<gt>>. The default is what a kernel that splits like a shell would
+give the line with no helper.
+
+=item B<--format> I<FORMAT>
+
+C<list> (default; every result in full), C<table> (just ok / X / ERR) or C<json>.
+
+=item B<--strict>
+
+Exit with status 1 if any result is not B<ok>. (Without it the exit status is 0.)
+
+=item B<-v>, B<--verbose>
+
+Show the exact C<#!> line used for each row.
+
+=item B<--timeout> I<SECONDS>
+
+Time limit for each run (default 10).
+
+=item B<--keep>
+
+Keep the temporary directory (it holds the generated scripts) and print its name.
+
+=item B<-h>, B<--help>, B<--version>
+
+=back
+
+=head1 KERNELS
+
+=over 4
+
+=item B<0>
+
+The kernel passes everything after the interpreter name as B<one> argument, spaces
+and all. This is Linux, and Cygwin.
+
+=item B<1>
+
+The kernel splits the text on whitespace only. Quotes and backslashes mean nothing
+to it, so C<x="a b"> becomes two arguments. This is how macOS and Solaris-like
+systems behave when they split at all.
+
+=item B<2>
+
+The kernel splits the text the way a shell does, honouring quotes and backslashes.
+No real system is known to do this, but it is what most people expect, and it is
+the standard the other results are compared with.
+
+=item B<solaris>
+
+The kernel keeps only the first argument and drops the rest.
+
+=back
+
+These are simulations: the tool does the splitting itself and starts the helper
+directly. It does not change what your real kernel does.
+
+The generated script is deliberately not executable. If a helper misreads the line
+and tries to run the script itself (as env does when an argument contains an equals
+sign, which it takes for NAME=VALUE), the attempt fails with "Permission denied"
+instead of handing the job to your real kernel, which would apply its own rules and
+spoil the simulation. Such a result is shown as B<ERR> with an explanation.
+
+=head1 HELPERS
+
+Each helper is a row in the output.
+
+=over 4
+
+=item B<direct>
+
+The line as it stands, with no helper: C<#!/path/to/interpreter args>.
+
+=item B<env> and B<env -S>
+
+C<#!env interpreter args> and C<#!env -S interpreter args>, for each env(1)
+under test. The label shows the version, from C<env --version>. An old env has no
+B<-S>, and shows ERR.
+
+=item B<env2>
+
+One row for each mode, B<-C> (classic), B<-S> (shellwords) and B<-W> (wordexp):
+C<#!env2 -Sn interpreter args>.
+
+=back
+
+=head1 ENV2 BUILDS
+
+env2's C<KERNEL_SPLIT> is fixed when it is compiled: a build for a kernel that does
+not split cannot work on one that does, and the other way round. So B<shebanglab>
+uses one build for kernel 0 and another for kernels 1, 2 and solaris. If it cannot
+find one for a kernel, that cell shows B<n/a>.
+
+Running B<make lab> in the BangHash source directory builds both, as
+F<lab/env2-ks0> and F<lab/env2-ks1>, and B<shebanglab> finds them there. Otherwise
+it uses an env2 next to itself or on PATH, for whichever kernel that was built for.
+
+=head1 OUTPUT
+
+In the default C<list> format each row shows, for each kernel, a status and the
+arguments received, one C<[...]> per argument. The script name is shown as
+C<E<lt>scriptE<gt>>. For example:
+
+    Line under test : php -n -q -d 'x=a b'
+    Intended args   : [-n][-q][-d][x=a b][<script>]
+
+    direct
+      kernel 0  X    [-n -q -d 'x=a b'][<script>]
+      kernel 1  X    [-n][-q][-d]['x=a][b'][<script>]
+      kernel 2  ok   [-n][-q][-d][x=a b][<script>]
+
+The statuses are B<ok> (the interpreter received the intended arguments), B<X> (it
+received something else), B<ERR> (it never ran; the message is shown) and B<n/a>
+(no suitable env2 build).
+
+=head1 EXAMPLES
+
+Which kernels does this line work on, and with which helpers?
+
+    shebanglab "php -n -q -d 'x=a b'"
+
+A one-line summary of the same, for a script:
+
+    shebanglab --format table myscript.php
+
+Compare all the env versions installed on this machine:
+
+    shebanglab --find-envs --no-env2 --no-direct "python3 -u"
+
+Check that a line is portable, in a test:
+
+    shebanglab --strict --format table --kernels 0,1,2 --no-env myscript.pl
+
+=head1 FILES
+
+F<~/.env2rc> is never read unless B<--rc> is given.
+
+=head1 SEE ALSO
+
+env2(1), env(1), dumpargs(1)
+
+=head1 AUTHORS
+
+Chris Pollitt [ chris.pollitt@gmail.com ]

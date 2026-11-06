@@ -33,6 +33,7 @@ BUILD AND TEST
 * `make`          - build
 * `make test`     - run the unit tests, plus configure tested against simulated
                     kernels (`make check` is the same; slow under Cygwin)
+* `make lab`      - build env2 for each KERNEL_SPLIT, for shebanglab's env2 rows
 * `make install`  - install under `PREFIX` (default /usr/local)
 * `make clean` / `make distclean` - remove built files / also configure output
 
@@ -54,5 +55,7 @@ SOURCES
 EXECUTABLES
 * dumpargs                 - Dump the arguments to a shebang line
 * env2                     - An env(1) replacement with more features
+* shebanglab               - Perl tool: what a #! line gives the interpreter under different
+                            kernels and helpers (direct, env, env2); see its man page
 * sample_interpreter       - A sample interpreter that uses env2 components
 * sample_script.si         - A sample script that calls the sample interpreter

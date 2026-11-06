@@ -1,5 +1,6 @@
 #!/usr/bin/perl
 # fakekernel.pl MODE SCRIPT [ARGS...]
+#   (The full tool is now ../shebanglab; this small shim is what test_configure.sh uses.)
 #
 # Pretend to be the kernel's #! handler: read the first line of SCRIPT,
 #   "#!/path/to/interpreter  args-string"
