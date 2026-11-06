@@ -142,8 +142,21 @@ function main {
     (( i = i + 1 ))
   done
     
+  ### windows path (Cygwin only) ############
+
+  if [[ $(uname -s) == CYGWIN* ]]; then
+    echo "==Test w"
+    set_sample_script '-w perl -l' 'print $0'
+    exp=$(cygpath -w "$PWD/sample_script.si")
+    got=$(./sample_script.si 2>&1)
+    if [[ $got != "$exp" ]]; then
+      echo "Test w: expected '$exp' got '$got'"
+      (( errs = errs + 1 ))
+    fi
+  fi
+
   #################################
-  
+
   # restore orig rc file
   [[ -f ~/.$rc-ORIG ]] && mv -f ~/.$rc-ORIG ~/.$rc
   rm ~/.sample_interpreterrc

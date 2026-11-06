@@ -21,6 +21,9 @@
 #include <libgen.h>
 #include <iterator>
 #include <regex>
+#ifdef __CYGWIN__
+#include <sys/cygwin.h>
+#endif
 #ifdef MAKE_EXE
 #include "env2.hh"
 #endif
@@ -400,6 +403,27 @@ argv_t env2(argv_t o) {
   }
   e.argv[j] = NULL;
 
+#ifdef __CYGWIN__
+  // convert script path to Windows format (like cygpath -w) ///////////////////
+  if( flags["win"].i() ) {
+    int sl = 0;
+    // find the script in the final arg list (escr_loc is not reliable here)
+    for(i=1; i<j; i++) {
+      if( strcmp(e.argv[i], o.argv[oscr_loc])==STRCMP_TRUE ) { sl = i; break; }
+    }
+    if(sl) {
+      char *wpath = (char *)cygwin_create_path(CCP_POSIX_TO_WIN_A, e.argv[sl]);
+      if(wpath) {
+        if(Debug) fprintf(stderr, "Debug: win path: %s -> %s\n", e.argv[sl], wpath);
+        e.argv[sl] = wpath;
+        escr_loc = sl;
+      } else {
+        fprintf(stderr, "Warning: cannot convert '%s' to Windows path: %s\n", e.argv[sl], strerror(errno));
+      }
+    }
+  }
+#endif
+
   // dump args /////////////////////////////////////////////////////////////////
   if(Debug) fprintf(stderr, "Debug: hashbang='%s'\n", o.argv[1]);
   if( Debug && !flags["dump"].i() ) {
@@ -427,7 +451,8 @@ void init_flags(int found, int nstart) {
   flags["norc"]     = 0;          // Do not read rc file
   flags["pre"]      = 0;          // preserve empty args
   flags["sbs"]      = 0;          // Strip backslashes
-  flags["allow"]    = string(""); // Allow hints to this prog so as not to split on wrong spaces
+  flags["win"]      = 0;          // Convert script path to Windows format
+  flags["allow"]   = string(""); // Allow hints to this prog so as not to split on wrong spaces
 }
 
 // #############################################################################
@@ -512,6 +537,11 @@ hash_t parse_flags(char *flags_str) {
           flags["sbs"] = 1;
           if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
         }
+        // convert script path to Windows format (Cygwin only)
+        else if(*(flags_str+j) == 'w' ) {
+          flags["win"] = 1;
+          if(Debug) fprintf(stderr, "Debug: Windows path mode activated\n");
+        }
         // expand backslash-escaped chars
         else if(*(flags_str+j) == 'x' ) {
           flags["exp"] = 1;
@@ -582,6 +612,7 @@ void usage(int ret) {
             "  n     : No rc file read                                               \n"
             "  p     : Preserve empty args                                           \n"
             "  s     : Strip backslashes                                             \n"
+            "  w     : Windows path: convert script path like cygpath -w (Cygwin)    \n"
             "  x     : eXpand standard backslash-escaped characters                  \n"
             "  v     : print the Version of this program                             \n"
             "  h     : this Help                                                     \n\n"

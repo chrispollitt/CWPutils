@@ -11,6 +11,7 @@ Where flags are one or more of:
   n     : No rc file read                                               
   p     : Preserve empty args                                           
   s     : Strip backslashes                                             
+  w     : Windows path: convert script path like cygpath -w (Cygwin)    
   x     : eXpand standard backslash-escaped characters                  
   v     : print the Version of this program                             
   h     : this Help                                                     

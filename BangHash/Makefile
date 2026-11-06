@@ -102,6 +102,6 @@ $(SAMPLE)2: $(SAMPLE)2.o $(LIBOBJS) $(LIBOBJ0)
 
 .PHONY: all build rebuild progs samples test check install clean uninstall fixpaths
 
-.PRECIOUS: %.o %.c
+.PRECIOUS: %.o %.cc
 
 .SUFFIXES:
