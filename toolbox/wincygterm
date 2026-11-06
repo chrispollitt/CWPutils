@@ -4,11 +4,17 @@ wincygterm - run Cygwin programs on a real pty inside Windows Terminal.
 
 Usage (with a NATIVE Windows Python, not Cygwin's):
     python wincygterm [--root DIR] [--python EXE] [--term TERM] [--login-dir]
-                      [--debug FILE] [--no-reset] [--] [CMD [ARG...]]
+                      [--debug FILE] [--no-reset] [--no-direct] [--] [CMD [ARG...]]
     python wincygterm --profile        print a Windows Terminal profile command line
     python wincygterm --version
 
 CMD defaults to `/bin/bash -l`.
+
+Inside the session (Cygwin's python3, on the pty):
+    wincygterm --direct PROG [ARG...]      or, via a symlink named wcdirect:   wcdirect PROG [ARG...]
+runs a NATIVE WINDOWS console program on the real console for as long as it lives, then goes back to the pty.
+Use it for programs that read mouse events or write the screen with the Win32 console API (Microsoft Edit, say):
+on the pty they sit behind Cygwin's pseudo console, which does not carry mouse events.  See "Direct" below.
 
 Why: a Cygwin program started directly in a Windows Terminal tab talks to Cygwin's own console layer
 (/dev/cons*), which swallows OSC colour queries on their way out (so a program cannot ask the terminal for its
@@ -23,16 +29,38 @@ the front-end, running on Cygwin's Python and detached from the console) runs CM
 between that pty and the pipe.  Compare winpty, which goes the other way: it lets a Windows console program run
 inside a Unix pty.
 
+Direct: the pty is a text pipe, so a Windows console program that wants the console itself (mouse events from
+ENABLE_MOUSE_INPUT, WriteConsoleOutput, ReadConsoleInput) is starved on it.  `wincygterm --direct PROG` hands the
+console over for that one program.  The shim (Cygwin side) prints a private OSC string on the pty,
+    ESC ] 7077 ; direct ; TOKEN ; BASE64(JSON{argv, cwd}) BEL
+which the front-end cuts out of the output stream.  The front-end puts the console back to its original modes, runs
+PROG attached to it, then returns to raw mode and answers on the pty with  ESC ] 7077 ; exit ; STATUS BEL.  (An
+ESC ] 7077 ; ack BEL comes first, at once, so the shim can tell a front-end that does not know "direct" from a slow
+program.)  TOKEN is a random per-session secret that only processes started by this wincygterm have (in
+$WINCYGTERM_TOKEN): without it, text from a file you cat, or from a remote host you ssh to, could make the front-end run
+programs on your PC.  A request with the wrong token is dropped without a trace.  --no-direct turns the feature off.
+
 Windows only for the front-end; Python 3.8+ and the standard library only; Cygwin needs python3 installed.
 """
 import argparse
+import base64
+import hmac
+import json
 import os
+import re
+import secrets
+import shutil
 import struct
 import subprocess
 import sys
+import time
 
-VERSION = "1.0"
+VERSION = "1.1"
 HELPER_FLAG = "--helper"
+DIRECT_FLAG = "--direct"
+OSC_PREFIX = b"\x1b]7077;direct;"                          # front-end side: the request, cut out of the output stream
+ACK = b"\x1b]7077;ack\x07"
+ACK_TIMEOUT = 3.0                                          # seconds the shim waits for the front-end to say it heard
 RESET = ("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l"     # mouse reporting off
          "\x1b[?2004l"                                        # bracketed paste off
          "\x1b[<u\x1b[>4m"                                    # kitty keyboard / modifyOtherKeys back
@@ -109,6 +137,126 @@ def helper_main(argv):
     return 128 + os.WTERMSIG(status) if os.WIFSIGNALED(status) else os.WEXITSTATUS(status)
 
 
+def direct_main(argv):
+    """The shim, run inside the session on the pty: ask the front-end to run argv[0] on the real console.  Returns the
+    program's exit status (2 if this is not a wincygterm session, 3 if the front-end did not answer)."""
+    import select
+    import termios
+    import tty
+    token = os.environ.get("WINCYGTERM_TOKEN")
+    if not argv or argv[0] in ("-h", "--help"):
+        sys.stderr.write("usage: wincygterm --direct PROG [ARG...]   (or: wcdirect PROG [ARG...])\n"
+                         "Runs a native Windows console program on the real console, then comes back.\n")
+        return 2
+    if not token or not os.environ.get("WINCYGTERM"):
+        sys.stderr.write("wcdirect: not in a wincygterm session (WINCYGTERM_TOKEN is not set): just run the program\n")
+        return 2
+
+    def winpath(p):
+        try:
+            return subprocess.check_output(["cygpath", "-w", p]).decode("utf-8", "replace").strip() or p
+        except (OSError, subprocess.CalledProcessError):
+            return p                                           # not Cygwin (a test), or no cygpath: pass as it is
+
+    exe = shutil.which(argv[0]) or argv[0]
+    if os.sep in exe or "/" in exe:
+        exe = winpath(exe)
+    body = base64.b64encode(json.dumps({"argv": [exe] + argv[1:], "cwd": winpath(os.getcwd())}).encode("utf-8"))
+    fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+    old = termios.tcgetattr(fd)
+    tty.setraw(fd)                                             # the replies must not be echoed or line-buffered
+    try:
+        os.write(fd, OSC_PREFIX + token.encode("ascii") + b";" + body + b"\x07")
+        pat = re.compile(rb"\x1b\]7077;(ack|exit;(\d+))\x07")
+        buf, acked, deadline = b"", False, time.time() + ACK_TIMEOUT
+        while True:
+            m = pat.search(buf)
+            if m:
+                buf = buf[m.end():]
+                if m.group(1) != b"ack":
+                    return int(m.group(2))
+                acked = True
+                continue
+            wait = None if acked else deadline - time.time()
+            if wait is not None and wait <= 0:
+                break
+            if not select.select([fd], [], [], wait)[0]:
+                continue
+            data = os.read(fd, 4096)
+            if not data:
+                return 1
+            buf += data
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        os.close(fd)
+    sys.stderr.write("wcdirect: no answer from wincygterm in %d s (an older wincygterm, or started with --no-direct)\n"
+                     % ACK_TIMEOUT)
+    return 3
+
+
+class RequestFilter(object):
+    """Cuts direct-run requests (ESC ] 7077 ; direct ; ... BEL|ST) out of the bytes the pty produced.  feed() ->
+    (bytes to show, [request bodies]).  A request split across reads is held until it is whole; so is a tail that
+    might be the start of one."""
+    MAX = 1 << 16
+
+    def __init__(self):
+        self.held = b""
+
+    def feed(self, data):
+        data, out, found = self.held + data, b"", []
+        self.held = b""
+        while True:
+            i = data.find(OSC_PREFIX)
+            if i < 0:
+                keep = 0                                       # the longest tail that is a proper prefix of OSC_PREFIX
+                for n in range(min(len(OSC_PREFIX) - 1, len(data)), 0, -1):
+                    if OSC_PREFIX.startswith(data[-n:]):
+                        keep = n
+                        break
+                out += data[:len(data) - keep]
+                self.held = data[len(data) - keep:]
+                return out, found
+            out += data[:i]
+            ends = [(e, w) for e, w in ((data.find(b"\x07", i), 1), (data.find(b"\x1b\\", i), 2)) if e >= 0]
+            if not ends:
+                if len(data) - i > self.MAX:                   # never terminated: not ours, let it through
+                    out += data[i:i + len(OSC_PREFIX)]
+                    data = data[i + len(OSC_PREFIX):]
+                    continue
+                self.held = data[i:]
+                return out, found
+            end, width = min(ends)
+            found.append(data[i + len(OSC_PREFIX):end])
+            data = data[end + width:]
+
+
+def parse_request(body, token):
+    """-> (argv, cwd), or None if the token is wrong or the request is malformed."""
+    given, _, payload = body.partition(b";")
+    if not token or not hmac.compare_digest(given, token.encode("ascii")):
+        return None
+    try:
+        req = json.loads(base64.b64decode(payload).decode("utf-8"))
+        argv, cwd = req["argv"], req.get("cwd")
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not (isinstance(argv, list) and argv and all(isinstance(a, str) for a in argv)):
+        return None
+    return argv, (cwd if isinstance(cwd, str) and os.path.isdir(cwd) else None)
+
+
+def direct_command(argv):
+    """The command line to start: a bare name or one missing .exe is looked up the Windows way; .cmd / .bat go
+    through cmd.exe, which CreateProcess cannot start by itself."""
+    exe = argv[0]
+    if not os.path.isfile(exe):
+        exe = (exe + ".exe") if os.path.isfile(exe + ".exe") else (shutil.which(exe) or exe)
+    if exe.lower().endswith((".cmd", ".bat")):
+        return [os.environ.get("COMSPEC", "cmd.exe"), "/c", exe] + argv[1:]
+    return [exe] + argv[1:]
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # The front-end: Windows side.
 # ---------------------------------------------------------------------------------------------------------------
@@ -162,13 +310,16 @@ def find_cygwin_python(root):
     return os.path.join(bindir, found[0]) if found else None
 
 
-def child_environment(root, term=None, login_dir=False, environ=None):
+def child_environment(root, term=None, login_dir=False, environ=None, token=None):    # allowlist secret
     """The environment CMD runs in: Cygwin's bin first on PATH, TERM (and COLORTERM under Windows Terminal) set,
-    and WINCYGTERM=<version> to say who is running it."""
+    WINCYGTERM=<version> to say who is running it, and WINCYGTERM_TOKEN (if given) for `wcdirect`."""
     env = dict(os.environ if environ is None else environ)
     env["PATH"] = os.path.join(root, "bin") + os.pathsep + env.get("PATH", "")
     env["TERM"] = term or env.get("TERM") or "xterm-256color"
     env["WINCYGTERM"] = VERSION                          # lets termprobe (and you) tell this pty from a native one
+    env.pop("WINCYGTERM_TOKEN", None)                    # never inherit another session's secret
+    if token:
+        env["WINCYGTERM_TOKEN"] = token
     if env.get("WT_SESSION") and not env.get("COLORTERM"):
         env["COLORTERM"] = "truecolor"
     if not login_dir:
@@ -228,6 +379,7 @@ class Win32(object):
         k.CreateEventW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.BOOL, wintypes.LPCWSTR]
         k.CreateEventW.restype = wintypes.HANDLE
         k.SetEvent.argtypes = [wintypes.HANDLE]
+        k.ResetEvent.argtypes = [wintypes.HANDLE]
         k.CloseHandle.argtypes = [wintypes.HANDLE]
         k.ReadConsoleInputW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Record), wintypes.DWORD,
                                         ctypes.POINTER(wintypes.DWORD)]
@@ -283,11 +435,13 @@ def frontend_main(args):
     cmd = args.cmd or ["/bin/bash", "-l"]
     rows, cols = win.window_size(hout)
     log = open(args.debug, "w") if args.debug else subprocess.DEVNULL
+    token = secrets.token_hex(16)
     try:
         proc = subprocess.Popen(
             [cygpy, cygwin_path(os.path.abspath(__file__)), HELPER_FLAG, str(rows), str(cols)] + cmd,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
-            env=child_environment(root, args.term, args.login_dir), creationflags=win.DETACHED_PROCESS)
+            env=child_environment(root, args.term, args.login_dir, token=None if args.no_direct else token),
+            creationflags=win.DETACHED_PROCESS)
     except OSError as e:
         sys.stderr.write("wincygterm: cannot start %s: %s\n" % (cygpy, e))
         return 2
@@ -308,14 +462,34 @@ def frontend_main(args):
             except (OSError, ValueError):
                 finish()
 
+    pending = []                                         # a direct-run request for the input loop (which owns the console)
+    resume = threading.Event()                           # set by the input loop when that program has ended
+
+    def request_direct(body):
+        """Pump thread: a request to run a program on the real console.  Wrong token / malformed: dropped silently."""
+        req = None if args.no_direct else parse_request(body, token)
+        if req is None:
+            return
+        send(b"D", ACK)
+        resume.clear()
+        pending.append(req)
+        win.k.SetEvent(wake)                             # wake the input loop ...
+        while not resume.wait(0.5) and not done.is_set():
+            pass                                         # ... and print nothing until the program is over
+
     def pump_output():
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        requests = RequestFilter()
         while True:
             data = proc.stdout.read1(65536)
             if not data:
                 break
-            win.write(hout, decoder.decode(data))
-        tail = decoder.decode(b"", final=True)                # a cut-off multibyte character at EOF
+            data, found = requests.feed(data)
+            if data:
+                win.write(hout, decoder.decode(data))
+            for body in found:
+                request_direct(body)
+        tail = decoder.decode(requests.held, final=False) + decoder.decode(b"", final=True)   # cut-off bytes at EOF
         if tail:
             win.write(hout, tail)
         finish()
@@ -329,10 +503,37 @@ def frontend_main(args):
 
     handler = win.Handler(on_ctrl)
     win.k.SetConsoleCtrlHandler(handler, True)
-    win.k.SetConsoleMode(hin, win.ENABLE_VT_INPUT | win.ENABLE_WINDOW_INPUT)        # raw: no line input, echo, Ctrl-C
-    win.k.SetConsoleMode(hout, old_out | win.ENABLE_PROCESSED_OUTPUT | win.ENABLE_VT_PROCESSING
-                         | win.DISABLE_NEWLINE_AUTO_RETURN)
-    win.k.FlushConsoleInputBuffer(hin)
+    def raw():
+        win.k.SetConsoleMode(hin, win.ENABLE_VT_INPUT | win.ENABLE_WINDOW_INPUT)    # raw: no line input, echo, Ctrl-C
+        win.k.SetConsoleMode(hout, old_out | win.ENABLE_PROCESSED_OUTPUT | win.ENABLE_VT_PROCESSING
+                             | win.DISABLE_NEWLINE_AUTO_RETURN)
+        win.k.FlushConsoleInputBuffer(hin)
+
+    def run_direct(argv, cwd):
+        """Input loop: give the console back as we found it, run the program on it, take it back, tell the shim."""
+        win.k.SetConsoleMode(hin, old_in)
+        win.k.SetConsoleMode(hout, old_out)
+        win.k.FlushConsoleInputBuffer(hin)
+        code = 127
+        try:
+            p = subprocess.Popen(direct_command(argv), cwd=cwd)          # no redirection: it inherits the console
+            while True:
+                try:
+                    code = p.wait()
+                    break
+                except KeyboardInterrupt:                # Ctrl-C reaches us too; the program is the one that decides
+                    continue
+        except (OSError, ValueError) as e:
+            win.write(hout, "wincygterm: cannot run %s: %s\r\n" % (argv[0], e))
+        finally:
+            raw()
+            if not args.no_reset:
+                win.write(hout, RESET)                   # the program may have left mouse reporting etc. on
+            send(b"D", b"\x1b]7077;exit;%d\x07" % (code & 0xFFFFFFFF))
+            win.k.ResetEvent(wake)
+            resume.set()
+
+    raw()
     pump = threading.Thread(target=pump_output, daemon=True)
     pump.start()
     try:
@@ -344,6 +545,9 @@ def frontend_main(args):
             which = win.k.WaitForMultipleObjects(2, handles, False, 500)
             if which == win.WAIT_FAILED:
                 break
+            if pending and not done.is_set():
+                run_direct(*pending.pop(0))
+                continue
             if which == win.WAIT_OBJECT_0:
                 if not win.k.ReadConsoleInputW(hin, recs, 128, win.c.byref(got)):
                     break
@@ -391,6 +595,10 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == HELPER_FLAG:
         return helper_main(argv[1:])
+    if argv and argv[0] == DIRECT_FLAG:
+        return direct_main(argv[1:])
+    if os.path.basename(sys.argv[0]).startswith("wcdirect"):          # invoked through a symlink named wcdirect
+        return direct_main(argv)
     ap = argparse.ArgumentParser(prog="wincygterm",
                                  description="Run a Cygwin command on a real pty inside this Windows console.")
     ap.add_argument("--root", help="Cygwin root directory (default: $CYGWIN_ROOT, the registry, the usual places)")
@@ -400,6 +608,8 @@ def main(argv=None):
     ap.add_argument("--login-dir", action="store_true", help="start in the home directory, not the current one")
     ap.add_argument("--no-reset", action="store_true",
                     help="do not turn mouse reporting, bracketed paste &c off when the command ends")
+    ap.add_argument("--no-direct", action="store_true",
+                    help="ignore `wcdirect` requests (running a Windows console program on the real console)")
     ap.add_argument("--debug", metavar="FILE", help="write the helper's stderr to FILE")
     ap.add_argument("--profile", action="store_true", help="print a Windows Terminal profile command line and exit")
     ap.add_argument("--version", action="version", version="wincygterm " + VERSION)
