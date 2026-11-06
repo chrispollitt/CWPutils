@@ -7,10 +7,11 @@
      (the fixed MAX_STR_CONST buffers caused heap overflows, now patched)
 * optional library helper that reads the script's own #! line for parse_switches()
   (read_hashbang() does most of it)
-* fix the three split_string() quirks found by t/splitcompare.pl (see man page BUGS):
+* fix (or decide to keep) the split_string() quirks found by t/splitcompare.pl (see man page BUGS):
    - -s keeps a backslash before whitespace or a quote (t/ks*/exp3 currently expects this)
    - -p: empty quotes directly followed by text give an extra empty arg
    - a quote with nothing after it is not reported as unmatched
+   - -s also strips backslashes inside single quotes (the shell and shellwords keep them)
 * use namespace cwputils
 * break env2() into phases (parse #!, find script, merge config args, emit)
    - escr_loc is not reliably set; track the script index explicitly

@@ -1,8 +1,14 @@
 #!/usr/bin/perl
-# splitcompare.pl HARNESS FLAGS MAXLEN
+# t/splitcompare.pl HARNESS FLAGS MAXLEN
+#   (developer tool, not part of make test; see DEVELOPER_NOTES.txt)
 # Generate every string over a small alphabet up to MAXLEN, split each with
 # env2's split_string (via HARNESS) and with Perl's shellwords(), and report
 # where they disagree.
+#
+# Use FLAGS containing "s" (e.g. "sp"): without -s env2 keeps every backslash, so
+# nearly every string with one differs from shellwords() and shows as UNEXPLAINED.
+# With "s", the known differences A, B and C below account for everything, plus
+# the "perl: unmatched quote, env2: accepts" class (a quote with nothing after it).
 use strict; use warnings;
 use Text::ParseWords qw(shellwords);
 
@@ -49,8 +55,11 @@ for my $i (0 .. $#corpus) {
     if    ($same) { $class = 'same' }
     # known difference A: -s keeps a backslash that is in front of whitespace or a quote
     elsif ($s =~ /\\[ \t'"]/) { $class = 'diff A: backslash before space/tab/quote kept' }
-    # known difference B: -p turns an empty quote pair next to text into an extra empty arg
-    elsif ($s =~ /(""|'')/)   { $class = 'diff B: empty quotes next to text (-p only)' }
+    # known difference B: empty quote pairs are dropped (without -p), or make an extra
+    #   empty arg when next to text (with -p); shellwords() keeps "" as an empty arg
+    elsif ($s =~ /(""|'')/)   { $class = 'diff B: empty quotes' }
+    # known difference C: -s strips backslashes inside single quotes too
+    elsif ($s =~ /'[^']*\\[^']*'/) { $class = 'diff C: backslash inside single quotes stripped (-s only)' }
     # anything else is new and worth a look
     else                      { $class = 'UNEXPLAINED' }
   }

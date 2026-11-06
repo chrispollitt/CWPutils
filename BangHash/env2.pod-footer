@@ -179,26 +179,32 @@ below). The B<x> flag turns backslash sequences such as B<\n> and B<\t> into the
 characters they stand for.
 
 * With the B<s> flag, a backslash is removed when it comes before an ordinary
-character or another backslash. A backslash before whitespace or a quote
-is left in place (see B<BUGS>).
+character or another backslash, inside single quotes as well as outside them.
+A backslash before whitespace or a quote is left in place (see B<BUGS>).
 
 * Empty arguments (C<""> or C<''>) are dropped, unless the B<p> flag is used.
 
 * A quote that is never closed is an error (C<unmatched quote>), with one
 exception (see B<BUGS>).
 
-These rules follow the shell-like splitting of Perl's C<shellwords()> closely, and
-for most input give the same arguments. The differences were found by comparing
-the two on every string of up to six characters built from the letters a and b, space, tab, single quote, double quote
-and backslash (about 137,000 strings; the method is described in
-B<DEVELOPER_NOTES.txt> in the source). They are:
+With B<s> and B<p>, these rules follow the shell-like splitting of Perl's
+C<shellwords()> closely, and for most input give the same arguments. (Without
+B<s> every backslash is kept, so strings containing backslashes differ from
+C<shellwords()> wholesale.) The remaining differences were found by comparing
+the two on every string of up to six characters built from the letters a and b,
+space, tab, single quote, double quote and backslash (about 137,000 strings;
+the method is described in B<DEVELOPER_NOTES.txt> in the source). They are:
 
 * B<env2> keeps the backslash in front of whitespace or a quote even with B<s>,
 where C<shellwords()> removes it and treats the character literally.
 
-* With B<p>, an empty pair of quotes directly followed by text (two double
-quotes then B<abc>, say) gives an extra empty argument, where C<shellwords()>
-gives just B<abc>.
+* With B<s>, B<env2> also removes backslashes inside single quotes, where
+C<shellwords()> (like the shell) keeps single-quoted text exactly as written.
+
+* Empty quotes: B<env2> drops them (without B<p>), where C<shellwords()> keeps
+an empty argument. With B<p>, an empty pair of quotes directly followed by text
+(two double quotes then B<abc>, say) gives an extra empty argument, where
+C<shellwords()> gives just B<abc>.
 
 * A single quote or double quote with nothing after it (a lone double quote,
 for example) is silently ignored, where C<shellwords()> reports an error.
@@ -241,6 +247,7 @@ by the kernel as is done on Solaris and macOS.
 
 A HOME path (or program name) longer than about 250 characters makes the config file be silently ignored.
 The B<s> flag does not remove a backslash that comes before whitespace or a quote.
+With B<s>, backslashes inside single quotes are removed too (the shell keeps them).
 With B<p>, an empty quote pair directly followed by text gives an extra empty argument.
 A quote with nothing after it is not reported as an unmatched quote.
 Code uses a strange mix of C and C++.
