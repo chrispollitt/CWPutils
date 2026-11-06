@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """termprobe: what survives the trip between a program and its terminal on THIS path?
 
-    termprobe [--timeout S] [--label TEXT] [--raw] [--input | --tvision] [--dos [--no-visual]] [--no-vt-input]
+    termprobe [--timeout S] [--label TEXT] [--raw] [--input | --tvision] [--dos [--no-visual] [--no-mouse]] [--no-vt-input]
 
 Run it in every terminal / shell / ssh combination you care about and compare.  It asks the terminal, in one burst,
 the questions a capability-negotiating TUI (tvision, notcurses, vim, ...) asks:
@@ -43,7 +43,14 @@ the ANSI.SYS sequences (CUP HVP CUU CUD CUF CUB, SCP/RCP, ED, EL, SGR, DSR, line
 blocks).  Cursor behaviour is measured, not eyeballed: each sequence is followed by ESC[6n and the reported position is
 compared with what DOS would do.  Attributes are read back with DECRQSS.  Whatever cannot be measured (erase, how colours
 and CP437 look) is drawn on the screen afterwards with a line saying what you should see; --no-visual leaves that out.
+--dos also tests the mouse both ways (interactive: click three times, twice, 8 s each; --no-mouse skips it): as escape-
+sequence reports (xterm SGR, what tvision / ncurses / vim ask for) and as console mouse events (conhost's
+ENABLE_MOUSE_INPUT and MOUSE_EVENT records, what Microsoft Edit and Windows-API programs use).  The second needs a
+Windows console program: on native Windows it runs in-process; under Cygwin / MSYS a native Windows Python (py or
+python.exe on PATH) is started from the shell, which is exactly "a Windows program started from here".  A pty with only
+text behind it (wincygterm without `wcdirect`) shows up as: escape-sequence mouse works, console mouse events do not.
 It never changes the exit code: a terminal without blink is a fact, not a fault.
+Every run, in every mode, ends with a SUMMARY of the findings: [ ok ], [warn], [FAIL], [info].
 --no-vt-input (native Windows only) leaves ENABLE_VIRTUAL_TERMINAL_INPUT off, as for a program that reads key events.
 
 Talks to the controlling terminal (/dev/tty on POSIX: Linux, WSL, macOS, Cygwin, MSYS, mintty; CONIN$ / CONOUT$ with
@@ -56,7 +63,10 @@ import argparse
 import os
 import platform
 import re
+import shutil
+import subprocess
 import sys
+import textwrap
 import time
 
 GRACE = 0.3                                              # seconds to go on listening once every query is answered
@@ -679,30 +689,68 @@ def dos_screen(tty, timeout):
 
 
 def dos_verdicts(res, status):
+    """-> [(kind, text)], kind being ok / warn / info."""
     if status == "cpr":
-        return ["ANSI.SYS CORE: UNTESTED - ESC[6n (device status report) got no reply, so there is nothing to measure with"]
+        return [("warn", "ANSI.SYS CORE: UNTESTED - ESC[6n (device status report) got no reply, so there is nothing "
+                         "to measure with")]
     by = dict((r[1], r) for r in res)
     out = []
     core = [by[k] for k in DOS_CORE if k in by]
     if core:
         n = sum(1 for r in core if r[3] == "ok")
-        out.append("ANSI.SYS CORE: %s - %d of %d cursor sequences (CUP HVP CUU CUD CUF CUB SCP) landed where DOS would put it"
-                   % ("FULL" if n == len(core) else "MISSING" if n == 0 else "PARTIAL", n, len(core)))
+        word = "FULL" if n == len(core) else "MISSING" if n == 0 else "PARTIAL"
+        out.append(("ok" if word == "FULL" else "warn",
+                    "ANSI.SYS CORE: %s - %d of %d cursor sequences (CUP HVP CUU CUD CUF CUB SCP) landed where DOS would "
+                    "put it" % (word, n, len(core))))
     sgr = [(k, l) for k, l, _ in SGR_TESTS if "sgr_" + k in by]
     if sgr:
         if any(by["sgr_" + k][3] in ("ok", "DIFFERS") for k, _ in sgr):
             okl = [l for k, l in sgr if by["sgr_" + k][3] == "ok"]
             bad = [l for k, l in sgr if by["sgr_" + k][3] not in ("ok",)]
-            out.append("ATTRIBUTES: confirmed %s%s" % (", ".join(okl) or "none",
-                                                      "; not confirmed: " + ", ".join(bad) if bad else ""))
+            out.append(("warn" if bad else "ok", "ATTRIBUTES: confirmed %s%s" % (
+                ", ".join(okl) or "none", "; not confirmed: " + ", ".join(bad) if bad else "")))
         else:
-            out.append("ATTRIBUTES: UNKNOWN - the terminal does not answer DECRQSS; judge by the picture")
+            out.append(("info", "ATTRIBUTES: UNKNOWN - the terminal does not answer DECRQSS; judge by the picture"))
     cp = [r for r in res if r[0] == "cp437"]
     if cp:
         bad = [r for r in cp if r[3] != "ok"]
-        out.append("CP437: %s" % ("all 256 glyphs are one column wide" if not bad else
-                                  "%d of %d rows have glyphs that are not one column wide (see above)" % (len(bad), len(cp))))
+        out.append(("warn" if bad else "ok", "CP437: %s" % (
+            "all 256 glyphs are one column wide" if not bad else
+            "%d of %d rows have glyphs that are not one column wide (see above)" % (len(bad), len(cp)))))
     return out
+
+
+def dos_findings(res, status):
+    """The --dos part of the SUMMARY: the verdicts plus the single facts worth a line."""
+    f = list(dos_verdicts(res, status))
+    by = dict((r[1], r) for r in res)
+
+    def st(k):
+        return by[k][3] if k in by else None
+
+    if st("dos80x25"):
+        fits = st("dos80x25") == "ok"
+        f.append(("ok" if fits else "warn", "Window %s the DOS 80x25 text screen (%s)"
+                  % ("holds" if fits else "is smaller than", by["extent"][4].split("   <-")[0])))
+    if st("wrap_on"):
+        both = st("wrap_on") == "ok" and st("wrap_off") == "ok"
+        f.append(("ok" if both else "warn", "Line wrap on / off (DECAWM, ESC[?7h/l) %s" % ("works" if both else "does not behave")))
+        sysok = st("wrap_sys_on") == "ok" and st("wrap_sys_off") == "ok"
+        f.append(("ok" if sysok else "info", "ANSI.SYS wrap mode ESC[=7h/l %s" % (
+            "works" if sysok else "is not supported (only real ANSI.SYS and DOS emulators take it)")))
+    if st("ed2"):
+        detail = by["ed2"][4]
+        f.append(("info", "ESC[2J " + (detail.split("(")[-1].rstrip(")") if "(" in detail else detail)))
+    edges = [k for k in ("clamp_up", "clamp_dn", "clamp_lt", "clamp_rt") if st(k)]
+    if edges:
+        bad = [k for k in edges if st(k) != "ok"]
+        f.append(("warn" if bad else "ok", "Cursor movement at the screen edges %s" % ("is wrong" if bad else "stops or is ignored, as DOS")))
+    shape = [k for k in ("shape3", "shape2", "vis") if st(k)]
+    if shape:
+        bad = [k for k in shape if st(k) != "ok"]
+        f.append(("ok" if not bad else "info", "DOS cursor shape (underline / block) and hide / show %s" % (
+            "work" if not bad else "not confirmed: " + ", ".join(bad))))
+    return f
 
 
 def dos_report(res, status, alt, info):
@@ -717,11 +765,234 @@ def dos_report(res, status, alt, info):
             out.append("  [%s]" % GROUP_TITLE[group])
             last = group
         out.append("    %-52s %-8s %s" % (name, st, detail))
-    out.extend("  " + v for v in dos_verdicts(res, status))
+    out.extend("  " + t for _, t in dos_verdicts(res, status))
     out.append("  not testable from the terminal side: direct video RAM (B800:0000) and BIOS INT 10h, which do not exist on a")
-    out.append("  pty; Win32 console API calls (SetConsoleCursorPosition etc.), which ConPTY turns into the sequences above;")
+    out.append("  pty; Win32 console output calls (SetConsoleCursorPosition etc.), which ConPTY turns into the sequences above")
+    out.append("  (console mouse events are tested separately, below);")
     out.append("  ANSI.SYS key reassignment ESC[..p and screen mode ESC[=nh, left alone because they change terminal state.")
     return "\n".join(out)
+
+
+# ---- the mouse, two ways: escape-sequence reports and console (conhost) events -----------------------------------
+SGR_MOUSE = re.compile(r"\x1b\[<(\d+);(\d+);(\d+)([Mm])")
+
+
+def vt_mouse_test(tty, seconds=8.0):
+    """The mouse as tvision / ncurses / vim ask for it: SGR reports (ESC[?1000h ESC[?1006h).  -> (presses, releases)"""
+    tty.write("\x1b[?1000h\x1b[?1006h")
+    text, t0 = "", time.time()
+    try:
+        while time.time() - t0 < seconds:
+            text += tty.read(max(min(0.2, t0 + seconds - time.time()), 0))
+            ev = [m for m in SGR_MOUSE.finditer(unwrap(text)) if int(m.group(1)) < 32]     # buttons, not motion / wheel
+            if sum(1 for m in ev if m.group(4) == "M") >= 3 and sum(1 for m in ev if m.group(4) == "m") >= 3:
+                break
+    finally:
+        tty.write("\x1b[?1006l\x1b[?1000l")
+    ev = [m for m in SGR_MOUSE.finditer(unwrap(text)) if int(m.group(1)) < 32]
+    return sum(1 for m in ev if m.group(4) == "M"), sum(1 for m in ev if m.group(4) == "m")
+
+
+def win_mouse_test(seconds=8.0):
+    """Native Windows only: the mouse as a console program reads it, MOUSE_EVENT records after ENABLE_MOUSE_INPUT
+    (virtual-terminal input off, quick-edit off).  -> dict(press, release, move, wheel, keys), or None without a console."""
+    import ctypes
+    from ctypes import wintypes as wt
+
+    class COORD(ctypes.Structure):
+        _fields_ = [("X", wt.SHORT), ("Y", wt.SHORT)]
+
+    class MOUSE(ctypes.Structure):
+        _fields_ = [("pos", COORD), ("buttons", wt.DWORD), ("ctrl", wt.DWORD), ("flags", wt.DWORD)]
+
+    class KEY(ctypes.Structure):
+        _fields_ = [("down", wt.BOOL), ("repeat", wt.WORD), ("vk", wt.WORD), ("scan", wt.WORD),
+                    ("char", wt.WCHAR), ("state", wt.DWORD)]
+
+    class RECORD(ctypes.Structure):
+        class U(ctypes.Union):
+            _fields_ = [("key", KEY), ("mouse", MOUSE), ("pad", ctypes.c_byte * 16)]
+        _anonymous_ = ("u",)
+        _fields_ = [("type", wt.WORD), ("u", U)]
+
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    H = wt.HANDLE
+    k.CreateFileW.restype = H
+    k.CreateFileW.argtypes = [wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p, wt.DWORD, wt.DWORD, H]
+    k.GetConsoleMode.argtypes = [H, ctypes.POINTER(wt.DWORD)]
+    k.SetConsoleMode.argtypes = [H, wt.DWORD]
+    k.WaitForSingleObject.argtypes = [H, wt.DWORD]
+    k.ReadConsoleInputW.argtypes = [H, ctypes.POINTER(RECORD), wt.DWORD, ctypes.POINTER(wt.DWORD)]
+    k.FlushConsoleInputBuffer.argtypes = [H]
+    k.CloseHandle.argtypes = [H]
+    hin = k.CreateFileW("CONIN$", 0xC0000000, 3, None, 3, 0, None)
+    old = wt.DWORD()
+    if hin in (None, H(-1).value) or not k.GetConsoleMode(hin, ctypes.byref(old)):
+        return None
+    res = dict(press=0, release=0, move=0, wheel=0, keys=0)
+    down, recs, n, t0 = False, (RECORD * 16)(), wt.DWORD(), time.time()
+    k.SetConsoleMode(hin, 0x80 | 0x10 | 0x08)          # EXTENDED_FLAGS (quick-edit off) | MOUSE_INPUT | WINDOW_INPUT
+    k.FlushConsoleInputBuffer(hin)
+    try:
+        while time.time() - t0 < seconds and not (res["press"] >= 3 and res["release"] >= 3):
+            if k.WaitForSingleObject(hin, 200) != 0:
+                continue
+            if not k.ReadConsoleInputW(hin, recs, 16, ctypes.byref(n)):
+                break
+            for i in range(n.value):
+                r = recs[i]
+                if r.type == 2:
+                    flags, buttons = r.mouse.flags, r.mouse.buttons & 0xFFFF
+                    if flags & 0xC:
+                        res["wheel"] += 1
+                        continue
+                    res["move"] += 1 if flags & 0x1 else 0
+                    if buttons and not down:
+                        res["press"], down = res["press"] + 1, True
+                    elif not buttons and down:
+                        res["release"], down = res["release"] + 1, False
+                elif r.type == 1 and r.key.down:
+                    res["keys"] += 1
+    finally:
+        k.SetConsoleMode(hin, old.value)
+        k.FlushConsoleInputBuffer(hin)
+        k.CloseHandle(hin)
+    return res
+
+
+def win_mouse_run(seconds):
+    """Prompt, run win_mouse_test, print what came.  -> status: ok | none | partial | error"""
+    print("  Console mouse events (what Microsoft Edit and other Windows-API programs read): click 3 times in this "
+          "window within %d s ..." % seconds)
+    sys.stdout.flush()
+    res = win_mouse_test(seconds)
+    if res is None:
+        print("  no console to read mouse events from")
+        return "error"
+    print("  got %(press)d presses, %(release)d releases, %(move)d moves, %(wheel)d wheel, %(keys)d key events" % res)
+    return "ok" if res["press"] >= 3 and res["release"] >= 3 else "partial" if res["press"] or res["release"] else "none"
+
+
+def native_python():
+    """A native Windows Python for a Cygwin / MSYS run: py, python.exe, python3.exe - the first that says os.name == 'nt'."""
+    for name in ("py", "python.exe", "python3.exe"):
+        exe = shutil.which(name)
+        if exe and subprocess.call([exe, "-c", "import os, sys; sys.exit(0 if os.name == 'nt' else 1)"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+            return exe
+    return None
+
+
+def conhost_mouse(seconds):
+    """-> status: ok | none | partial | error | na.  Under Cygwin / MSYS a native Windows Python is started from the
+    shell: that is what 'a Windows console program started from here' means, pseudo console and all."""
+    if os.name == "nt":
+        return win_mouse_run(seconds)
+    if sys.platform not in ("cygwin", "msys"):
+        return "na"
+    py = native_python()
+    if not py:
+        print("  no native Windows Python (py, python.exe) on PATH: cannot start a Windows console program from here")
+        return "na"
+    try:
+        script = subprocess.check_output(["cygpath", "-w", os.path.realpath(__file__)]).decode("utf-8", "replace").strip()
+    except (OSError, subprocess.CalledProcessError):
+        print("  cannot turn this script's path into a Windows path (no cygpath)")
+        return "na"
+    sys.stdout.flush()
+    code = subprocess.call([py, script, "--win-mouse", str(seconds)])
+    return {0: "ok", 1: "none", 3: "partial"}.get(code, "error")
+
+
+def mouse_section(tty, seconds=8.0):
+    """Both mice, one after the other; prints as it goes.  -> [(kind, text)] for the SUMMARY."""
+    print("\nMOUSE")
+    print("  Escape-sequence mouse (xterm SGR: tvision, ncurses, vim): click 3 times in this window within %d s ..." % seconds)
+    sys.stdout.flush()
+    press, release = vt_mouse_test(tty, seconds)
+    print("  got %d presses, %d releases" % (press, release))
+    vt_ok = press >= 3 and release >= 3
+    status = conhost_mouse(seconds)
+    f = [("ok" if vt_ok else "warn",
+          "Mouse as escape sequences (tvision, ncurses, vim): %s" % (
+              "works (%d presses, %d releases)" % (press, release) if vt_ok else
+              "%d presses / %d releases - missing; nobody clicked, or this path drops the reports" % (press, release)))]
+    if status == "ok":
+        f.append(("ok", "Mouse as console events (conhost ENABLE_MOUSE_INPUT; Microsoft Edit, Windows-API programs): works"))
+    elif status in ("none", "partial"):
+        hint = ""
+        if vt_ok:
+            hint = ": escape-sequence mouse works but console mouse events do not, so this path carries text only"
+        if os.environ.get("WINCYGTERM"):
+            hint += "; under wincygterm start such a program with `wcdirect PROG`"
+        f.append(("warn", "Mouse as console events (Microsoft Edit, Windows-API programs): %s%s" % (
+            "none arrived" if status == "none" else "only some arrived", hint)))
+    elif status == "error":
+        f.append(("warn", "Mouse as console events: the test could not run"))
+    else:
+        f.append(("info", "Mouse as console events: not testable here (needs Windows, and a native Windows Python under Cygwin)"))
+    return f
+
+
+# ---- the SUMMARY ------------------------------------------------------------------------------------------------
+TAGS = {"ok": "[ ok ]", "warn": "[warn]", "fail": "[FAIL]", "info": "[info]"}
+MODE_LABELS = (("mode1000", "mouse"), ("mode1006", "SGR mouse"), ("mode2004", "bracketed paste"),
+               ("mode2026", "synchronized output"), ("mode9001", "win32-input-mode"))
+
+
+def base_findings(rows, issues, notes, seen, text, ttyname):
+    """The negotiation part of the SUMMARY, from what analyse() and report() already know."""
+    f = []
+    name, _ = osc_verdict(seen, text)
+    if name == "ANSWERED":
+        f.append(("ok", "Colour query (OSC 10/11) answered: programs can learn the terminal's colours"))
+    else:
+        why = ("something answered but not the colour query (ignored, or eaten by an intermediary)" if name == "DROPPED"
+               else "no reply of any kind")
+        if name == "DROPPED" and ttyname.startswith("/dev/cons"):
+            why += "." + CYGWIN_CONSOLE_HINT.rstrip(".")
+        f.append(("fail", "Colour query (OSC 10/11) %s: %s" % (name, why)))
+    if issues:
+        f.append(("fail", "Negotiation MANGLED: %d problem(s)" % len(issues)))
+        f.extend(("fail", "  " + i) for i in issues)
+    else:
+        f.append(("ok", "Negotiation clean: every reply whole, single and consistent"))
+    shown = dict((q.key, s) for q, dt, s, c in rows if s is not None)
+    ident = ["%s %s" % (label, shown[k]) for k, label in (("xtver", "XTVERSION"), ("da2", "DA2"), ("da1", "DA1")) if k in shown]
+    f.append(("info", "Terminal says: " + "; ".join(ident)) if ident else
+             ("warn", "The terminal did not identify itself (no XTVERSION, DA2 or DA1 reply)"))
+    f.append(("info", "Modes (DECRQM): " + ", ".join("%s %s" % (label, shown.get(k, "no reply")) for k, label in MODE_LABELS)))
+    keys = [s for s in ("kitty keyboard " + shown["kitty"] if "kitty" in shown else None,
+                        "modifyOtherKeys " + shown["modkeys"] if "modkeys" in shown else None) if s]
+    f.append(("info", "Key protocols: " + (", ".join(keys) if keys else "no kitty keyboard or modifyOtherKeys reply")))
+    silent = [q.name for q, dt, s, c in rows if s is None]
+    if silent:
+        f.append(("info", "No reply to: " + ", ".join(silent)))
+    f.extend(("info", n) for n in notes)
+    return f
+
+
+def input_findings(lines, ok, tvision):
+    f = [("ok" if ok else "fail", "Keyboard and mouse fidelity%s: %s" % (" under tvision's setup" if tvision else "",
+                                                                          "clean" if ok else "PROBLEM"))]
+    for line in lines:
+        s = line.strip()
+        if "PROBLEM" in s or "stray" in s or s.startswith("split") or "records arrived" in s or "nothing was typed" in s:
+            f.append(("fail", "  " + s))
+        elif s.startswith("win32 records"):
+            f.append(("info", "  " + s))
+    return f
+
+
+def print_summary(findings):
+    print("\nSUMMARY")
+    for kind, text in findings:
+        indent = text[:len(text) - len(text.lstrip())]
+        print(textwrap.fill(text.strip(), width=118, initial_indent="  %s %s" % (TAGS[kind], indent),
+                            subsequent_indent=" " * 9 + indent))
+    fails = sum(1 for k, _ in findings if k == "fail")
+    warns = sum(1 for k, _ in findings if k == "warn")
+    print("  %d failure(s), %d warning(s)" % (fails, warns))
 
 
 def visual(tty):
@@ -766,9 +1037,15 @@ def main(argv=None):
                     help="also test classic DOS / ANSI.SYS screen control: cursor, erase, wrap, 16 colours, blink, "
                          "cursor shape, CP437 glyph widths (cursor behaviour is measured with ESC[6n)")
     ap.add_argument("--no-visual", action="store_true", help="with --dos: skip the colour / CP437 picture at the end")
+    ap.add_argument("--no-mouse", action="store_true", help="with --dos: skip the interactive mouse tests (no clicking)")
     ap.add_argument("--no-vt-input", action="store_true",
                     help="native Windows only: do not set ENABLE_VIRTUAL_TERMINAL_INPUT (how a program that reads key events sees it)")
+    ap.add_argument("--win-mouse", type=float, metavar="S", help=argparse.SUPPRESS)    # internal: the native-Windows child
     args = ap.parse_args(argv)
+    if args.win_mouse:
+        if os.name != "nt":
+            return 2
+        return {"ok": 0, "none": 1, "error": 2, "partial": 3}[win_mouse_run(args.win_mouse)]
     tty = open_tty(not args.no_vt_input)
     if tty is None:
         print("termprobe: NO TTY - there is no terminal to ask (is this a pipe, cron, or a Windows Python run "
@@ -780,11 +1057,15 @@ def main(argv=None):
         rows, issues, notes = analyse(text, seen, size)
         msg, code = report(args.label, rows, issues, seen, text, args.timeout, args.raw, size, notes, tty.name())
         print(msg)
+        findings = base_findings(rows, issues, notes, seen, text, tty.name())
         if args.dos:
             res, status, alt = dos_screen(tty, args.timeout)
             enc = getattr(sys.stdout, "encoding", None) or "ascii"
             print(dos_report(res, status, alt, tty.info()).encode(enc, "replace").decode(enc))   # glyphs a pipe can't carry
             sys.stdout.flush()
+            findings += dos_findings(res, status)
+            if not args.no_mouse:
+                findings += mouse_section(tty)
             if not args.no_visual:
                 visual(tty)
         if args.input or args.tvision:
@@ -792,6 +1073,9 @@ def main(argv=None):
             print("\n".join(lines))
             print("  INPUT:       %s" % ("CLEAN" if ok else "PROBLEM"))
             code = code or (0 if ok else 1)
+            findings += input_findings(lines, ok, args.tvision)
+        sys.stdout.flush()
+        print_summary(findings)
     finally:
         tty.close()
     return code
