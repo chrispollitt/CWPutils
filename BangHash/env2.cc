@@ -41,8 +41,8 @@ hash_t flags;                  // Place for flags
 #define DEF_TO_STR(s) DEF_TO_STR2(s)
 
 // Constants
-#define VERSION   "1.3"
-#define YEAR      "2020"
+#define VERSION   "1.4"
+#define YEAR      "2020-2026"
 
 #ifndef PREFIX
 #define PREFIX /usr/local
