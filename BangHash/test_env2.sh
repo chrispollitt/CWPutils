@@ -146,8 +146,10 @@ function main {
 
   if [[ $(uname -s) == CYGWIN* ]]; then
     echo "==Test w"
-    set_sample_script '-w perl -l' 'print $0'
-    exp=$(cygpath -w "$PWD/sample_script.si")
+    # call env2 directly (not via sample_interpreter)
+    set_sample_script "$PWD/${prog#./} -w perl" 'print "$0\n"'
+    # Cygwin passes the script path symlink-resolved, so compare against that
+    exp=$(cygpath -w "$(readlink -f "$PWD/sample_script.si")")
     got=$(./sample_script.si 2>&1)
     if [[ $got != "$exp" ]]; then
       echo "Test w: expected '$exp' got '$got'"
