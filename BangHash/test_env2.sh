@@ -52,8 +52,12 @@ function main {
     exit 1
   fi
   
-  # copy test rc file
-  [[ -f ~/.$rc ]] && mv -f ~/.$rc ~/.$rc-ORIG
+  # Use a private HOME for the test rc files, so the tests never touch (or leave
+  # anything behind in) the user's real home directory.
+  local tmphome
+  tmphome=$(mktemp -d "${TMPDIR:-/tmp}/env2test.XXXXXX") || { echo "mktemp failed"; exit 1; }
+  trap 'rm -rf "$tmphome"' EXIT
+  export HOME="$tmphome"
   cp t/$rc ~/.$rc
   cp t/$rc ~/.sample_interpreterrc
   
@@ -113,7 +117,8 @@ function main {
   
   # Run Test 6 - debug, norc 
   echo "==Test 6"
-  set_sample_script '-dnf bash -x ~~ "tab\ttab"' 'echo -E "Hi from 6 $1"'
+  # (L: this test covers the legacy splitter keeping the backslash in "tab\ttab")
+  set_sample_script '-dnLf bash -x ~~ "tab\ttab"' 'echo -E "Hi from 6 $1"'
   script_args=''
   ./sample_script.si $script_args >& t/out6
   diff t/out6 t/exp6
@@ -210,37 +215,67 @@ function main {
     fi
   fi
 
-  ### -S: Perl-compatible splitting (split_shellwords) ###
+  ### shellwords (Perl-compatible splitting, split_shellwords) is the default ###
+  # -L (or -s, -p, -x, which imply it) selects the legacy splitter; -S is accepted.
 
-  echo "==Test shellwords-env2"
-  got=$($prog "-Sn /bin/echo 'two words' a\\ b \"\" x" /bin/true 2>&1)
+  echo "==Test default-shellwords"
+  got=$($prog "-n /bin/echo 'two words' a\\ b \"\" x" /bin/true 2>&1)
   if [[ $got != "two words a b  x /bin/true" ]]; then
-    echo "Test shellwords-env2: got '$got'"
+    echo "Test default-shellwords: got '$got'"
     (( errs = errs + 1 ))
   fi
 
-  echo "==Test shellwords-comment"
-  got=$($prog "-Snc /bin/echo hi # -*-Python-*-" /bin/true 2>&1)
+  echo "==Test default-comment"
+  got=$($prog "-nc /bin/echo hi # -*-Python-*-" /bin/true 2>&1)
   if [[ $got != "hi /bin/true" ]]; then
-    echo "Test shellwords-comment: got '$got'"
+    echo "Test default-comment: got '$got'"
     (( errs = errs + 1 ))
   fi
 
-  echo "==Test shellwords-unmatched"
-  got=$($prog "-Sn /bin/echo 'oops" /bin/true 2>&1 | head -1)
+  echo "==Test default-unmatched"
+  got=$($prog "-n /bin/echo 'oops" /bin/true 2>&1 | head -1)
   if [[ $got != *"error: unmatched quote" ]]; then
-    echo "Test shellwords-unmatched: got '$got'"
+    echo "Test default-unmatched: got '$got'"
     (( errs = errs + 1 ))
   fi
 
-  # the port must agree with Perl's shellwords() on every short string
+  echo "==Test S-accepted"
+  got=$($prog "-Sn /bin/echo 'a b' x" /bin/true 2>&1)
+  if [[ $got != "a b x /bin/true" ]]; then
+    echo "Test S-accepted: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  # a backslash-escaped space: shellwords makes it part of the word; the legacy splitter keeps the backslash
+  echo "==Test L-legacy"
+  got=$($prog "-Ln /bin/echo a\\ b" /bin/true 2>&1)
+  if [[ $got != 'a\ b /bin/true' ]]; then
+    echo "Test L-legacy: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test s-implies-legacy"
+  got=$($prog "-sn /bin/echo a\\ b" /bin/true 2>&1)
+  if [[ $got != 'a\ b /bin/true' ]]; then
+    echo "Test s-implies-legacy: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test Ss-is-shellwords"
+  got=$($prog "-Ssn /bin/echo a\\ b" /bin/true 2>&1)
+  if [[ $got != "a b /bin/true" ]]; then
+    echo "Test Ss-is-shellwords: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  # the default splitter must agree with Perl's shellwords() on every short string
   if [[ -x ./splitcheck ]] && perl -MText::ParseWords -e1 2>/dev/null; then
     echo "==Test shellwords-vs-perl"
-    out=$(perl t/splitcompare.pl ./splitcheck S 5 2>&1) || {
+    out=$(perl t/splitcompare.pl ./splitcheck "" 5 2>&1) || {
       echo "Test shellwords-vs-perl: disagrees with Perl:"; echo "$out" | head -20
       (( errs = errs + 1 ))
     }
-    out=$(SPLITCMP_WS=1 perl t/splitcompare.pl ./splitcheck S 4 2>&1) || {
+    out=$(SPLITCMP_WS=1 perl t/splitcompare.pl ./splitcheck "" 4 2>&1) || {
       echo "Test shellwords-vs-perl (whitespace): disagrees with Perl:"; echo "$out" | head -20
       (( errs = errs + 1 ))
     }
@@ -270,10 +305,8 @@ function main {
 
   #################################
 
-  # restore orig rc file
-  [[ -f ~/.$rc-ORIG ]] && mv -f ~/.$rc-ORIG ~/.$rc
-  rm ~/.sample_interpreterrc
-  
+  # (the private HOME and its rc files are removed by the EXIT trap)
+
   # Look for test errors
   if [[ $errs != 0 ]]; then echo "**FAIL=$errs**"; exit 1; fi
   

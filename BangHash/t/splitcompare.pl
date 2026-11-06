@@ -1,16 +1,17 @@
 #!/usr/bin/perl
 # t/splitcompare.pl HARNESS FLAGS MAXLEN
-#   (run by make test with FLAGS=S; see also DEVELOPER_NOTES.txt)
+#   (run by make test with FLAGS="" ; see also DEVELOPER_NOTES.txt)
 # Generate every string over a small alphabet up to MAXLEN, split each with
 # env2 (via HARNESS) and with Perl's shellwords(), and report where they disagree.
 #
-# FLAGS "S": env2's shellwords port.  It must agree with Perl on every string,
-#   so this is STRICT: any disagreement makes the script exit 1.
-# Otherwise: env2's original split_string().  Use FLAGS containing "s" (e.g. "sp"):
-#   without -s it keeps every backslash, so nearly every string with one differs
-#   and shows as UNEXPLAINED.  With "s", the known differences A, B and C below
-#   account for everything, plus the "perl: unmatched quote, env2: accepts" class
-#   (a quote with nothing after it).
+# FLAGS (passed to the harness, same letters as env2):
+#   none, or "S": env2's default splitter, the shellwords port.  It must agree with Perl
+#     on every string, so this is STRICT: any disagreement makes the script exit 1.
+#   "L", or any of s, p, x (which imply it): the legacy split_string().  Use FLAGS
+#     "Lsp": without s it keeps every backslash, so nearly every string with one differs
+#     and shows as UNEXPLAINED.  With "s", the known differences A, B and C below
+#     account for everything, plus the "perl: unmatched quote, env2: accepts" class
+#     (a quote with nothing after it).
 use strict; use warnings;
 use Text::ParseWords qw(shellwords);
 
@@ -85,7 +86,8 @@ for my $class (sort keys %examples) {
 }
 
 # strict mode (the shellwords port): nothing but "same" and "both: unmatched quote" is allowed
-if (index($flags, 'S') >= 0) {
+my $legacy = ($flags =~ /[Lspx]/) && ($flags !~ /S/);   # same rule as env2 and the harness
+if (!$legacy) {
   my @bad = grep { $_ ne 'same' && $_ ne 'both: unmatched quote' } keys %count;
   if (@bad) { print "\nFAIL: the shellwords port disagrees with Perl\n"; exit 1 }
   print "\nOK: the shellwords port agrees with Perl on every string\n";

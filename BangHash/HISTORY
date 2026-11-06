@@ -1,0 +1,154 @@
+HISTORY of BangHash (env2, dumpargs and friends)
+================================================
+
+BangHash grew out of one problem: every OS handles the arguments on a
+"#!" line differently, so a script like
+
+    #!/usr/bin/php -n -q -d include_path=/foo
+
+works on one system and not on another.  env2 is a replacement for env(1)
+that makes it work everywhere.  (The man page, section "A BIT OF HISTORY",
+has the background on how kernels and env(1) itself have handled this.)
+
+The original code, 2020, was written by hand by Chris Pollitt.  The 2026
+work (marked below) was done with Claude, an AI assistant; the commit
+messages from that work carry a Co-Authored-By line.
+
+
+VERSIONS
+--------
+
+  1.0   2020-10-27   first release (git tag 1.0)
+  1.1   2020-11-05   "release 1.1" (git tag 1.1)
+  1.2   2020-11-12   git tag 1.2
+  1.3   2020-11-18   git tag 1.3
+  1.4   2026-11-05   version bumped in the source (no git tag)
+  2.0   2026-11-06   shellwords splitting becomes the default (no git tag yet)
+
+
+TIMELINE
+--------
+
+2020-10-26 .. 27   The project starts in the CWPutils repository: env2 itself,
+                   dumpargs, a sample interpreter, a config-file reader (vars),
+                   flag parsing as its own module, a man page, and a test script
+                   with expected-output files.  Release 1.0.
+
+2020-10-28         Interim work.  parse_input is renamed split_string.  The flag
+                   parser, which had been split out into its own module
+                   (parse_flags.cc/.hh), is moved back into env2.cc, in the
+                   part that is only built into the env2 program.  Splitting
+                   moves to the array utilities.
+
+2020-11-01 .. 05   Fixed-size arrays are replaced by malloc'ed ones.  split_and_
+                   merge appears.  usage() and the README are updated.  The code
+                   is run through astyle.  A bug in -s is fixed, argv_t is used
+                   more, and the config arguments are no longer global.  The
+                   sample interpreters are improved.  Backslash handling is
+                   fixed.  Release 1.1.
+
+2020-11-06 .. 12   Porting.  Fixes for macOS and Solaris ("Solaris/macOS should
+                   now work (in theory)").  configure and config.hh are added
+                   (11-07), with KERNEL_SPLIT blocks in the code that detect and
+                   handle how the local kernel splits the #! line.  Expected-
+                   output files are kept per kernel flavour (t/ks0, t/ks1).  The
+                   tests start using real #! lines.  A second debug level.  The
+                   -a (Allow) flag and the "~" hints are added, and the man page
+                   is cleaned up.  Release 1.2.
+
+2020-11-16         The project moves into the BangHash/ directory of the CWPutils
+                   repository, next to BIDeT.
+
+2020-11-18 .. 26   Release 1.3.  A flags_t class replaces simple strings for
+                   flag values.  sample_interpreter variation 3, which carried
+                   a copy of env2's flag parser (its own comment: "It sucks.
+                   Should really copy the way Perl does it."), is removed.  More
+                   macOS and Solaris fixes.  t/ks2 is added for a kernel that
+                   splits the #! line perfectly (none was ever found).  Cleanup.
+
+2024-10            config_hashbang.pl is added: a Perl tool that checks and
+                   rewrites the #! lines of scripts by file extension, and
+                   suggests env2 when a line has several interpreter arguments.
+
+2025-05            File mode changes only (49 files marked executable).
+
+2026-11-05         A modernisation pass (with Claude).  See the next section.
+
+2026-11-06         Version 2.0.
+
+
+THE 2026 WORK
+-------------
+
+Features
+  * -w: convert the script path to Windows format, like cygpath -w (Cygwin).
+  * -v: the help listed it, but only --version worked.  Fixed.
+  * parse_switches() (switches.cc): a table-driven switch parser for the
+    library, modelled on how Perl handles switches on a #! line (clustered
+    letters, several clusters in one string, stop at the first word that is
+    not a switch).  env2's own flags use it.  sample_interpreter3 is back as a
+    demonstration of using it from a custom interpreter.  The help text is
+    generated from the same table, so it cannot drift from the parser.
+  * split_shellwords() (shellwords.cc): a port of Perl's shellwords() as a
+    plain state machine.  It was checked against Perl itself on every string
+    of up to six characters over a small alphabet (about 137,000 strings), and
+    the check runs in "make test".
+  * Version 2.0 makes shellwords splitting the default.  The original splitter
+    is "legacy": -L selects it, and -s, -p and -x (which only mean something to
+    it) imply it, so older #! lines behave as before.  -S is still accepted.
+    See the COMPATIBILITY section of the man page.
+
+Bugs found and fixed
+  * Heap overflows in split_string() and env2() on long arguments or many
+    arguments, found with AddressSanitizer (on Linux; Cygwin has none).
+    Long script arguments were also silently truncated at 254 characters.
+  * A crash on a #! line with no arguments, and basename(NULL) when no
+    interpreter was given.
+  * An unset HOME was passed to snprintf.
+  * The Makefile had a "touch" rule that made make treat env2.cc as a
+    disposable intermediate file and delete it.  Replaced by generated header
+    dependencies (-MMD).  "make distclean" can now remove config.mk.
+  * test_env2.sh used to copy a test config over the real ~/.env2rc and leave it
+    there; it now uses a private HOME.
+  * exec failures now exit 127 (not found) or 126, like env(1).
+
+Design changes
+  * The global flags hash became a plain struct Flags passed by const reference.
+  * The identical KERNEL_SPLIT 1 and 2 code paths were merged, then 2 was
+    folded into 1 altogether: no kernel with a perfect #! split is known, and
+    t/ks2 was a copy of t/ks1.
+  * t/fakekernel.pl pretends to be the kernel's #! handler (linux, naive and
+    perfect flavours), so each flavour can be tested on any machine.  It drives
+    test_configure.sh, which runs configure and env2 against each flavour.
+  * The man page was reviewed: typos, the OS notes, BUGS, and a new section
+    on quoting and escapes.
+
+What the shellwords comparison found
+  The original splitter differs from Perl's shellwords() in four ways: -s keeps
+  a backslash in front of whitespace or a quote; -s also strips backslashes inside
+  single quotes; empty quotes are dropped (or, with -p, make an extra empty
+  argument next to text); and a lone quote is not reported as an error.  These
+  were left as they are in the legacy splitter and documented in the man page.
+  The tool that finds them is t/splitcheck.cc with t/splitcompare.pl.
+
+
+THINGS TRIED AND SET ASIDE
+--------------------------
+
+  * Flag parsing as a shared module (October 2020), moved back into env2.cc.
+    The idea returned, done differently, as parse_switches() in 2026.
+  * A copy of env2's parser in sample_interpreter3 (November 2020), removed;
+    replaced by parse_switches() in 2026.
+  * A kernel flavour that splits the #! line perfectly (KERNEL_SPLIT 2):
+    never found, folded into KERNEL_SPLIT 1.
+  * getopt_long and boost::program_options for flag parsing: considered,
+    judged unsuitable (the kernel hands over one clumped string, and boost is
+    heavy for a tool that builds on Solaris and Cygwin).
+
+
+IDEAS NOT YET DONE
+------------------
+
+See the TODO file: environment-variable expansion (${VAR}) in the #! line,
+a vector<string> conversion, splitting env2() into phases, a namespace, and
+eventually removing the legacy splitter.

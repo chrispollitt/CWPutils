@@ -166,13 +166,14 @@ as expected.
 
 =head1 QUOTING AND ESCAPES
 
-B<env2> splits the interpreter argument string itself, and can do it in two
-ways: like Perl's C<shellwords()> (the B<S> flag, recommended), or with its
-original splitter (the default, kept so that existing scripts keep working).
+B<env2> splits the interpreter argument string itself. By default it does this
+like Perl's C<shellwords()>. Its original splitter, now called the legacy
+splitter, is still available with the B<L> flag (see B<COMPATIBILITY>).
 
-=head2 Shellwords splitting (the S flag)
+=head2 Shellwords splitting (the default)
 
-With B<S>, B<env2> splits exactly as Perl's C<shellwords()> does:
+By default, B<env2> splits exactly as Perl's C<shellwords()> does (the B<S> flag
+also selects it, and is accepted for compatibility):
 
 * Space, tab, newline, carriage return, form feed and vertical tab separate
 arguments. Runs of them count as one separator.
@@ -198,15 +199,16 @@ backslash (about 137,000 strings), and on the other whitespace characters;
 there are no differences. B<make test> repeats the check. See
 B<DEVELOPER_NOTES.txt> in the source.
 
-The B<c> flag still works with B<S> (a B<#> that starts an argument, and
-everything after it, is ignored). The B<s>, B<p> and B<x> flags have no effect,
-because the rules above already say what happens to backslashes and empty
-arguments. The B<a> flag (the B<~> hint) works as usual.
+The B<c> flag works with shellwords splitting (a B<#> that starts an argument,
+and everything after it, is ignored). The B<s>, B<p> and B<x> flags only mean
+something to the legacy splitter (they select it, see below), because the rules
+above already say what happens to backslashes and empty arguments. The B<a> flag
+(the B<~> hint) works as usual.
 
-=head2 The original splitter (the default)
+=head2 The legacy splitter (the L flag)
 
-Without B<S>, B<env2> uses the splitter it has always had. It follows these
-rules:
+With B<L> (or with any of B<s>, B<p>, B<x>, unless B<S> is given too), B<env2>
+uses the splitter it had before version 2.0. It follows these rules:
 
 * Space, tab, newline and carriage return separate arguments. Runs of them
 count as one separator.
@@ -231,7 +233,7 @@ With B<s> and B<p>, these rules follow Perl's C<shellwords()> closely, and for
 most input give the same arguments. (Without B<s> every backslash is kept, so
 strings containing backslashes differ from C<shellwords()> wholesale.) The
 remaining differences, found by the same comparison as above, are the reason
-B<S> exists. They are:
+shellwords splitting became the default. They are:
 
 * B<env2> keeps the backslash in front of whitespace or a quote even with B<s>,
 where C<shellwords()> removes it and treats the character literally.
@@ -246,6 +248,25 @@ C<shellwords()> gives just B<abc>.
 
 * A single quote or double quote with nothing after it (a lone double quote,
 for example) is silently ignored, where C<shellwords()> reports an error.
+
+=head1 COMPATIBILITY
+
+Before version 2.0 the legacy splitter was the only one. Starting with 2.0 the
+default is shellwords splitting, so a C<#!> line (or an interpreter-argument line
+in the config file) that contains quotes or backslashes can split differently.
+
+* A line that uses B<s>, B<p> or B<x> is unchanged: those flags select the legacy
+splitter, so it behaves exactly as before. (Give B<S> as well to get shellwords
+splitting anyway; the flags then have no effect on splitting.)
+
+* A line with none of them that has no quotes or backslashes is unchanged: both
+splitters give the same arguments.
+
+* Any other line may change. The main differences are that a backslash is now
+removed (C<a\ b> is the one argument B<a b>), quoted pieces next to text join into
+one argument, and empty quotes are kept as empty arguments.
+
+* To get the old behaviour exactly, add B<L> to the flags.
 
 =head1 CONFIG FILE
 
@@ -284,10 +305,12 @@ by the kernel as is done on Solaris and macOS.
 =head1 BUGS
 
 A HOME path (or program name) longer than about 250 characters makes the config file be silently ignored.
-The B<s> flag does not remove a backslash that comes before whitespace or a quote.
-With B<s>, backslashes inside single quotes are removed too (the shell keeps them).
-With B<p>, an empty quote pair directly followed by text gives an extra empty argument.
-A quote with nothing after it is not reported as an unmatched quote.
+In the legacy splitter (B<L>, or B<s>, B<p>, B<x>):
+the B<s> flag does not remove a backslash that comes before whitespace or a quote;
+with B<s>, backslashes inside single quotes are removed too (the shell keeps them);
+with B<p>, an empty quote pair directly followed by text gives an extra empty argument;
+and a quote with nothing after it is not reported as an unmatched quote.
+The default shellwords splitter has none of these problems.
 Code uses a strange mix of C and C++.
 Please report all Bugs to the author.
 

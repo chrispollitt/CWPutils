@@ -17,10 +17,10 @@ Comparing the splitters with Perl's shellwords()
   generates every string up to a given length over a small alphabet (a b space
   tab, single quote, double quote, backslash) and reports where env2 and
   Text::ParseWords::shellwords() disagree.  `make splitcheck` builds the harness.
-    perl t/splitcompare.pl ./splitcheck S 6         # shellwords port: must be 0 differences
+    perl t/splitcompare.pl ./splitcheck "" 6        # default splitter (shellwords): must be 0 differences
                                                     #   (run by make test, at length 5)
-    perl t/splitcompare.pl ./splitcheck sp 6        # the original splitter (flags: s p x c)
-    SPLITCMP_WS=1 perl t/splitcompare.pl ./splitcheck S 5   # CR, FF, VT as whitespace
+    perl t/splitcompare.pl ./splitcheck Lsp 6       # the legacy splitter (flags: L s p x c)
+    SPLITCMP_WS=1 perl t/splitcompare.pl ./splitcheck "" 5  # CR, FF, VT as whitespace
   The original splitter's differences are listed in the man page (QUOTING AND ESCAPES, BUGS).
 
 Ideas (not currently needed)

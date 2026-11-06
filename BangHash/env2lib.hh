@@ -38,7 +38,7 @@ struct Flags {
   bool        norc   = false;  // do not read rc file
   bool        pre    = false;  // preserve empty args
   bool        sbs    = false;  // strip backslashes
-  bool        shellwords = false;  // split like Perl's shellwords() (S flag; ignores s, p, x)
+  bool        legacy = false;      // use the legacy split_string() instead of shellwords (L flag; implied by s, p, x)
   bool        win    = false;  // convert script path to Windows format
   std::string delim;           // delimiter to separate interpreter args from script args
   std::string allow;           // allow hints (~) so as not to split on wrong spaces

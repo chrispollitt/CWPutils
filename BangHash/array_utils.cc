@@ -206,12 +206,12 @@ argv_t split_string(const Flags &flags, char *input) {
 
 /****************************************************************
  * split_args - split a string into args using the splitter the flags ask for
- *   S flag:  split_shellwords() (Perl-compatible; honours only -c)
- *   default: split_string()     (env2's original splitter)
+ *   default: split_shellwords() (Perl-compatible; honours only -c)
+ *   L flag (or s, p, x): split_string() (env2's original "legacy" splitter)
  **************************************************************/
 argv_t split_args(const Flags &flags, char *input) {
-  if(flags.shellwords) return split_shellwords(input, flags.cmt);
-  return split_string(flags, input);
+  if(flags.legacy) return split_string(flags, input);
+  return split_shellwords(input, flags.cmt);
 }
 
 /******************************************************

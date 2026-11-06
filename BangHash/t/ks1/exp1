@@ -8,12 +8,13 @@ Where flags are one or more of:
   d     : Debug mode (repeat for more)                                  
   e     : Emit mode (call dumpargs)                                     
   f     : Find script opts separated by delimiter ~~                    
+  L     : Legacy splitter, not shellwords (implied by s, p, x)          
   n     : No rc file read                                               
-  p     : Preserve empty args                                           
-  s     : Strip backslashes                                             
-  S     : Split args like Perl's shellwords() (ignores s, p, x; c works)
+  p     : Preserve empty args (legacy splitter)                         
+  s     : Strip backslashes (legacy splitter)                           
+  S     : Shellwords splitting, like Perl (the default)                 
   w     : Windows path: convert script path like cygpath -w (Cygwin)    
-  x     : eXpand standard backslash-escaped characters                  
+  x     : eXpand backslash-escaped characters (legacy splitter)         
   v     : print the Version of this program                             
   h     : this Help                                                     
 
