@@ -3,6 +3,12 @@ Finding memory bugs
   copy on Linux with CXXFLAGS="-g -O1 -fsanitize=address,undefined" and
   LDXXFLAGS="-fsanitize=address,undefined" (edit config.mk), then `make test`.
 
+Testing against different kernels
+  t/fakekernel.pl MODE SCRIPT [ARGS] execs a script's interpreter the way a
+  linux (one arg), naive (split on whitespace) or perfect (shell-like split)
+  kernel would.  Build env2 with the matching KERNEL_SPLIT and call it through
+  the shim to test a flavour you do not have.
+
 Ideas (not currently needed)
 
   Convert enum elements to strings (the code has no enums right now)

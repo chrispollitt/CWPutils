@@ -16,10 +16,12 @@
    - escr_loc is not reliably set; track the script index explicitly
 * put the duplicated escape table (array_utils.cc, vars2.cc) and #defines in one header
 * add -Wextra to the configure-generated CXXFLAGS and clean up the warnings
-* fixture dirs t/ks0, t/ks1, t/ks2 are mostly duplicates
+* fixture dirs t/ks0, t/ks1 are mostly duplicates
+* add configure tests that use t/fakekernel.pl to check each kernel flavour
 * unit-test split_string() directly
 
 DONE
+* KERNEL_SPLIT 2 folded into 1 (no such kernel known; t/ks2 was a copy of t/ks1)
 * flags is a plain struct Flags passed by const reference (no global, no init_flags)
 * -w flag (Cygwin script path to Windows format)
 * -v flag prints the version

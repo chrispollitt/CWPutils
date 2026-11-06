@@ -115,9 +115,12 @@ _HERE_
     echo "#define KERNEL_SPLIT 1" >> config.hh
     ks=1
   elif [[ ${args[1]} == *"c'" ]]; then                      # Perfect!
-    echo "config info: kernel DOES split #! line and DOES handle escaped  whitespace"
-    echo "#define KERNEL_SPLIT 2" >> config.hh
-    ks=2
+    # No such kernel is known.  KERNEL_SPLIT 1 (re-read the #! line from the
+    #   script and split it ourselves) gives the right answer here too.
+    echo "config info: kernel DOES split #! line and DOES handle escaped whitespace"
+    echo "config info: (using KERNEL_SPLIT 1, which also works on such a kernel)"
+    echo "#define KERNEL_SPLIT 1" >> config.hh
+    ks=1
   else
     echo "config error: unexpected result from kernel parsing of #! line"
     echo "${args[1]}"

@@ -210,11 +210,7 @@ int main(int argc, char **argv) {
 #if KERNEL_SPLIT == 1
   o = read_hashbang(flags, o);    // get hashbang line from script
 #endif
-#if KERNEL_SPLIT != 2
   e = split_and_merge(flags, o);  // split up argv[1]
-#else
-  e = o;
-#endif
   } catch (StdException &exc) {
     fprintf(stderr, "%s error: %s\n", Argv0, exc.what());
     usage(1);

@@ -257,17 +257,16 @@ argv_t env2(const Flags &flags, argv_t o) {
 #if   KERNEL_SPLIT == 0
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_string(flags, o.argv[1]);
-#elif KERNEL_SPLIT == 1 || KERNEL_SPLIT == 2
-  // KERNEL_SPLIT 1: the kernel splits the #! line but mangles escaped spaces.
-  // KERNEL_SPLIT 2: the kernel splits it correctly.  No such kernel is known,
-  //   so there is no separate path for it; re-reading the #! line from the
-  //   script gives the right answer either way, just redundantly.
+#elif KERNEL_SPLIT == 1
+  // The kernel splits the #! line but mangles escaped spaces, so re-read the
+  //   #! line from the script.  (A kernel that splits it perfectly would not
+  //   need this, but none is known, and this is correct for it too.)
   // get hashbang line from script
   o = read_hashbang(flags, o);
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_string(flags, o.argv[1]);
 #else
-#error "Must define KERNEL_SPLIT as 0, 1, or 2"
+#error "Must define KERNEL_SPLIT as 0 or 1"
 #endif
 
   // make room in n for the script and user args added below (+2 for script, NULL)
