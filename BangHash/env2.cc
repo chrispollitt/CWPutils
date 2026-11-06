@@ -462,115 +462,97 @@ argv_t env2(const Flags &flags, argv_t o) {
  * parse_flags - parse my flags
  **************************************************************/
 Flags parse_flags(char *flags_str) { 
-  int nstart = 0;                            // nargv start element
-  int j = 0;
-
   Flags flags;
 
-  // strip off args meant for me (from #! line) ////////////////////////////////
-  while(*flags_str != ENDOFSTR) {
-    j=1;
-    // options
-    if        (strcmp(flags_str,"--help")==STRCMP_TRUE) {
-      usage(0);
-    } else if (strcmp(flags_str,"--version")==STRCMP_TRUE) {
-      usage(2);
-    } else if (*flags_str == '-') {
-      while(*(flags_str+j) != ENDOFSTR && *(flags_str+j) != ' ') {
-        int b=0;
-
-        // help
-        if     (*(flags_str+j) == 'h') {
-          usage(0);
-        }
-        // version
-        else if(*(flags_str+j) == 'v') {
-          usage(2);
-        }
-        // allow split on '~' and allow ~ as non-dashed flag prefix marker
-        else if(*(flags_str+j) == 'a') {
-          flags.allow = "~";
-          if(Debug) fprintf(stderr, "Debug: Allow split on '~' activated\n");
-        }
-        // comment
-        else if(*(flags_str+j) == 'c') {
-          flags.cmt = true;
-          if(Debug) fprintf(stderr, "Debug: Comment mode activated\n");
-        }
-        // debug
-        else if(*(flags_str+j) == 'd') {
-          Debug++;
-          if(Debug==1) fprintf(stderr, "Debug: Debug mode activated\n");
-        }
-        // emit (dump) - this is really a debug thing
-        else if(*(flags_str+j) == 'e' || *(flags_str+j) == 'D' ) {
-          flags.dump = true;
-          if(Debug) fprintf(stderr, "Debug: Dump mode activated\n");
-        }
-        // find (delim)
-        else if(*(flags_str+j) == 'f') {
+  // table of my switches (long names: --help, --version) //////////////////////
+  static const std::vector<SwitchSpec> spec = {
+    {'h', "help",    false},   // help
+    {'v', "version", false},   // version
+    {'a', NULL,      false},   // allow split on '~'
+    {'c', NULL,      false},   // comments
+    {'d', NULL,      false},   // debug (repeat for more)
+    {'e', NULL,      false},   // emit (dump)
+    {'D', NULL,      false},   // emit (dump), old spelling
 #ifdef F_TAKES_ARG
-          if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
-            char delim[40];
-            strcpy(delim, (char *)flags_str+j+2);
-            flags.delim = delim;
-            b=1;
-          } else
+    {'f', NULL,      true },   // find (delim), optional =S
+#else
+    {'f', NULL,      false},   // find (delim) ~~
 #endif
-            flags.delim = "~~";
-          if(Debug) fprintf( stderr, "Debug: Delim mode activated with '%s'\n", flags.delim.c_str() );
-          // if delim spec'd, break as this delim string must term with a space
-          if (b) {
-            b=0;
-            break; // from inner while
-          }
-        }
-        // no rc file
-        else if(*(flags_str+j) == 'n' ) {
-          flags.norc = true;
-          if(Debug) fprintf(stderr, "Debug: No rc file mode activated\n");
-        }
-        // preserve empty args (why on earth?) -- feature overload
-        else if(*(flags_str+j) == 'p') {
-          flags.pre = true;
-          if(Debug) fprintf(stderr, "Debug: Preserve empty args mode activated\n");
-        }
-        // strip backslashes (why not by default?) -- feature overload
-        else if(*(flags_str+j) == 's' ) {
-          flags.sbs = true;
-          if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
-        }
-        // convert script path to Windows format (Cygwin only)
-        else if(*(flags_str+j) == 'w' ) {
-          flags.win = true;
-          if(Debug) fprintf(stderr, "Debug: Windows path mode activated\n");
-        }
-        // expand backslash-escaped chars
-        else if(*(flags_str+j) == 'x' ) {
-          flags.exp = true;
-          if(Debug) fprintf(stderr, "Debug: Expand mode activated\n");
-        }
-        // illegal
-        else {
-          fprintf(stderr, "%s error: unrecognized flag %c\n", Argv0, *(flags_str+j));
-          usage(1);
-        }
-        j++;
-      } // while
-      // inc new start position
-      nstart++;
-    } // if -
-    // found a blank
-    else if(*(flags_str) == ' ') {
-      ; // do nothing
+    {'n', NULL,      false},   // no rc file
+    {'p', NULL,      false},   // preserve empty args
+    {'s', NULL,      false},   // strip backslashes
+    {'w', NULL,      false},   // Windows path (Cygwin)
+    {'x', NULL,      false},   // expand backslash escapes
+  };
+
+  // strip off args meant for me (from #! line) ////////////////////////////////
+  SwitchResult r = parse_switches(flags_str, spec);
+
+  for(size_t i=0; i < r.given.size(); i++) {
+    const SwitchGiven &g = r.given[i];
+    switch(g.letter) {
+      // help
+      case 'h':
+        usage(0);
+        break;
+      // version
+      case 'v':
+        usage(2);
+        break;
+      // allow split on '~' and allow ~ as non-dashed flag prefix marker
+      case 'a':
+        flags.allow = "~";
+        if(Debug) fprintf(stderr, "Debug: Allow split on '~' activated\n");
+        break;
+      // comment
+      case 'c':
+        flags.cmt = true;
+        if(Debug) fprintf(stderr, "Debug: Comment mode activated\n");
+        break;
+      // debug
+      case 'd':
+        Debug++;
+        if(Debug==1) fprintf(stderr, "Debug: Debug mode activated\n");
+        break;
+      // emit (dump) - this is really a debug thing
+      case 'e':
+      case 'D':
+        flags.dump = true;
+        if(Debug) fprintf(stderr, "Debug: Dump mode activated\n");
+        break;
+      // find (delim)
+      case 'f':
+        flags.delim = g.hasarg ? g.arg : string("~~");
+        if(Debug) fprintf( stderr, "Debug: Delim mode activated with '%s'\n", flags.delim.c_str() );
+        break;
+      // no rc file
+      case 'n':
+        flags.norc = true;
+        if(Debug) fprintf(stderr, "Debug: No rc file mode activated\n");
+        break;
+      // preserve empty args (why on earth?) -- feature overload
+      case 'p':
+        flags.pre = true;
+        if(Debug) fprintf(stderr, "Debug: Preserve empty args mode activated\n");
+        break;
+      // strip backslashes (why not by default?) -- feature overload
+      case 's':
+        flags.sbs = true;
+        if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
+        break;
+      // convert script path to Windows format (Cygwin only)
+      case 'w':
+        flags.win = true;
+        if(Debug) fprintf(stderr, "Debug: Windows path mode activated\n");
+        break;
+      // expand backslash-escaped chars
+      case 'x':
+        flags.exp = true;
+        if(Debug) fprintf(stderr, "Debug: Expand mode activated\n");
+        break;
     }
-    // found non-flag argument (may not find in Solaris)
-    else {
-      break; // from outer while
-    }
-    flags_str += j;
-  } // while
-  flags.nstart = nstart;
+  }
+  flags.nstart = r.clusters;
   if(Debug) fprintf( stderr, "Debug: nstart: %d\n", flags.nstart );
   return flags;
 }
@@ -654,11 +636,13 @@ int main(int argc, char **argv) {
     usage(1);
   }
 
-  // Parse out my flags
-  Flags flags = parse_flags(o.argv[1]);
+  Flags flags;
 
-  // Call the main env2() function
   try {
+    // Parse out my flags
+    flags = parse_flags(o.argv[1]);
+
+    // Call the main env2() function
     e = env2(flags, o);
   } catch (StdException &exc) {
     fprintf(stderr, "%s error: %s\n", Argv0, exc.what());

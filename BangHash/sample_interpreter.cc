@@ -8,7 +8,7 @@
 #include <errno.h>
 #include <libgen.h>
 
-#if MAIN_VARIATION == 1 || MAIN_VARIATION == 2
+#if MAIN_VARIATION == 1 || MAIN_VARIATION == 2 || MAIN_VARIATION == 3
 #include "env2lib.hh"
 #endif
 #include "sample_interpreter.hh"
@@ -232,8 +232,82 @@ int main(int argc, char **argv) {
 
 // #############################################################################
 
+#elif MAIN_VARIATION == 3
+
+// *************************************************************
+// * main3 - Parse my own #! switches with parse_switches()
+// *
+// * This is how a custom interpreter can use the env2 library to handle
+// * its switches the way Perl does: a table of switches, clustered letters
+// * (-ab), several clusters in one string ("-ab -c=x"), and parsing that
+// * stops at the first non-switch word.  parse_switches() has no globals
+// * and never exits; it throws StdException on a bad switch.
+// *
+// * Try:  ./sample_interpreter3 "-ab -c=x perl -w" script
+// ************************************************************
+
+// Define Globals
+char *Argv0;                   // Name of program
+int   Debug;                   // Debug flag
+
+using namespace std;
+
+// * usage *****************************************************
+void usage(int ret) {
+  printf("Usage\n");
+  exit(ret);
+}
+
+// * main3 *****************************************************
+int main(int argc, char **argv) {
+  argv_t o;
+  o.argc = argc;
+  o.argv = argv;
+
+  // set global vars
+  Argv0 = o.argv[0];
+  Debug = 0;
+  setvbuf(stdout, NULL, _IONBF, 0);
+
+  // make sure we have the right number of args
+  if(o.argc < 2) {
+    usage(1);
+  }
+
+  // my switches: -a, -b (plain) and -c (may take an attached arg: -c=x)
+  const vector<SwitchSpec> spec = {
+    {'a', "aaa", false},
+    {'b', "bbb", false},
+    {'c', "ccc", true },
+  };
+
+  Flags flags;                     // only needed by read_hashbang()
+  try {
+#if KERNEL_SPLIT == 1
+    o = read_hashbang(flags, o);   // get the #! line from the script itself
+#endif
+    SwitchResult r = parse_switches(o.argv[1], spec);
+
+    /// DUMP ////////////////////////////////////////////////////////////////
+    for(size_t i=0; i < r.given.size(); i++) {
+      printf("switch -%c", r.given[i].letter);
+      if(r.given[i].hasarg) printf(" arg='%s'", r.given[i].arg.c_str());
+      printf("\n");
+    }
+    printf("clusters=%d\n", r.clusters);
+    printf("rest='%s'\n", r.rest.c_str());
+  } catch (StdException &exc) {
+    fprintf(stderr, "%s error: %s\n", Argv0, exc.what());
+    usage(1);
+  }
+
+  return(0);
+}
+
+// #############################################################################
+
 #else
   
-#error "Must define MAIN_VARIATION as 1 or 2"
+#error "Must define MAIN_VARIATION as 1, 2 or 3"
 
 #endif

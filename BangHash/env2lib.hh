@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <string>
 #include <map>
+#include <vector>
 #include <exception>
 
 #define MAX_STR_CONST 255
@@ -46,6 +47,27 @@ typedef struct {
   char **argv;
 } argv_t;
 
+// Switch parsing for #! lines (see parse_switches() in switches.cc) ///////////
+// One parser, driven by a table, for env2 itself and for custom interpreters.
+// Modelled on how Perl handles switches: clustered single letters (-abc),
+// several clusters in one string ("-ab -c"), and parsing stops at the first
+// word that is not a switch (the interpreter, or the script).
+struct SwitchSpec {
+  char        letter;          // short name, e.g. 'w'
+  const char *longname;        // long name without dashes ("help"), or NULL
+  bool        optarg;          // may take an attached arg: -cx or -c=x or -c:x
+};
+struct SwitchGiven {
+  char        letter;          // which switch (from the spec)
+  bool        hasarg;          // was an attached arg given?
+  std::string arg;             // the arg (only if hasarg)
+};
+struct SwitchResult {
+  std::vector<SwitchGiven> given;  // switches, in the order they were seen
+  int         clusters = 0;        // how many "-xyz" words were consumed
+  std::string rest;                // text after the switches (starts at the first non-switch word)
+};
+
 // Declare Globals ////////////////
 
 // env2 functions
@@ -54,6 +76,7 @@ extern argv_t env2(const Flags &flags, argv_t o);
 extern char *getaline(FILE *fh);
 extern char* join_array(char *strings[], int count, char sep=' ');
 extern argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr);
+extern SwitchResult parse_switches(const char *text, const std::vector<SwitchSpec> &spec);
 extern argv_t read_hashbang(const Flags &flags, argv_t i);
 extern argv_t split_and_merge(const Flags &flags, argv_t argvi, char *stri=NULL, int at=1);
 extern argv_t split_string(const Flags &flags, char *input);

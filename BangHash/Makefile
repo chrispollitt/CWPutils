@@ -18,7 +18,8 @@ LIBOBJ0 = $(PROG1).o
 LIBOBJ1 = $(PROG2).o
 LIBOBJ2 = array_utils.o
 LIBOBJ3 = vars2.o
-LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3)
+LIBOBJ4 = switches.o
+LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3) $(LIBOBJ4)
 
 # Logical Targets ##################
 
@@ -28,7 +29,7 @@ rebuild: clean all
 
 progs: $(PROG1) $(PROG1).man $(PROG2) $(PROG2).man
 
-samples: $(SAMPLE)1 $(SAMPLE)2
+samples: $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3
 
 test check: all
 	./test_$(PROG1).sh ./$(PROG1)
@@ -43,7 +44,7 @@ install: build
 	cp $(PROG2).man $(PREFIX)/share/man/man1/$(PROG2).1
 
 clean:
-	-rm -f $(PROG1) $(PROG2) $(SAMPLE) $(SAMPLE)1 $(SAMPLE)2 $(PROG1).pod *.pod-middle sample_script.si da
+	-rm -f $(PROG1) $(PROG2) $(SAMPLE) $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3 $(PROG1).pod *.pod-middle sample_script.si da
 	-rm -f *.man *.o *.d *.exe *~ *.stackdump core
 	-rm -f t/out*
 
@@ -86,6 +87,10 @@ $(SAMPLE)1: $(SAMPLE)1.o $(LIBOBJS) $(LIBOBJ0)
 $(SAMPLE)2.o: $(SAMPLE).cc
 	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=2 -o $@ -c $<
 $(SAMPLE)2: $(SAMPLE)2.o $(LIBOBJS) $(LIBOBJ0)
+	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
+$(SAMPLE)3.o: $(SAMPLE).cc
+	$(CXX) $(CXXFLAGS) -DMAIN_VARIATION=3 -o $@ -c $<
+$(SAMPLE)3: $(SAMPLE)3.o $(LIBOBJS) $(LIBOBJ0)
 	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
 
 # Generic Rules ##############

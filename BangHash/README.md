@@ -28,7 +28,9 @@ SOURCES
 * array_utils.cc           - split string into array and merge arrays
 * dumpargs.cc              - Print the argv array
 * env2.cc                  - env2 itself (flag parsing, arg assembly, main)
-* sample_interpreter.cc    - A sample interpreter that uses env2 components
+* sample_interpreter.cc    - Sample interpreters that use env2 components (variation 3 shows
+                            how to parse your own #! switches with parse_switches())
+* switches.cc             - parse_switches(): table-driven #! switch parser (used by env2)
 * vars2.cc                 - read the config file and set env vars + interpreter flags
 * da.cc                    - tiny helper that `configure` uses to probe kernel `#!` splitting
 

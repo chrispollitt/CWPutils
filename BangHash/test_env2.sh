@@ -176,6 +176,32 @@ function main {
     (( errs = errs + 1 ))
   fi
 
+  ### parse_switches() via sample_interpreter3 (arg 1 is the #! args string) ###
+  if [[ $ks == 0 && -x ./sample_interpreter3 ]]; then
+    echo "==Test switches"
+    got=$(./sample_interpreter3 "-ab -c=x perl -w" script 2>&1 | tr '\n' '|')
+    exp="switch -a|switch -b|switch -c arg='x'|clusters=2|rest='perl -w'|"
+    if [[ $got != "$exp" ]]; then
+      echo "Test switches: expected '$exp' got '$got'"
+      (( errs = errs + 1 ))
+    fi
+
+    echo "==Test switches-long"
+    got=$(./sample_interpreter3 "--aaa -c perl" script 2>&1 | tr '\n' '|')
+    exp="switch -a|switch -c|clusters=2|rest='perl'|"
+    if [[ $got != "$exp" ]]; then
+      echo "Test switches-long: expected '$exp' got '$got'"
+      (( errs = errs + 1 ))
+    fi
+
+    echo "==Test switches-bad"
+    got=$(./sample_interpreter3 "-abz perl" script 2>&1 | head -1)
+    if [[ $got != *"error: unrecognized flag z" ]]; then
+      echo "Test switches-bad: got '$got'"
+      (( errs = errs + 1 ))
+    fi
+  fi
+
   echo "==Test no-interpreter"
   got=$($prog "-n" /bin/true 2>&1 | head -1)
   if [[ $got != *"No interpreter found" ]]; then

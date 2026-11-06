@@ -5,12 +5,9 @@
    - syntax is mostly there; the remaining C is malloc/calloc/char** arrays
    - replace argv_t with vector<string>, build char*[] only for execvp
      (the fixed MAX_STR_CONST buffers caused heap overflows, now patched)
-* fix parse_flags
-   - make it generic - NO!
-   - replace with getopts_long
-       (could run on the already-split args; optind would replace nstart)
-   - replace with boost program_options (probably too heavy for Solaris/Cygwin)
-   - other?  table-driven letters + descriptions, also generating the help text
+* fix parse_flags: DONE as parse_switches() (switches.cc), modelled on how Perl does it
+   - still to do: generate the help text from the switch table (add a description
+     field to SwitchSpec); optional library helper that reads the #! line itself
 * use namespace cwputils
 * break env2() into phases (parse #!, find script, merge config args, emit)
    - escr_loc is not reliably set; track the script index explicitly
@@ -20,6 +17,8 @@
 * unit-test split_string() directly
 
 DONE
+* parse_switches(): table-driven, Perl-style switch parser in the library; env2 uses it;
+  sample_interpreter3 shows custom use (replaces the old copy-of-env2 parser, 2020)
 * test_configure.sh: configure + env2 tested against linux/naive/perfect kernels via t/fakekernel.pl
 * KERNEL_SPLIT 2 folded into 1 (no such kernel known; t/ks2 was a copy of t/ks1)
 * flags is a plain struct Flags passed by const reference (no global, no init_flags)
