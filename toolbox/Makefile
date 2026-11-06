@@ -14,6 +14,8 @@ PYBINS   = cut2 pullout rpullout ghgrep tcping termprobe wincygterm
 SHBINS   = fixperms gitcheck
 BINS     = $(PYBINS) $(SHBINS)
 MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1 tcping.1 termprobe.1 wincygterm.1 fixperms.1 gitcheck.1
+# Symlinks made in BINDIR, as  name:target  (wcdirect is wincygterm's "run on the real console" shim, see wincygterm(1))
+LINKS    = wcdirect:wincygterm
 
 # Default target
 all: build
@@ -41,6 +43,10 @@ install: build
 	@for bin in $(BINS); do \
 		$(SUDO) install -m 755 $$bin $(BINDIR)/ || exit 1; \
 	done
+	@for l in $(LINKS); do \
+		echo "Linking $(BINDIR)/$${l%%:*} -> $${l#*:}"; \
+		$(SUDO) ln -sf $${l#*:} $(BINDIR)/$${l%%:*} || exit 1; \
+	done
 	@echo "Installing man pages to $(MANDIR)..."
 	@$(SUDO) mkdir -p $(MANDIR)
 	@for man in $(MANPAGES); do \
@@ -54,6 +60,9 @@ uninstall:
 	@echo "Removing $(BINS) from $(BINDIR)..."
 	@for bin in $(BINS); do \
 		$(SUDO) rm -f $(BINDIR)/$$bin; \
+	done
+	@for l in $(LINKS); do \
+		$(SUDO) rm -f $(BINDIR)/$${l%%:*}; \
 	done
 	@echo "Removing man pages from $(MANDIR)..."
 	@for man in $(MANPAGES); do \
