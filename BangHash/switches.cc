@@ -88,3 +88,26 @@ SwitchResult parse_switches(const char *text, const vector<SwitchSpec> &spec) {
   r.rest = p;
   return r;
 }
+
+/****************************************************************
+ * switch_help - the "  x     : description" lines for a switch table
+ *   Lists, in table order, every switch that has help text.  A switch
+ *   with an optional argument is shown as "x[=S]".  Lines are padded to
+ *   a fixed width to match the rest of env2's help output.
+ **************************************************************/
+string switch_help(const vector<SwitchSpec> &spec) {
+  const size_t label_w = 6;    // width of the "x[=S]" column
+  const size_t help_w  = 62;   // width of the description column
+  string out;
+
+  for(size_t i=0; i < spec.size(); i++) {
+    if(!spec[i].help) continue;
+    string label(1, spec[i].letter);
+    if(spec[i].optarg) label += "[=S]";
+    string help(spec[i].help);
+    if(label.size() < label_w) label.append(label_w - label.size(), ' ');
+    if(help.size()  < help_w)  help.append(help_w - help.size(), ' ');
+    out += "  " + label + ": " + help + "\n";
+  }
+  return out;
+}

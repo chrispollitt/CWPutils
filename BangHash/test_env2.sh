@@ -194,6 +194,14 @@ function main {
       (( errs = errs + 1 ))
     fi
 
+    echo "==Test switches-help"
+    got=$(./sample_interpreter3 "--help" script 2>&1 | sed 's/ *$//' | tr '\n' '|')
+    exp="Switches:|  a     : the first switch|  b     : the second switch|  c[=S] : the third switch, with an optional arg|  h     : this Help|"
+    if [[ $got != "$exp" ]]; then
+      echo "Test switches-help: expected '$exp' got '$got'"
+      (( errs = errs + 1 ))
+    fi
+
     echo "==Test switches-bad"
     got=$(./sample_interpreter3 "-abz perl" script 2>&1 | head -1)
     if [[ $got != *"error: unrecognized flag z" ]]; then

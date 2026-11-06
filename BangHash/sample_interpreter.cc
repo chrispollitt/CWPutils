@@ -275,10 +275,12 @@ int main(int argc, char **argv) {
   }
 
   // my switches: -a, -b (plain) and -c (may take an attached arg: -c=x)
+  // The help text is generated from this same table by switch_help().
   const vector<SwitchSpec> spec = {
-    {'a', "aaa", false},
-    {'b', "bbb", false},
-    {'c', "ccc", true },
+    {'a', "aaa",  false, "the first switch"},
+    {'b', "bbb",  false, "the second switch"},
+    {'c', "ccc",  true,  "the third switch, with an optional arg"},
+    {'h', "help", false, "this Help"},
   };
 
   Flags flags;                     // only needed by read_hashbang()
@@ -290,6 +292,10 @@ int main(int argc, char **argv) {
 
     /// DUMP ////////////////////////////////////////////////////////////////
     for(size_t i=0; i < r.given.size(); i++) {
+      if(r.given[i].letter == 'h') {
+        printf("Switches:\n%s", switch_help(spec).c_str());
+        exit(0);
+      }
       printf("switch -%c", r.given[i].letter);
       if(r.given[i].hasarg) printf(" arg='%s'", r.given[i].arg.c_str());
       printf("\n");

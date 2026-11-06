@@ -459,31 +459,41 @@ argv_t env2(const Flags &flags, argv_t o) {
 #ifdef MAKE_EXE
 
 /**************************************************************
+ * env2_spec - the table of my switches
+ *   Used both to parse them (parse_flags) and to print the help (usage),
+ *   so the two cannot drift apart.  Switches with no help text (the old
+ *   'D') parse but are not listed.  Help is listed in table order.
+ **************************************************************/
+static const std::vector<SwitchSpec> &env2_spec() {
+  static const std::vector<SwitchSpec> spec = {
+    //  letter longname   optarg  help
+    {'a', NULL,      false, "Allow ~ to mark non-dashed flag AND allow space sep flag args"},
+    {'c', NULL,      false, "Comments mode (stuff after # is discarded)"},
+    {'d', NULL,      false, "Debug mode (repeat for more)"},
+    {'e', NULL,      false, "Emit mode (call dumpargs)"},
+    {'D', NULL,      false, NULL},   // emit, old spelling
+#ifdef F_TAKES_ARG
+    {'f', NULL,      true,  "Find script opts separated by delim (S=~~ if not specified)"},
+#else
+    {'f', NULL,      false, "Find script opts separated by delimiter ~~"},
+#endif
+    {'n', NULL,      false, "No rc file read"},
+    {'p', NULL,      false, "Preserve empty args"},
+    {'s', NULL,      false, "Strip backslashes"},
+    {'w', NULL,      false, "Windows path: convert script path like cygpath -w (Cygwin)"},
+    {'x', NULL,      false, "eXpand standard backslash-escaped characters"},
+    {'v', "version", false, "print the Version of this program"},
+    {'h', "help",    false, "this Help"},
+  };
+  return spec;
+}
+
+/**************************************************************
  * parse_flags - parse my flags
  **************************************************************/
-Flags parse_flags(char *flags_str) { 
+Flags parse_flags(char *flags_str) {
   Flags flags;
-
-  // table of my switches (long names: --help, --version) //////////////////////
-  static const std::vector<SwitchSpec> spec = {
-    {'h', "help",    false},   // help
-    {'v', "version", false},   // version
-    {'a', NULL,      false},   // allow split on '~'
-    {'c', NULL,      false},   // comments
-    {'d', NULL,      false},   // debug (repeat for more)
-    {'e', NULL,      false},   // emit (dump)
-    {'D', NULL,      false},   // emit (dump), old spelling
-#ifdef F_TAKES_ARG
-    {'f', NULL,      true },   // find (delim), optional =S
-#else
-    {'f', NULL,      false},   // find (delim) ~~
-#endif
-    {'n', NULL,      false},   // no rc file
-    {'p', NULL,      false},   // preserve empty args
-    {'s', NULL,      false},   // strip backslashes
-    {'w', NULL,      false},   // Windows path (Cygwin)
-    {'x', NULL,      false},   // expand backslash escapes
-  };
+  const std::vector<SwitchSpec> &spec = env2_spec();
 
   // strip off args meant for me (from #! line) ////////////////////////////////
   SwitchResult r = parse_switches(flags_str, spec);
@@ -584,23 +594,13 @@ void usage(int ret) {
             "Usage:                                                                  \n"
             "  #!%1$s [-flags] <interpreter> [<interpreter_args>]                    \n"
             "  #!%1$s -[flags]f <interpreter> [<interpreter_args>] ~~ <script_args>  \n\n"
-            "Where flags are one or more of:                                         \n"
-            "  a     : Allow ~ to mark non-dashed flag AND allow space sep flag args \n"
-            "  c     : Comments mode (stuff after # is discarded)                    \n"
-            "  d     : Debug mode (repeat for more)                                  \n"
-            "  e     : Emit mode (call dumpargs)                                     \n"
-#ifdef F_TAKES_ARG
-            "  f[=S] : Find script opts separated by delim (S=~~ if not specified)   \n"
-#else
-            "  f     : Find script opts separated by delimiter ~~                    \n"
-#endif
-            "  n     : No rc file read                                               \n"
-            "  p     : Preserve empty args                                           \n"
-            "  s     : Strip backslashes                                             \n"
-            "  w     : Windows path: convert script path like cygpath -w (Cygwin)    \n"
-            "  x     : eXpand standard backslash-escaped characters                  \n"
-            "  v     : print the Version of this program                             \n"
-            "  h     : this Help                                                     \n\n"
+            "Where flags are one or more of:                                         \n",
+            Argv0I
+           );
+    // the flag lines come from the same table that parses them
+    fputs(switch_help(env2_spec()).c_str(), out);
+    fprintf(out,
+            "\n"
             "Notes:                                                                  \n"
             "  * all flags must be combined into one string                          \n\n"
             "Examples:                                                               \n"

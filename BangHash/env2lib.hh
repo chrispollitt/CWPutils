@@ -55,7 +55,8 @@ typedef struct {
 struct SwitchSpec {
   char        letter;          // short name, e.g. 'w'
   const char *longname;        // long name without dashes ("help"), or NULL
-  bool        optarg;          // may take an attached arg: -cx or -c=x or -c:x
+  bool        optarg;          // may take an attached arg: -c=x or -c:x
+  const char *help;            // one-line description for switch_help(), or NULL to leave it unlisted
 };
 struct SwitchGiven {
   char        letter;          // which switch (from the spec)
@@ -77,6 +78,7 @@ extern char *getaline(FILE *fh);
 extern char* join_array(char *strings[], int count, char sep=' ');
 extern argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr);
 extern SwitchResult parse_switches(const char *text, const std::vector<SwitchSpec> &spec);
+extern std::string switch_help(const std::vector<SwitchSpec> &spec);
 extern argv_t read_hashbang(const Flags &flags, argv_t i);
 extern argv_t split_and_merge(const Flags &flags, argv_t argvi, char *stri=NULL, int at=1);
 extern argv_t split_string(const Flags &flags, char *input);
