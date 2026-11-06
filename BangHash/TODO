@@ -7,7 +7,8 @@
      (the fixed MAX_STR_CONST buffers caused heap overflows, now patched)
 * optional library helper that reads the script's own #! line for parse_switches()
   (read_hashbang() does most of it)
-* fix (or decide to keep) the split_string() quirks found by t/splitcompare.pl (see man page BUGS):
+* split_string() quirks found by t/splitcompare.pl: DECIDED to leave as is (documented in the
+  man page, QUOTING AND ESCAPES and BUGS).  Revisit only if one of them bites:
    - -s keeps a backslash before whitespace or a quote (t/ks*/exp3 currently expects this)
    - -p: empty quotes directly followed by text give an extra empty arg
    - a quote with nothing after it is not reported as unmatched
