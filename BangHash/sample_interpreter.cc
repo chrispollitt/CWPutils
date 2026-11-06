@@ -107,7 +107,7 @@ void usage(int ret) {
 int main(int argc, char **argv) {
   /// PARSE ARAGS //////////////////////////////////////////////////////////////
   // define local vars
-  int i, scr_loc;
+  int i, scr_loc = 0;
   argv_t o, e;
   
   o.argc = argc;

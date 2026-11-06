@@ -257,15 +257,11 @@ argv_t env2(const Flags &flags, argv_t o) {
 #if   KERNEL_SPLIT == 0
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_string(flags, o.argv[1]);
-#elif KERNEL_SPLIT == 1
-  // get hashbang line from script
-  o = read_hashbang(flags, o);  
-  // split up argv[1] (from #! line) ///////////////////////////////////////////
-  n = split_string(flags, o.argv[1]);
-#elif KERNEL_SPLIT == 2
-  // Yes this is silly to redo the work the kernel already did right, but
-  //  a) it's too much work to accommodate KERNEL_SPLIT == 2 "correctly"
-  //  b) i have yet to find a kernel that does KERNEL_SPLIT == 2 
+#elif KERNEL_SPLIT == 1 || KERNEL_SPLIT == 2
+  // KERNEL_SPLIT 1: the kernel splits the #! line but mangles escaped spaces.
+  // KERNEL_SPLIT 2: the kernel splits it correctly.  No such kernel is known,
+  //   so there is no separate path for it; re-reading the #! line from the
+  //   script gives the right answer either way, just redundantly.
   // get hashbang line from script
   o = read_hashbang(flags, o);
   // split up argv[1] (from #! line) ///////////////////////////////////////////
