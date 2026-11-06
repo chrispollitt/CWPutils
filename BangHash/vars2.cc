@@ -36,6 +36,10 @@ hash_t vars2() {
 
   if(Debug>=2) printf("Debug: Func=vars2\n");
 
+  if(home == NULL) {
+    if(Debug) fprintf(stderr, "Debug: HOME not set, skipping conf file\n");
+    return add_args;
+  }
   snprintf(conf_name, sizeof(conf_name)-1,"%s/.%s%s",home,myname,"rc");
   if(stat(conf_name, &conf_stat) != 0) {
     if(Debug) fprintf(stderr, "Debug: conf file not found: %s\n", conf_name);
@@ -96,11 +100,11 @@ hash_t vars2() {
       } else if(sep == "!") {
         if(Debug) fprintf(stderr, "Debug: unsetenv: %s\n", var.c_str());
         unsetenv(var.c_str());
-        // Extra interpeter args
+        // Extra interpreter args
       } else if(sep == ":") {
         if(Debug) fprintf(stderr, "Debug: add_args: %s=%s\n", var.c_str(), val.c_str());
         add_args[var] = val;
-        // Only interpeter args
+        // Only interpreter args
       } else if(sep == ";") {
         if(Debug) fprintf(stderr, "Debug: set_args: %s=%s\n", var.c_str(), val.c_str());
         // prepend special marker ~~ to let env2() know this is a set, not add

@@ -1,14 +1,35 @@
 # BangHash
 Unix / Linux Utilities
 
-This is a collection of small utilities for Unix/Linix systems. They also works under Cygwin.
+This is a collection of small utilities for Unix/Linux systems. They also work under Cygwin.
+
+`env2` is an `env(1)` replacement aimed at `#!` lines. Its key feature is
+splitting the interpreter argument string (which many kernels pass as a single
+argument) into separate arguments. It can also read per-interpreter settings
+from `~/.env2rc`, and under Cygwin the `w` flag converts the script path to
+Windows format (like `cygpath -w`) for native Windows interpreters.
+
+    #!/usr/local/bin/env2 -sn perl -w
+    #!/usr/local/bin/env2 -w python
+
+Run `env2 -h` for the list of flags and `env2 -v` for the version.
+
+BUILD AND TEST
+* `./configure`   - detect platform and kernel `#!` behaviour
+* `make`          - build
+* `make test`     - run the unit tests (`make check` is the same)
+* `make install`  - install under `PREFIX` (default /usr/local)
+* `make clean` / `make distclean` - remove built files / also configure output
+
+See INSTALL for requirements.
 
 SOURCES
 * array_utils.cc           - split string into array and merge arrays
 * dumpargs.cc              - Print the argv array
-* env2.cc                  - The main() function for env2
+* env2.cc                  - env2 itself (flag parsing, arg assembly, main)
 * sample_interpreter.cc    - A sample interpreter that uses env2 components
 * vars2.cc                 - read the config file and set env vars + interpreter flags
+* da.cc                    - tiny helper that `configure` uses to probe kernel `#!` splitting
 
 EXECUTABLES
 * dumpargs                 - Dump the arguments to a shebang line

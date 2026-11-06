@@ -9,6 +9,7 @@
  * - can call dumpargs(1) if desired
  * - has an optional section for hardcoded script args
  * - can ignore comments on #! line
+ * - can convert the script path to Windows format (Cygwin, -w)
  ****************************************************************/
 
 // Includes
@@ -459,7 +460,7 @@ argv_t env2(argv_t o) {
   return(e);
 }
 
-void init_flags(int found, int nstart) {
+void init_flags(int nstart) {
   flags["nstart"]   = nstart;     // [internal] end of env2 args
   flags["cmt"]      = 0;          // allow comments #
   flags["delim"]    = string(""); // Delimiter to sep interpreter args from script args
@@ -551,7 +552,7 @@ hash_t parse_flags(char *flags_str) {
         // preserve empty args (why on earth?) -- feature overload
         else if(*(flags_str+j) == 'p') {
           flags["pre"] = 1;
-          if(Debug) fprintf(stderr, "Debug: Perserve empty args mode activated\n");
+          if(Debug) fprintf(stderr, "Debug: Preserve empty args mode activated\n");
         }
         // strip backslashes (why not by default?) -- feature overload
         else if(*(flags_str+j) == 's' ) {
@@ -684,9 +685,10 @@ int main(int argc, char **argv) {
   }
 
   // Exec the interpreter
-  code = execvp(e.argv[0], e.argv);
+  execvp(e.argv[0], e.argv);
 
   // Oh dear, there was an error
+  code = (errno == ENOENT) ? 127 : 126;  // same convention as env(1) and the shell
   fprintf(stderr, "%s error: exec() failed: ", Argv0);
   perror(e.argv[0]);
   return(code);

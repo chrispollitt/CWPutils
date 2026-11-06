@@ -32,7 +32,7 @@ function main {
     Linux)
       cat > config.mk <<'_HERE_'
 
-# Site cusomizable variables (change as needed)
+# Site customizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = g++
 CXXFLAGS  = -Wall -g -std=c++14 -DUNAME=UNAME_LINUX -DPREFIX=$(PREFIX)
@@ -45,7 +45,7 @@ _HERE_
     CYGWIN*)
       cat > config.mk <<'_HERE_'
 
-# Site cusomizable variables (change as needed)
+# Site customizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = g++
 CXXFLAGS  = -Wall -g -std=c++14 -D_POSIX_C_SOURCE=201401L -DUNAME=UNAME_CYGWIN -DPREFIX=$(PREFIX)
@@ -59,7 +59,7 @@ _HERE_
       echo "*** config note: remember to use gmake not make ***"
       cat > config.mk <<'_HERE_'
 
-# Site cusomizable variables (change as needed)
+# Site customizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = CC
 CXXFLAGS  = -Wall -g -std=c++14 -D_XPG6 -DUNAME=UNAME_SOLARIS -DPREFIX=$(PREFIX)
@@ -72,7 +72,7 @@ _HERE_
     Darwin|*BSD)
       cat > config.mk <<'_HERE_'
 
-# Site cusomizable variables (change as needed)
+# Site customizable variables (change as needed)
 PREFIX    = /usr/local
 CXX       = clang++
 CXXFLAGS  = -Wall -g -std=c++14 -DUNAME=UNAME_MACOS -DPREFIX=$(PREFIX)

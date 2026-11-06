@@ -208,7 +208,7 @@ argv_t split_string(char *input) {
  * join array into one string
  *   input:   strings  // array
  *   input:   count    // size of array
- *   input:   sep      // seperator char
+ *   input:   sep      // separator char
  *   return:  str      // joined strings
  *******************************************************************/
 char* join_array(char *strings[], int count, char sep) {

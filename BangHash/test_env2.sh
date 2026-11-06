@@ -168,6 +168,14 @@ function main {
     fi
   done
 
+  echo "==Test exec-failure-exit-code"
+  $prog "-n /no/such/interpreter" /bin/true >/dev/null 2>&1
+  rc=$?
+  if [[ $rc != 127 ]]; then
+    echo "Test exec-failure-exit-code: expected 127 got $rc"
+    (( errs = errs + 1 ))
+  fi
+
   echo "==Test no-interpreter"
   got=$($prog "-n" /bin/true 2>&1 | head -1)
   if [[ $got != *"No interpreter found" ]]; then

@@ -2,11 +2,28 @@
 * add flag for "don't make allowances for non-hashbang calls"
    - right now, if the interpreter flags are pre-split, it is handled
 * change c code to c++
+   - syntax is mostly there; the remaining C is malloc/calloc/char** arrays
+   - replace argv_t with vector<string>, build char*[] only for execvp
+     (the fixed MAX_STR_CONST buffers caused heap overflows, now patched)
 * fix parse_flags
    - make it generic - NO!
    - replace with getopts_long
-   - replace with boost program_options
-   - other?
+       (could run on the already-split args; optind would replace nstart)
+   - replace with boost program_options (probably too heavy for Solaris/Cygwin)
+   - other?  table-driven letters + descriptions, also generating the help text
 * use namespace cwputils
-* flags doen't need to be global either
+* flags doesn't need to be global either
+   - plain struct Flags passed by reference instead of hash_t flags
+* break env2() into phases (parse #!, find script, merge config args, emit)
+   - escr_loc is not reliably set; track the script index explicitly
+* put the duplicated escape table (array_utils.cc, vars2.cc) and #defines in one header
+* add -Wextra to the configure-generated CXXFLAGS and clean up the warnings
+* fixture dirs t/ks0, t/ks1, t/ks2 are mostly duplicates
+* unit-test split_string() directly
 
+DONE
+* -w flag (Cygwin script path to Windows format)
+* -v flag prints the version
+* make distclean can remove config.mk; header deps via -MMD (no more
+  Makefile rule that deleted the .cc files)
+* heap overflows in split_string()/env2(), crash on #! line with no args

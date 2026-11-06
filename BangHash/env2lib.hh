@@ -1,6 +1,8 @@
 #pragma once
 
 #include "config.hh"
+#include <cerrno>
+#include <cstdio>
 #include <string>
 #include <map>
 #include <exception>
@@ -32,15 +34,11 @@ typedef struct {
 
 // Declare Globals ////////////////
 
-// System vars and functions
-extern void perror(const char *s);
-extern int errno;
-
 // env2 functions
 extern int dumpargs(int argc, char **argv, int scr_loc=0);
 extern argv_t env2(argv_t o);
 extern char *getaline(FILE *fh);
-extern void init_flags(int found=0, int nstart=0);
+extern void init_flags(int nstart=0);
 extern char* join_array(char *strings[], int count, char sep=' ');
 extern argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr);
 extern argv_t read_hashbang(argv_t i);

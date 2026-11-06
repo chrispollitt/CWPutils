@@ -1,6 +1,13 @@
-Convert enum elements to strings
-  https://stackoverflow.com/questions/5093460/how-to-convert-an-enum-type-variable-to-a-string
+Finding memory bugs
+  Cygwin's g++ has no ASan/UBSan runtime and there is no valgrind.  Build a
+  copy on Linux with CXXFLAGS="-g -O1 -fsanitize=address,undefined" and
+  LDXXFLAGS="-fsanitize=address,undefined" (edit config.mk), then `make test`.
 
+Ideas (not currently needed)
 
-Display stack trace on exception
-  https://stackoverflow.com/questions/691719/c-display-stack-trace-on-exception
+  Convert enum elements to strings (the code has no enums right now)
+    https://stackoverflow.com/questions/5093460/how-to-convert-an-enum-type-variable-to-a-string
+
+  Display stack trace on exception (only StdException for user errors is
+  thrown; for crashes use ASan or `gdb` with `catch throw`)
+    https://stackoverflow.com/questions/691719/c-display-stack-trace-on-exception
