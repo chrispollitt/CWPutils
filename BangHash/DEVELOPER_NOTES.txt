@@ -12,14 +12,16 @@ Testing against different kernels
   uses that to check what configure picks for each flavour and that env2 works
   with it.  It works in a scratch copy because configure runs `make clean`.
 
-Comparing split_string() with Perl's shellwords()
-  t/splitcheck.cc runs split_string() on lines from stdin; t/splitcompare.pl
+Comparing the splitters with Perl's shellwords()
+  t/splitcheck.cc runs env2's splitter on lines from stdin; t/splitcompare.pl
   generates every string up to a given length over a small alphabet (a b space
-  tab, single quote, double quote, backslash) and reports where env2 and Text::ParseWords::shellwords() disagree.
-  After `make`:
-    g++ -std=c++14 -I. t/splitcheck.cc array_utils.o -o splitcheck
-    perl t/splitcompare.pl ./splitcheck sp 6        # flags: s p x
-  The differences it finds are listed in the man page (QUOTING AND ESCAPES, BUGS).
+  tab, single quote, double quote, backslash) and reports where env2 and
+  Text::ParseWords::shellwords() disagree.  `make splitcheck` builds the harness.
+    perl t/splitcompare.pl ./splitcheck S 6         # shellwords port: must be 0 differences
+                                                    #   (run by make test, at length 5)
+    perl t/splitcompare.pl ./splitcheck sp 6        # the original splitter (flags: s p x c)
+    SPLITCMP_WS=1 perl t/splitcompare.pl ./splitcheck S 5   # CR, FF, VT as whitespace
+  The original splitter's differences are listed in the man page (QUOTING AND ESCAPES, BUGS).
 
 Ideas (not currently needed)
 

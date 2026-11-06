@@ -38,6 +38,7 @@ struct Flags {
   bool        norc   = false;  // do not read rc file
   bool        pre    = false;  // preserve empty args
   bool        sbs    = false;  // strip backslashes
+  bool        shellwords = false;  // split like Perl's shellwords() (S flag; ignores s, p, x)
   bool        win    = false;  // convert script path to Windows format
   std::string delim;           // delimiter to separate interpreter args from script args
   std::string allow;           // allow hints (~) so as not to split on wrong spaces
@@ -82,6 +83,8 @@ extern std::string switch_help(const std::vector<SwitchSpec> &spec);
 extern argv_t read_hashbang(const Flags &flags, argv_t i);
 extern argv_t split_and_merge(const Flags &flags, argv_t argvi, char *stri=NULL, int at=1);
 extern argv_t split_string(const Flags &flags, char *input);
+extern argv_t split_shellwords(const char *input, bool comments=false);
+extern argv_t split_args(const Flags &flags, char *input);   // split_string() or split_shellwords(), per flags
 extern hash_t vars2(const Flags &flags);
 
 // Global vars

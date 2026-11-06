@@ -256,7 +256,7 @@ argv_t env2(const Flags &flags, argv_t o) {
   
 #if   KERNEL_SPLIT == 0
   // split up argv[1] (from #! line) ///////////////////////////////////////////
-  n = split_string(flags, o.argv[1]);
+  n = split_args(flags, o.argv[1]);
 #elif KERNEL_SPLIT == 1
   // The kernel splits the #! line but mangles escaped spaces, so re-read the
   //   #! line from the script.  (A kernel that splits it perfectly would not
@@ -264,7 +264,7 @@ argv_t env2(const Flags &flags, argv_t o) {
   // get hashbang line from script
   o = read_hashbang(flags, o);
   // split up argv[1] (from #! line) ///////////////////////////////////////////
-  n = split_string(flags, o.argv[1]);
+  n = split_args(flags, o.argv[1]);
 #else
 #error "Must define KERNEL_SPLIT as 0 or 1"
 #endif
@@ -354,7 +354,7 @@ argv_t env2(const Flags &flags, argv_t o) {
     if(add_args.find(interpreter_base) != add_args.end()) {
       char *add_args_s = (char *)add_args[interpreter_base].c();
 
-      c = split_string(flags, add_args_s);
+      c = split_args(flags, add_args_s);
       e.argc += c.argc;
     }
   }
@@ -480,6 +480,7 @@ static const std::vector<SwitchSpec> &env2_spec() {
     {'n', NULL,      false, "No rc file read"},
     {'p', NULL,      false, "Preserve empty args"},
     {'s', NULL,      false, "Strip backslashes"},
+    {'S', NULL,      false, "Split args like Perl's shellwords() (ignores s, p, x; c works)"},
     {'w', NULL,      false, "Windows path: convert script path like cygpath -w (Cygwin)"},
     {'x', NULL,      false, "eXpand standard backslash-escaped characters"},
     {'v', "version", false, "print the Version of this program"},
@@ -549,6 +550,11 @@ Flags parse_flags(char *flags_str) {
       case 's':
         flags.sbs = true;
         if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
+        break;
+      // split like Perl's shellwords()
+      case 'S':
+        flags.shellwords = true;
+        if(Debug) fprintf(stderr, "Debug: Shellwords mode activated\n");
         break;
       // convert script path to Windows format (Cygwin only)
       case 'w':

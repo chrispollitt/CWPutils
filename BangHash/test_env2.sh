@@ -210,6 +210,42 @@ function main {
     fi
   fi
 
+  ### -S: Perl-compatible splitting (split_shellwords) ###
+
+  echo "==Test shellwords-env2"
+  got=$($prog "-Sn /bin/echo 'two words' a\\ b \"\" x" /bin/true 2>&1)
+  if [[ $got != "two words a b  x /bin/true" ]]; then
+    echo "Test shellwords-env2: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test shellwords-comment"
+  got=$($prog "-Snc /bin/echo hi # -*-Python-*-" /bin/true 2>&1)
+  if [[ $got != "hi /bin/true" ]]; then
+    echo "Test shellwords-comment: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test shellwords-unmatched"
+  got=$($prog "-Sn /bin/echo 'oops" /bin/true 2>&1 | head -1)
+  if [[ $got != *"error: unmatched quote" ]]; then
+    echo "Test shellwords-unmatched: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  # the port must agree with Perl's shellwords() on every short string
+  if [[ -x ./splitcheck ]] && perl -MText::ParseWords -e1 2>/dev/null; then
+    echo "==Test shellwords-vs-perl"
+    out=$(perl t/splitcompare.pl ./splitcheck S 5 2>&1) || {
+      echo "Test shellwords-vs-perl: disagrees with Perl:"; echo "$out" | head -20
+      (( errs = errs + 1 ))
+    }
+    out=$(SPLITCMP_WS=1 perl t/splitcompare.pl ./splitcheck S 4 2>&1) || {
+      echo "Test shellwords-vs-perl (whitespace): disagrees with Perl:"; echo "$out" | head -20
+      (( errs = errs + 1 ))
+    }
+  fi
+
   echo "==Test no-interpreter"
   got=$($prog "-n" /bin/true 2>&1 | head -1)
   if [[ $got != *"No interpreter found" ]]; then

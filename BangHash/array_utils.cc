@@ -204,6 +204,16 @@ argv_t split_string(const Flags &flags, char *input) {
   return(o);
 }
 
+/****************************************************************
+ * split_args - split a string into args using the splitter the flags ask for
+ *   S flag:  split_shellwords() (Perl-compatible; honours only -c)
+ *   default: split_string()     (env2's original splitter)
+ **************************************************************/
+argv_t split_args(const Flags &flags, char *input) {
+  if(flags.shellwords) return split_shellwords(input, flags.cmt);
+  return split_string(flags, input);
+}
+
 /******************************************************
  * join array into one string
  *   input:   strings  // array
@@ -303,7 +313,7 @@ argv_t split_and_merge(const Flags &flags, argv_t argvi, char *stri, int at) {
   }
 
   //  split_string()
-  argvs = split_string(flags, stri);
+  argvs = split_args(flags, stri);
 
   //  merge_arrays()
   argvo = merge_arrays(argvi, argvs, at, ovr);

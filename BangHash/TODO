@@ -8,7 +8,8 @@
 * optional library helper that reads the script's own #! line for parse_switches()
   (read_hashbang() does most of it)
 * split_string() quirks found by t/splitcompare.pl: DECIDED to leave as is (documented in the
-  man page, QUOTING AND ESCAPES and BUGS).  Revisit only if one of them bites:
+  man page, QUOTING AND ESCAPES and BUGS); env2 -S (shellwords) is the way around them.
+  Revisit only if one of them bites:
    - -s keeps a backslash before whitespace or a quote (t/ks*/exp3 currently expects this)
    - -p: empty quotes directly followed by text give an extra empty arg
    - a quote with nothing after it is not reported as unmatched
@@ -22,6 +23,9 @@
 * unit-test split_string() directly
 
 DONE
+* env2 -S: split_shellwords(), a port of Perl's shellwords() verified against Perl on all strings
+  up to length 6 (make test).  The original splitter is now "legacy"; consider making -S the default
+  (a major version bump) once scripts have had time to move.
 * parse_switches(): table-driven, Perl-style switch parser in the library; env2 uses it;
   sample_interpreter3 shows custom use (replaces the old copy-of-env2 parser, 2020)
 * help text is generated from the switch table (switch_help()), so it can't drift from the parser

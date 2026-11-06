@@ -19,7 +19,8 @@ LIBOBJ1 = $(PROG2).o
 LIBOBJ2 = array_utils.o
 LIBOBJ3 = vars2.o
 LIBOBJ4 = switches.o
-LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3) $(LIBOBJ4)
+LIBOBJ5 = shellwords.o
+LIBOBJS = $(LIBOBJ1) $(LIBOBJ2) $(LIBOBJ3) $(LIBOBJ4) $(LIBOBJ5)
 
 # Logical Targets ##################
 
@@ -31,7 +32,7 @@ progs: $(PROG1) $(PROG1).man $(PROG2) $(PROG2).man
 
 samples: $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3
 
-test check: all
+test check: all splitcheck
 	./test_$(PROG1).sh ./$(PROG1)
 	./test_configure.sh
 
@@ -44,7 +45,7 @@ install: build
 	cp $(PROG2).man $(PREFIX)/share/man/man1/$(PROG2).1
 
 clean:
-	-rm -f $(PROG1) $(PROG2) $(SAMPLE) $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3 $(PROG1).pod *.pod-middle sample_script.si da
+	-rm -f $(PROG1) $(PROG2) $(SAMPLE) $(SAMPLE)1 $(SAMPLE)2 $(SAMPLE)3 splitcheck $(PROG1).pod *.pod-middle sample_script.si da
 	-rm -f *.man *.o *.d *.exe *~ *.stackdump core
 	-rm -f t/out*
 
@@ -78,6 +79,10 @@ $(PROG1).pod-middle: $(PROG1)
 # PROG2
 $(PROG2): $(PROG2)_m.o
 	$(LDXX) $(LDXXFLAGS) -o $@ $^ $(LDXXLIBS)
+
+# splitcheck: test harness for split_string()/split_shellwords() (see t/splitcompare.pl)
+splitcheck: t/splitcheck.cc $(LIBOBJS)
+	$(CXX) $(CXXFLAGS) -I. -o $@ t/splitcheck.cc $(LIBOBJS) $(LDXXLIBS)
 
 # SAMPLES
 $(SAMPLE)1.o: $(SAMPLE).cc

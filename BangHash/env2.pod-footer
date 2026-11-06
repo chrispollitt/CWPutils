@@ -166,7 +166,47 @@ as expected.
 
 =head1 QUOTING AND ESCAPES
 
-B<env2> splits the interpreter argument string itself, using these rules:
+B<env2> splits the interpreter argument string itself, and can do it in two
+ways: like Perl's C<shellwords()> (the B<S> flag, recommended), or with its
+original splitter (the default, kept so that existing scripts keep working).
+
+=head2 Shellwords splitting (the S flag)
+
+With B<S>, B<env2> splits exactly as Perl's C<shellwords()> does:
+
+* Space, tab, newline, carriage return, form feed and vertical tab separate
+arguments. Runs of them count as one separator.
+
+* Single quotes and double quotes group text, including whitespace, into one
+argument, and are removed. Quoted and unquoted text that touch join into one
+argument: B<ab"c d"'e'> is the single argument B<abc de>.
+
+* Outside quotes and inside double quotes, a backslash makes the next character
+literal and is removed: B<a\ b> is the single argument B<a b>.
+
+* Inside single quotes everything is literal, backslashes included, except that
+a backslash still stops a quote from ending the string: B<'a\'b'> is B<a\'b>.
+
+* An empty pair of quotes is an empty argument.
+
+* A quote that is never closed, or a backslash at the very end, is an error
+(C<unmatched quote>).
+
+This was checked against Perl itself on every string of up to six characters
+built from the letters a and b, space, tab, single quote, double quote and
+backslash (about 137,000 strings), and on the other whitespace characters;
+there are no differences. B<make test> repeats the check. See
+B<DEVELOPER_NOTES.txt> in the source.
+
+The B<c> flag still works with B<S> (a B<#> that starts an argument, and
+everything after it, is ignored). The B<s>, B<p> and B<x> flags have no effect,
+because the rules above already say what happens to backslashes and empty
+arguments. The B<a> flag (the B<~> hint) works as usual.
+
+=head2 The original splitter (the default)
+
+Without B<S>, B<env2> uses the splitter it has always had. It follows these
+rules:
 
 * Space, tab, newline and carriage return separate arguments. Runs of them
 count as one separator.
@@ -187,13 +227,11 @@ A backslash before whitespace or a quote is left in place (see B<BUGS>).
 * A quote that is never closed is an error (C<unmatched quote>), with one
 exception (see B<BUGS>).
 
-With B<s> and B<p>, these rules follow the shell-like splitting of Perl's
-C<shellwords()> closely, and for most input give the same arguments. (Without
-B<s> every backslash is kept, so strings containing backslashes differ from
-C<shellwords()> wholesale.) The remaining differences were found by comparing
-the two on every string of up to six characters built from the letters a and b,
-space, tab, single quote, double quote and backslash (about 137,000 strings;
-the method is described in B<DEVELOPER_NOTES.txt> in the source). They are:
+With B<s> and B<p>, these rules follow Perl's C<shellwords()> closely, and for
+most input give the same arguments. (Without B<s> every backslash is kept, so
+strings containing backslashes differ from C<shellwords()> wholesale.) The
+remaining differences, found by the same comparison as above, are the reason
+B<S> exists. They are:
 
 * B<env2> keeps the backslash in front of whitespace or a quote even with B<s>,
 where C<shellwords()> removes it and treats the character literally.
