@@ -4,7 +4,8 @@ termprobe \- find out what survives the trip between a program and its terminal
 
 .SH SYNOPSIS
 .B termprobe
-[\-\-timeout SECONDS] [\-\-label TEXT] [\-\-raw] [\-\-input | \-\-tvision] [\-\-no\-vt\-input]
+[\-\-timeout SECONDS] [\-\-label TEXT] [\-\-raw] [\-\-input | \-\-tvision] [\-\-dos [\-\-no\-visual] [\-\-no\-mouse]]
+[\-\-no\-vt\-input]
 
 .SH DESCRIPTION
 .B termprobe
@@ -89,8 +90,40 @@ Like \fB\-\-input\fP, but the terminal is first set up as tvision sets it up at 
 kitty keys, modifyOtherKeys, mouse) and the win32\-input\-mode key records are decoded. Records that were cut in
 two across reads are counted, together with the time the rest took.
 .TP
+.B \-\-dos
+Also test the classic DOS / Windows screen\-control set. Cursor behaviour is measured, not eyeballed: each
+ANSI.SYS sequence (CUP, HVP, CUU, CUD, CUF, CUB, save/restore, plus the screen edges, \fBESC[2J\fP and line wrap,
+including ANSI.SYS's \fBESC[=7h\fP) is followed by \fBESC[6n\fP and the reported position is compared with what DOS
+would do. Colours and attributes (bold, underline, blink, reverse, conceal, the 16 foreground and background
+colours, bright backgrounds, 256 colours, true colour) are read back with DECRQSS, the DOS cursor shape and
+hide/show with DECSCUSR and DECRQM, and each of the 256 CP437 glyphs is checked to take exactly one column. The
+tests run on the alternate screen where there is one. Afterwards a picture is drawn (the 256 DOS attribute bytes,
+the CP437 table, erase\-to\-end\-of\-line, DEC line drawing), each line saying what you should see.
+.IP
+The mouse is tested both ways, interactively (click three times, twice, 8 seconds each): as escape\-sequence
+reports (xterm SGR, as tvision, ncurses and vim use it) and as console events (\fBENABLE_MOUSE_INPUT\fP and
+\fBMOUSE_EVENT\fP records, as Microsoft Edit and other Windows\-API programs read it). The second needs a Windows
+console program: on native Windows it runs in the process; under Cygwin or MSYS a native Windows Python (\fBpy\fP or
+\fBpython.exe\fP on the PATH) is started from the shell, which is exactly a Windows program started from there. A
+pty that carries only text, as under
+.BR wincygterm (1)
+without \fBwcdirect\fP, shows as: escape\-sequence mouse works, console events do not.
+.TP
+.B \-\-no\-visual
+With \fB\-\-dos\fP: skip the picture.
+.TP
+.B \-\-no\-mouse
+With \fB\-\-dos\fP: skip the interactive mouse tests.
+.TP
 .B \-\-no\-vt\-input
 Native Windows only: leave ENABLE_VIRTUAL_TERMINAL_INPUT off, as for a program that reads key events.
+
+.SH SUMMARY
+Every run, whatever the options, ends with a \fBSUMMARY\fP of the findings, one per line, tagged \fB[ ok ]\fP,
+\fB[warn]\fP (a capability is missing), \fB[FAIL]\fP (a problem with the path: dropped colour query, mangled
+replies, failed input test) or \fB[info]\fP, and a count of failures and warnings. It covers the verdicts above,
+who the terminal says it is, the DECRQM modes, and, with \fB\-\-dos\fP, \fB\-\-input\fP or \fB\-\-tvision\fP, their
+results. \fB\-\-dos\fP never changes the exit status: a terminal without blink is a fact, not a fault.
 
 .SH EXIT STATUS
 .TP
