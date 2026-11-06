@@ -31,7 +31,7 @@ using namespace std;
  *   input:   input   // Input string
  *   return:  o       // Output argv_t
  **************************************************************/
-argv_t split_string(char *input) {
+argv_t split_string(const Flags &flags, char *input) {
   argv_t o;
   char **output;
   char *output_tmp;   // tmp placeholder for output string
@@ -59,7 +59,7 @@ argv_t split_string(char *input) {
     // if not in quoted string
     if(!*in_q2 && !in_bs) {
       // if closed on empty string, add to array and move to next argv
-      if(*in_q1 && ccnt==0 && flags["pre"].i() ) {
+      if(*in_q1 && ccnt==0 && flags.pre ) {
         *output_ptr = ENDOFSTR;
         output[count++] = output_tmp;
         output_tmp = (char *)malloc(cap);
@@ -125,7 +125,7 @@ argv_t split_string(char *input) {
     ) {
       // comment
       if(
-        (flags["cmt"].i() )       &&
+        (flags.cmt )       &&
         (*input_ptr     == COMMENT)   &&
         (*(input_ptr-1) == SPACE)     &&
         (*(input_ptr-2) != BACKSLASH) &&
@@ -141,7 +141,7 @@ argv_t split_string(char *input) {
         char *pos;
 
         if(
-          flags["exp"].i() &&
+          flags.exp &&
           in_bs                 &&
           (pos = strchr(expa, *input_ptr))
         ) {
@@ -150,7 +150,7 @@ argv_t split_string(char *input) {
           *output_ptr++ = expc[posd];
         } else {
           if(
-            flags["sbs"].i() &&
+            flags.sbs &&
             in_bs
           ) {
             output_ptr--;
@@ -172,7 +172,7 @@ argv_t split_string(char *input) {
     // back slash (escape char) ///////////////////////
     else if (*input_ptr==BACKSLASH) {
       if(
-        flags["sbs"].i() &&
+        flags.sbs &&
         in_bs
       ) {
         output_ptr--;
@@ -292,7 +292,7 @@ argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr) {
  *   input:   at      // Where to insert
  *   return:  argvo   // Output argv_t
  **************************************************************/
-argv_t split_and_merge(argv_t argvi, char *stri, int at) {
+argv_t split_and_merge(const Flags &flags, argv_t argvi, char *stri, int at) {
   argv_t argvs = {0, (char **)NULL};
   argv_t argvo = {0, (char **)NULL};
   int ovr = 0;
@@ -303,7 +303,7 @@ argv_t split_and_merge(argv_t argvi, char *stri, int at) {
   }
 
   //  split_string()
-  argvs = split_string(stri);
+  argvs = split_string(flags, stri);
 
   //  merge_arrays()
   argvo = merge_arrays(argvi, argvs, at, ovr);

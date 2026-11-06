@@ -16,7 +16,7 @@ using namespace std;
 /*************************
  * parse config file and fill add_args[]
  ************************/
-hash_t vars2() {
+hash_t vars2(const Flags &flags) {
   char *myname = basename(Argv0);
   char *home = getenv("HOME");
   char conf_name[MAX_STR_CONST];
@@ -69,7 +69,7 @@ hash_t vars2() {
           val =   regex_replace(val, cfg_re4, "$1");
         }
         // expand escaped chars
-        if(flags["exp"].i() ) {
+        if(flags.exp ) {
           char expa[] = "abefnrtv";
           char expc[] = {7,8,27,12,10,13,9,11};
           for(i=0; i<strlen(expa);i++) {
@@ -80,7 +80,7 @@ hash_t vars2() {
           }
         }
         // strip backslashes
-        if(flags["sbs"].i() ) {
+        if(flags.sbs ) {
           while( regex_search(val, cfg_re2) ) {
             val = regex_replace(val, cfg_re2, "$1");
           }

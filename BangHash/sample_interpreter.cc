@@ -94,7 +94,6 @@ void run_bash(argv_t ia, argv_t sa) {
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t flags;                  // Place for flags
 
 using namespace std;
 
@@ -125,12 +124,12 @@ int main(int argc, char **argv) {
   }
 
   // set flags (S=split_string E=env2 V=vars2)
-  init_flags();
-  flags["delim"]  = string("~~");  // E search
+  Flags flags;
+  flags.delim = "~~";  // E search
 
   // Call the main env2() function
   try {
-    e = env2(o);
+    e = env2(flags, o);
   } catch (StdException &exc) {
     fprintf(stderr, "%s error: %s\n", Argv0, exc.what());
     usage(1);
@@ -177,7 +176,6 @@ int main(int argc, char **argv) {
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t flags;                  // Place for flags
 
 using namespace std;
 
@@ -206,14 +204,14 @@ int main(int argc, char **argv) {
   }
 
   // set flags (S=split_string E=env2 V=vars2)
-  init_flags();
+  Flags flags;
 
   try {
 #if KERNEL_SPLIT == 1
-  o = read_hashbang(o);    // get hashbang line from script
+  o = read_hashbang(flags, o);    // get hashbang line from script
 #endif
 #if KERNEL_SPLIT != 2
-  e = split_and_merge(o);  // split up argv[1]
+  e = split_and_merge(flags, o);  // split up argv[1]
 #else
   e = o;
 #endif

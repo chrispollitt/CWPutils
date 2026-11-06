@@ -35,7 +35,6 @@ using namespace std;
 // Define Globals
 char *Argv0;                   // Name of program
 int   Debug;                   // Debug flag
-hash_t flags;                  // Place for flags 
 #endif
 
 #define DEF_TO_STR2(s) #s
@@ -62,15 +61,15 @@ hash_t flags;                  // Place for flags
 #define BACKSLASH     '\\'
 
 /****************************************************************
- * set_dash - set the dash regular expression depending on flags["allow"] - PRIVATE
+ * set_dash - set the dash regular expression depending on flags.allow - PRIVATE
  **************************************************************/
-regex set_dash() {
+regex set_dash(const Flags &flags) {
   regex dash;
   string re1 = string(R"(^['"]?[-)");
   string re2 = string(R"(])");    
   
-  if( flags["allow"].l() ) {
-     string re = re1 + flags["allow"].s().front() + re2;
+  if( !flags.allow.empty() ) {
+     string re = re1 + flags.allow.front() + re2;
      dash= regex( re );
   } else {
      string re = re1 + re2;
@@ -85,7 +84,7 @@ regex set_dash() {
  *   input  = ia (argv_t)
  *   output = oa (argv_t) 
  **************************************************************/
-argv_t read_hashbang(argv_t ia) {
+argv_t read_hashbang(const Flags &flags, argv_t ia) {
   char *line        = NULL;
   char *linep;
   size_t linesze    = 0;
@@ -98,7 +97,7 @@ argv_t read_hashbang(argv_t ia) {
   int scr_loc       = 0;
   argv_t oa;
   int start;
-  regex dash        = set_dash();
+  regex dash        = set_dash(flags);
   
   if(Debug>=2) printf("Debug: Func=read_hashbang\n");
   
@@ -187,7 +186,7 @@ argv_t read_hashbang(argv_t ia) {
 /****************************************************************
  * env2 - construct the correct argv[] array
  **************************************************************/
-argv_t env2(argv_t o) {
+argv_t env2(const Flags &flags, argv_t o) {
   argv_t n     = {0, (char **)NULL}; //
   argv_t c     = {0, (char **)NULL}; //
   argv_t e     = {0, (char **)NULL}; //
@@ -200,7 +199,7 @@ argv_t env2(argv_t o) {
   int found, nstart;                 //
   string interpreter_base;           // basename of interpreter
   hash_t add_args;                   //
-  regex dash   = set_dash();         //
+  regex dash   = set_dash(flags);         //
   
   if(Debug>=2) printf("Debug: Func=env2\n");
 
@@ -229,7 +228,7 @@ argv_t env2(argv_t o) {
     // Or allow non-dashed prefixed flag
     // e.g. ~arg     becomes arg
     pos = strchr(arg, '~');
-    if(flags["allow"].l() && pos) {
+    if(!flags.allow.empty() && pos) {
       // ~ is ghost flag marker
       if(pos == arg) {
         e.argv[j++] = arg+1;
@@ -257,20 +256,20 @@ argv_t env2(argv_t o) {
   
 #if   KERNEL_SPLIT == 0
   // split up argv[1] (from #! line) ///////////////////////////////////////////
-  n = split_string(o.argv[1]);
+  n = split_string(flags, o.argv[1]);
 #elif KERNEL_SPLIT == 1
   // get hashbang line from script
-  o = read_hashbang(o);  
+  o = read_hashbang(flags, o);  
   // split up argv[1] (from #! line) ///////////////////////////////////////////
-  n = split_string(o.argv[1]);
+  n = split_string(flags, o.argv[1]);
 #elif KERNEL_SPLIT == 2
   // Yes this is silly to redo the work the kernel already did right, but
   //  a) it's too much work to accommodate KERNEL_SPLIT == 2 "correctly"
   //  b) i have yet to find a kernel that does KERNEL_SPLIT == 2 
   // get hashbang line from script
-  o = read_hashbang(o);
+  o = read_hashbang(flags, o);
   // split up argv[1] (from #! line) ///////////////////////////////////////////
-  n = split_string(o.argv[1]);
+  n = split_string(flags, o.argv[1]);
 #else
 #error "Must define KERNEL_SPLIT as 0, 1, or 2"
 #endif
@@ -285,30 +284,30 @@ argv_t env2(argv_t o) {
 
   // check that we have an interpreter from #! /////////////////////////////////
 #ifdef MAKE_EXE
-  // flags["nstart"]  set by parse_flags()      // E after env2 flags
+  // flags.nstart  set by parse_flags()      // E after env2 flags
   oscr_loc         = 2;                         // first possible place for script
   // Set flags for exe call
-  nstart           = flags["nstart"].i();       // after env2 flags
+  nstart           = flags.nstart;       // after env2 flags
   int_loc          = nstart;                    // interpreter
   if(int_loc >= n.argc) {
     throw StdException("No interpreter found");
   }
   interpreter_base = basename(n.argv[int_loc]); // from n
 #else
-  flags["nstart"]  = 0;                         // direct call
+  // nstart is 0 for a direct (library) call
   oscr_loc         = 1;                         // first possible place for script
   // Set flags for lib call
-  nstart           = flags["nstart"].i();       // after env2 flags
+  nstart           = 0;                         // no env2 flags
   int_loc          = nstart;                    // interpreter
   interpreter_base = basename(o.argv[int_loc]); // from o
 #endif
 
   // look for args meant for script, not interpreter ///////////////////////////
   found=0;  // did we find the delim ~~
-  if( flags["delim"].l() ) {
+  if( !flags.delim.empty() ) {
     for(i=nstart; i < n.argc; i++) {
       // options
-      if( strcmp(n.argv[i], flags["delim"].c() )==STRCMP_TRUE) {
+      if( strcmp(n.argv[i], flags.delim.c_str() )==STRCMP_TRUE) {
         found = i+1;
         break;
       }
@@ -354,13 +353,13 @@ argv_t env2(argv_t o) {
 
   // prep conf args ////////////////////////////////////////////////////////////
   e.argc = n.argc-nstart;
-  if( !flags["norc"].i() ) {
-    add_args = vars2();
+  if( !flags.norc ) {
+    add_args = vars2(flags);
     if(Debug) fprintf(stderr, "Debug: interpreter_base: %s\n", interpreter_base.c_str());
     if(add_args.find(interpreter_base) != add_args.end()) {
       char *add_args_s = (char *)add_args[interpreter_base].c();
 
-      c = split_string(add_args_s);
+      c = split_string(flags, add_args_s);
       e.argc += c.argc;
     }
   }
@@ -384,7 +383,7 @@ argv_t env2(argv_t o) {
         set = 1;         // this is a set, not append
         c.argv[k] += 2;  // skip over special marker
         // if empty string
-        if ( !strlen(c.argv[k]) && !flags["pre"].i() ) {
+        if ( !strlen(c.argv[k]) && !flags.pre ) {
           if(Debug) fprintf(stderr, "Debug: skipping empty cfg interpreter arg at %d\n", k);
           k++;
           // set it
@@ -395,7 +394,7 @@ argv_t env2(argv_t o) {
       // else add_arg
       } else {
         // if empty string
-        if ( !strlen(c.argv[k]) && !flags["pre"].i() ) {
+        if ( !strlen(c.argv[k]) && !flags.pre ) {
           if(Debug) fprintf(stderr, "Debug: skipping empty cfg interpreter arg at %d\n", k);
           k++;
           // add it
@@ -423,7 +422,7 @@ argv_t env2(argv_t o) {
 
 #ifdef __CYGWIN__
   // convert script path to Windows format (like cygpath -w) ///////////////////
-  if( flags["win"].i() ) {
+  if( flags.win ) {
     int sl = 0;
     // find the script in the final arg list (escr_loc is not reliable here)
     for(i=1; i<j; i++) {
@@ -444,10 +443,10 @@ argv_t env2(argv_t o) {
 
   // dump args /////////////////////////////////////////////////////////////////
   if(Debug) fprintf(stderr, "Debug: hashbang='%s'\n", o.argv[1]);
-  if( Debug && !flags["dump"].i() ) {
+  if( Debug && !flags.dump ) {
     for(i=0; i<j; i++) fprintf(stderr, "Debug: argv[%d]='%s'\n", i, e.argv[i]);
   }
-  if( flags["dump"].i() ) {
+  if( flags.dump ) {
     printf("------env-----\n");
     printf("arg%d='%s'\n",0,o.argv[0]);
     for(i=0; i<nstart; i++) {
@@ -460,19 +459,6 @@ argv_t env2(argv_t o) {
   return(e);
 }
 
-void init_flags(int nstart) {
-  flags["nstart"]   = nstart;     // [internal] end of env2 args
-  flags["cmt"]      = 0;          // allow comments #
-  flags["delim"]    = string(""); // Delimiter to sep interpreter args from script args
-  flags["dump"]     = 0;          // Dump args flag
-  flags["exp"]      = 0;          // Expand standard backslash-escaped characters
-  flags["norc"]     = 0;          // Do not read rc file
-  flags["pre"]      = 0;          // preserve empty args
-  flags["sbs"]      = 0;          // Strip backslashes
-  flags["win"]      = 0;          // Convert script path to Windows format
-  flags["allow"]   = string(""); // Allow hints to this prog so as not to split on wrong spaces
-}
-
 // #############################################################################
 
 #ifdef MAKE_EXE
@@ -480,11 +466,11 @@ void init_flags(int nstart) {
 /**************************************************************
  * parse_flags - parse my flags
  **************************************************************/
-hash_t parse_flags(char *flags_str) { 
+Flags parse_flags(char *flags_str) { 
   int nstart = 0;                            // nargv start element
   int j = 0;
 
-  init_flags();
+  Flags flags;
 
   // strip off args meant for me (from #! line) ////////////////////////////////
   while(*flags_str != ENDOFSTR) {
@@ -508,12 +494,12 @@ hash_t parse_flags(char *flags_str) {
         }
         // allow split on '~' and allow ~ as non-dashed flag prefix marker
         else if(*(flags_str+j) == 'a') {
-          flags["allow"] = string("~");
+          flags.allow = "~";
           if(Debug) fprintf(stderr, "Debug: Allow split on '~' activated\n");
         }
         // comment
         else if(*(flags_str+j) == 'c') {
-          flags["cmt"] = 1;
+          flags.cmt = true;
           if(Debug) fprintf(stderr, "Debug: Comment mode activated\n");
         }
         // debug
@@ -523,7 +509,7 @@ hash_t parse_flags(char *flags_str) {
         }
         // emit (dump) - this is really a debug thing
         else if(*(flags_str+j) == 'e' || *(flags_str+j) == 'D' ) {
-          flags["dump"] = 1;
+          flags.dump = true;
           if(Debug) fprintf(stderr, "Debug: Dump mode activated\n");
         }
         // find (delim)
@@ -532,12 +518,12 @@ hash_t parse_flags(char *flags_str) {
           if(*(flags_str+j+1) == '=' || *(flags_str+j+1) == ':') {
             char delim[40];
             strcpy(delim, (char *)flags_str+j+2);
-            flags["delim"] = delim;
+            flags.delim = delim;
             b=1;
           } else
 #endif
-            flags["delim"] = string( "~~") ;
-          if(Debug) fprintf( stderr, "Debug: Delim mode activated with '%s'\n", flags["delim"].c() );
+            flags.delim = "~~";
+          if(Debug) fprintf( stderr, "Debug: Delim mode activated with '%s'\n", flags.delim.c_str() );
           // if delim spec'd, break as this delim string must term with a space
           if (b) {
             b=0;
@@ -546,27 +532,27 @@ hash_t parse_flags(char *flags_str) {
         }
         // no rc file
         else if(*(flags_str+j) == 'n' ) {
-          flags["norc"] = 1;
+          flags.norc = true;
           if(Debug) fprintf(stderr, "Debug: No rc file mode activated\n");
         }
         // preserve empty args (why on earth?) -- feature overload
         else if(*(flags_str+j) == 'p') {
-          flags["pre"] = 1;
+          flags.pre = true;
           if(Debug) fprintf(stderr, "Debug: Preserve empty args mode activated\n");
         }
         // strip backslashes (why not by default?) -- feature overload
         else if(*(flags_str+j) == 's' ) {
-          flags["sbs"] = 1;
+          flags.sbs = true;
           if(Debug) fprintf(stderr, "Debug: Strip mode activated\n");
         }
         // convert script path to Windows format (Cygwin only)
         else if(*(flags_str+j) == 'w' ) {
-          flags["win"] = 1;
+          flags.win = true;
           if(Debug) fprintf(stderr, "Debug: Windows path mode activated\n");
         }
         // expand backslash-escaped chars
         else if(*(flags_str+j) == 'x' ) {
-          flags["exp"] = 1;
+          flags.exp = true;
           if(Debug) fprintf(stderr, "Debug: Expand mode activated\n");
         }
         // illegal
@@ -589,8 +575,8 @@ hash_t parse_flags(char *flags_str) {
     }
     flags_str += j;
   } // while
-  flags["nstart"] = to_string(nstart);
-  if(Debug) fprintf( stderr, "Debug: nstart: %s\n", flags["nstart"].c() );
+  flags.nstart = nstart;
+  if(Debug) fprintf( stderr, "Debug: nstart: %d\n", flags.nstart );
   return flags;
 }
 
@@ -674,11 +660,11 @@ int main(int argc, char **argv) {
   }
 
   // Parse out my flags
-  flags   = parse_flags(o.argv[1]);
+  Flags flags = parse_flags(o.argv[1]);
 
   // Call the main env2() function
   try {
-    e = env2(o);
+    e = env2(flags, o);
   } catch (StdException &exc) {
     fprintf(stderr, "%s error: %s\n", Argv0, exc.what());
     usage(1);

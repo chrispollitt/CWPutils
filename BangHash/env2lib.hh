@@ -27,6 +27,20 @@ class flag_t {
     std::string val;
 };
 typedef std::map<std::string, flag_t> hash_t;
+
+// env2 flags (set by parse_flags(), or by a library caller)
+struct Flags {
+  int         nstart = 0;      // [internal] end of env2 args
+  bool        cmt    = false;  // allow comments #
+  bool        dump   = false;  // dump args
+  bool        exp    = false;  // expand standard backslash-escaped characters
+  bool        norc   = false;  // do not read rc file
+  bool        pre    = false;  // preserve empty args
+  bool        sbs    = false;  // strip backslashes
+  bool        win    = false;  // convert script path to Windows format
+  std::string delim;           // delimiter to separate interpreter args from script args
+  std::string allow;           // allow hints (~) so as not to split on wrong spaces
+};
 typedef struct {
   int argc;
   char **argv;
@@ -36,20 +50,18 @@ typedef struct {
 
 // env2 functions
 extern int dumpargs(int argc, char **argv, int scr_loc=0);
-extern argv_t env2(argv_t o);
+extern argv_t env2(const Flags &flags, argv_t o);
 extern char *getaline(FILE *fh);
-extern void init_flags(int nstart=0);
 extern char* join_array(char *strings[], int count, char sep=' ');
 extern argv_t merge_arrays(argv_t argv1, argv_t argv2, int at, int ovr);
-extern argv_t read_hashbang(argv_t i);
-extern argv_t split_and_merge(argv_t argvi, char *stri=NULL, int at=1);
-extern argv_t split_string(char *input);
-extern hash_t vars2();
+extern argv_t read_hashbang(const Flags &flags, argv_t i);
+extern argv_t split_and_merge(const Flags &flags, argv_t argvi, char *stri=NULL, int at=1);
+extern argv_t split_string(const Flags &flags, char *input);
+extern hash_t vars2(const Flags &flags);
 
 // Global vars
 extern char  *Argv0;                           // Name of program
 extern int    Debug;                           // Debug flag
-extern hash_t flags;                           // Place for flags
 
 // std::exception with a what()
 class StdException: public std::exception {
