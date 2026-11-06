@@ -249,6 +249,44 @@ C<shellwords()> gives just B<abc>.
 * A single quote or double quote with nothing after it (a lone double quote,
 for example) is silently ignored, where C<shellwords()> reports an error.
 
+=head1 ENVIRONMENT VARIABLES IN THE #! LINE
+
+With the B<E> flag, B<env2> replaces B<${NAME}> with the value of the
+environment variable NAME, much as GNU env(1) does with its B<-S> option:
+
+    #!/usr/bin/env2 -E ${PYTHON} -u
+
+The rules:
+
+* Only the braced form B<${NAME}> is recognised, where NAME is letters, digits
+and underscores and does not start with a digit. Any other B<$> (B<$NAME>, B<$>
+at the end, B<${}>, B<${NAME> with no closing brace) is an error. Write B<\$> for
+a literal dollar sign.
+
+* Expansion happens outside quotes and inside double quotes. Inside single
+quotes B<${NAME}> is left as it is.
+
+* The value is put into the argument as plain text. It is not split again, so a
+value with spaces is still a single argument, and it is not expanded again.
+
+* An unset variable is the empty string. An unquoted argument that is nothing
+but an unset variable disappears; inside double quotes it is an empty argument;
+B<pre${NAME}post> is B<prepost>. A variable that is set but has an empty value
+gives an empty argument, as it does in GNU env(1).
+
+* The variables set by the configuration file (see B<CONFIG FILE>) can be used:
+with B<E> the configuration file is read before the C<#!> line is split.
+Interpreter-argument lines in the configuration file are expanded too. The script
+name and the arguments the user gives are never expanded.
+
+* B<E> needs the shellwords splitter. Using it with B<L>, B<s>, B<p> or B<x>, which
+select the legacy splitter, is an error.
+
+Because the value comes from the environment of whoever runs the script,
+expansion lets that person influence which interpreter runs and with what
+arguments. That is the point of the feature, which is why it is off unless a
+script asks for it with B<E>.
+
 =head1 COMPATIBILITY
 
 Before version 2.0 the legacy splitter was the only one. Starting with 2.0 the

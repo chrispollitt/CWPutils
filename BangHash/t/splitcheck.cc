@@ -33,6 +33,7 @@ int main(int argc, char **argv) {
       if(*p == 'p') flags.pre = true;
       if(*p == 'x') flags.exp = true;
       if(*p == 'c') flags.cmt = true;
+      if(*p == 'E') flags.expand = true;
     }
     if(!seenS && (flags.sbs || flags.pre || flags.exp)) flags.legacy = true;
   }

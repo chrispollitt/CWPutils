@@ -21,11 +21,17 @@
  * thing as a plain state machine.  t/splitcompare.pl checks that the two
  * agree on every short string, and `make test` runs that check.
  *
- * Optional extension: comments=true stops at a '#' that starts a word
- * (env2's -c).  Perl's shellwords() has no such thing.
+ * Optional extensions (Perl's shellwords() has neither):
+ *   comments=true  stops at a '#' that starts a word (env2's -c)
+ *   expand=true    replaces ${NAME} with the environment variable's value (env2's -E),
+ *                  outside quotes and inside double quotes, like GNU env -S.  The value is
+ *                  not split again.  An unset variable is empty and a whole unquoted word made
+ *                  of only unset variables is dropped; a variable that is set but empty gives an
+ *                  empty word (as in GNU env -S).  Any other '$' is an error.
  ****************************************************************/
 
 #include "env2lib.hh"
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -42,12 +48,46 @@ static bool is_quote(char c) {
   return c == '"' || c == '\'';
 }
 
-// backslash + any char  ->  that char
-static string unescape(const string &s) {
+// is this a valid environment variable name?
+static bool valid_name(const string &s) {
+  if(s.empty() || !(isalpha((unsigned char)s[0]) || s[0] == '_')) return false;
+  for(size_t i=1; i < s.size(); i++) {
+    if(!(isalnum((unsigned char)s[i]) || s[i] == '_')) return false;
+  }
+  return true;
+}
+
+// backslash + any char  ->  that char  (so \$ is a literal dollar)
+// expand=true: ${NAME} -> the value of that environment variable (empty if unset);
+//   any other '$' is an error, as in GNU env -S.  The value is spliced in as plain
+//   text, so it is never split again or expanded again.
+// *defined (if given) is set when the text produced a character or named a variable
+//   that is SET (even if its value is empty).  Only a piece made of nothing but unset
+//   variables is not "defined", and an unquoted word like that disappears.  This is
+//   how GNU env -S behaves: ${SET_BUT_EMPTY} is an empty argument, ${UNSET} is nothing.
+static string unescape(const string &s, bool expand, bool *defined = NULL) {
   string out;
+  if(defined) *defined = false;
   for(size_t i=0; i < s.size(); i++) {
-    if(s[i] == '\\' && i+1 < s.size()) i++;
+    if(s[i] == '\\' && i+1 < s.size()) {
+      out += s[++i];
+      if(defined) *defined = true;
+      continue;
+    }
+    if(expand && s[i] == '$') {
+      size_t close = (i+1 < s.size() && s[i+1] == '{') ? s.find('}', i+2) : string::npos;
+      string name = (close == string::npos) ? string() : s.substr(i+2, close-i-2);
+      if(!valid_name(name)) throw StdException("only ${NAME} expansion is supported");
+      const char *value = getenv(name.c_str());
+      if(value) {
+        out += value;
+        if(defined) *defined = true;
+      }
+      i = close;
+      continue;
+    }
     out += s[i];
+    if(defined) *defined = true;
   }
   return out;
 }
@@ -59,7 +99,7 @@ static string unescape(const string &s) {
  *   return:  o         // argv_t (NULL terminated, strdup'd words)
  *   throws:  StdException on an unclosed quote or a trailing backslash
  **************************************************************/
-argv_t split_shellwords(const char *input, bool comments) {
+argv_t split_shellwords(const char *input, bool comments, bool expand) {
   const string s(input);
   const size_t n = s.size();
   vector<string> words;
@@ -90,7 +130,8 @@ argv_t split_shellwords(const char *input, bool comments) {
         i++;
       }
       string quoted = s.substr(pos + 1, i - pos - 1);
-      word += (c == '"') ? unescape(quoted) : quoted;   // single quotes: literal
+      // double quotes: backslashes (and ${NAME} if expanding); single quotes: all literal
+      word += (c == '"') ? unescape(quoted, expand) : quoted;
       have_word = true;
       pos = i + 1;
       if(pos >= n) {            // end of input right after the closing quote
@@ -112,16 +153,19 @@ argv_t split_shellwords(const char *input, bool comments) {
       }
       i++;
     }
-    word += unescape(s.substr(pos, i - pos));
-    have_word = true;
+    bool defined;
+    word += unescape(s.substr(pos, i - pos), expand, &defined);
+    // An unquoted piece that is only ${UNSET} adds nothing; if that is the whole
+    // word, the word disappears.  A quoted piece always counts.
+    if(defined) have_word = true;
     pos = i;
 
     if(pos >= n) {              // end of input: the word is complete
-      words.push_back(word);
+      if(have_word) words.push_back(word);
       have_word = false;
     } else if(is_space(s[pos])) {   // whitespace: the word is complete
       while(pos < n && is_space(s[pos])) pos++;
-      words.push_back(word);
+      if(have_word) words.push_back(word);
       word.clear();
       have_word = false;
     }

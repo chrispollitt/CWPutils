@@ -15,11 +15,11 @@
    - a quote with nothing after it is not reported as unmatched
    - -s also strips backslashes inside single quotes (the shell and shellwords keep them)
 * remove the legacy splitter and the -L/-s/-p/-x implication eventually (3.0?)
-* IDEA: optional ${VAR} expansion of environment variables in the #! line.  GNU env -S has it
-  (only the ${VARNAME} form; an unset variable gives an empty string; no expansion inside single
-  quotes; a bare $VAR is an error).  Design: an opt-in flag (e.g. -E), expand AFTER splitting so a
-  value with spaces stays one argument, and decide whether variables set by ~/.env2rc are visible
-  (vars2 currently runs after the #! line is split).
+* experiments/minsh (gh_cp/experiments/minsh/minsh*.c) is a minimal shell that handles #! lines itself using
+  POSIX wordexp(): a real-process "perfect split" emulator.  It could complement t/fakekernel.pl, but note
+  wordexp() follows sh rules (inside double quotes a backslash only escapes $ ` " \ and newline; a
+  single-quoted string cannot contain a quote at all), which differ from Perl's shellwords() that env2
+  follows; wordexp() also expands $VAR, ~ and globs, and rejects unquoted ( ) ; & | < >.
 * use namespace cwputils
 * break env2() into phases (parse #!, find script, merge config args, emit)
    - escr_loc is not reliably set; track the script index explicitly
@@ -29,6 +29,9 @@
 * unit-test split_string() directly
 
 DONE
+* version 2.1: env2 -E expands ${NAME} environment variables in the #! line (shellwords splitter only; GNU env -S
+  style: braced form only, any other $ is an error, no expansion in single quotes, values never re-split,
+  unset = empty and an unquoted unset-only word vanishes, set-but-empty keeps an empty argument).  The rc file is read first so its variables are usable.
 * version 2.0: split_shellwords(), a port of Perl's shellwords() verified against Perl on all strings
   up to length 6 (make test), is the DEFAULT splitter.  The original splitter is "legacy": -L selects
   it, and -s, -p, -x imply it (so older #! lines are unchanged).  -S is still accepted.

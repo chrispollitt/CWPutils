@@ -18,6 +18,9 @@ Since version 2.0 `env2` splits the `#!` arguments like Perl's `shellwords()` by
 The original splitter is still there as `-L` (and is selected by `-s`, `-p` and `-x`, so
 older `#!` lines keep working); see the COMPATIBILITY section of the man page.
 
+With `-E` (version 2.1), `${NAME}` in the `#!` line is replaced by the value of that
+environment variable, as in GNU `env -S`; it is off unless a script asks for it.
+
 See HISTORY for how the project got here, and TODO for what is left.
 
 BUILD AND TEST

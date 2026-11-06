@@ -41,7 +41,7 @@ int   Debug;                   // Debug flag
 #define DEF_TO_STR(s) DEF_TO_STR2(s)
 
 // Constants
-#define VERSION   "2.0"
+#define VERSION   "2.1"
 #define YEAR      "2020-2026"
 
 #ifndef PREFIX
@@ -253,7 +253,15 @@ argv_t env2(const Flags &flags, argv_t o) {
   if(o.argc == 1) {
     throw StdException("No args found");
   }
-  
+
+  // With -E, ${NAME} in the #! line may name a variable that the rc file sets, so
+  // read the rc file before splitting.  (Without -E it is read later, as always.)
+  bool rc_read = false;
+  if( flags.expand && !flags.norc ) {
+    add_args = vars2(flags);
+    rc_read = true;
+  }
+
 #if   KERNEL_SPLIT == 0
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_args(flags, o.argv[1]);
@@ -349,7 +357,7 @@ argv_t env2(const Flags &flags, argv_t o) {
   // prep conf args ////////////////////////////////////////////////////////////
   e.argc = n.argc-nstart;
   if( !flags.norc ) {
-    add_args = vars2(flags);
+    if(!rc_read) add_args = vars2(flags);
     if(Debug) fprintf(stderr, "Debug: interpreter_base: %s\n", interpreter_base.c_str());
     if(add_args.find(interpreter_base) != add_args.end()) {
       char *add_args_s = (char *)add_args[interpreter_base].c();
@@ -472,6 +480,7 @@ static const std::vector<SwitchSpec> &env2_spec() {
     {'d', NULL,      false, "Debug mode (repeat for more)"},
     {'e', NULL,      false, "Emit mode (call dumpargs)"},
     {'D', NULL,      false, NULL},   // emit, old spelling
+    {'E', NULL,      false, "Expand ${NAME} environment variables (not with L, s, p, x)"},
 #ifdef F_TAKES_ARG
     {'f', NULL,      true,  "Find script opts separated by delim (S=~~ if not specified)"},
 #else
@@ -533,6 +542,11 @@ Flags parse_flags(char *flags_str) {
         flags.dump = true;
         if(Debug) fprintf(stderr, "Debug: Dump mode activated\n");
         break;
+      // expand ${NAME} environment variables (shellwords splitter only)
+      case 'E':
+        flags.expand = true;
+        if(Debug) fprintf(stderr, "Debug: Environment variable expansion activated\n");
+        break;
       // find (delim)
       case 'f':
         flags.delim = g.hasarg ? g.arg : string("~~");
@@ -580,6 +594,10 @@ Flags parse_flags(char *flags_str) {
   if(!seenS && !flags.legacy && (flags.sbs || flags.pre || flags.exp)) {
     flags.legacy = true;
     if(Debug) fprintf(stderr, "Debug: Legacy splitter implied by s, p or x\n");
+  }
+  // expansion is a feature of the shellwords splitter only
+  if(flags.expand && flags.legacy) {
+    throw StdException("-E needs the shellwords splitter (it cannot be used with -L, -s, -p or -x)");
   }
   flags.nstart = r.clusters;
   if(Debug) fprintf( stderr, "Debug: nstart: %d\n", flags.nstart );

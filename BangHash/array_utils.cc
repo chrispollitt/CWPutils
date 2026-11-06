@@ -211,7 +211,7 @@ argv_t split_string(const Flags &flags, char *input) {
  **************************************************************/
 argv_t split_args(const Flags &flags, char *input) {
   if(flags.legacy) return split_string(flags, input);
-  return split_shellwords(input, flags.cmt);
+  return split_shellwords(input, flags.cmt, flags.expand);
 }
 
 /******************************************************

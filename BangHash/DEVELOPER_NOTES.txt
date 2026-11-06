@@ -7,7 +7,9 @@ Testing against different kernels
   t/fakekernel.pl MODE SCRIPT [ARGS] execs a script's interpreter the way a
   linux (one arg), naive (split on whitespace) or perfect (shell-like split)
   kernel would.  Build env2 with the matching KERNEL_SPLIT and call it through
-  the shim to test a flavour you do not have.  configure honours
+  the shim to test a flavour you do not have.  A second, real-process emulator
+  exists outside this project: gh_cp/experiments/minsh/minsh*.c, a minimal shell that splits #! lines with
+  POSIX wordexp() (sh rules, which differ from shellwords; see TODO).  configure honours
   KERNEL_SHIM=linux|naive|perfect, and test_configure.sh (run by `make test`)
   uses that to check what configure picks for each flavour and that env2 works
   with it.  It works in a scratch copy because configure runs `make clean`.

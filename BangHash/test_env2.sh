@@ -175,9 +175,9 @@ function main {
 
   echo "==Test exec-failure-exit-code"
   $prog "-n /no/such/interpreter" /bin/true >/dev/null 2>&1
-  rc=$?
-  if [[ $rc != 127 ]]; then
-    echo "Test exec-failure-exit-code: expected 127 got $rc"
+  status=$?
+  if [[ $status != 127 ]]; then
+    echo "Test exec-failure-exit-code: expected 127 got $status"
     (( errs = errs + 1 ))
   fi
 
@@ -265,6 +265,83 @@ function main {
   got=$($prog "-Ssn /bin/echo a\\ b" /bin/true 2>&1)
   if [[ $got != "a b /bin/true" ]]; then
     echo "Test Ss-is-shellwords: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  ### -E: expand ${NAME} environment variables (shellwords splitter only) ###
+  # (printf '[%s]' with no newline shows where each argument starts and ends)
+
+  echo "==Test expand"
+  s=$'-En /usr/bin/printf [%s] ${FOO} "${FOO}" \'${FOO}\' \\${FOO} a${FOO}b'
+  got=$(FOO='two words' $prog "$s" /bin/true 2>&1)
+  if [[ $got != '[two words][two words][${FOO}][${FOO}][atwo wordsb][/bin/true]' ]]; then
+    echo "Test expand: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test expand-unset"
+  s=$'-En /usr/bin/printf [%s] ${NOPE_E} "${NOPE_E}" pre${NOPE_E}post'
+  got=$(env -u NOPE_E $prog "$s" /bin/true 2>&1)
+  if [[ $got != '[][prepost][/bin/true]' ]]; then
+    echo "Test expand-unset: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  # a variable that is SET but empty gives an empty argument (like GNU env -S); only an unset one vanishes
+  echo "==Test expand-set-but-empty"
+  s=$'-En /usr/bin/printf [%s] ${EMPTY_E} x'
+  got=$(EMPTY_E= $prog "$s" /bin/true 2>&1)
+  if [[ $got != '[][x][/bin/true]' ]]; then
+    echo "Test expand-set-but-empty: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test expand-off"
+  s=$'-n /usr/bin/printf [%s] ${FOO}'
+  got=$(FOO='two words' $prog "$s" /bin/true 2>&1)
+  if [[ $got != '[${FOO}][/bin/true]' ]]; then
+    echo "Test expand-off: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  echo "==Test expand-errors"
+  for bad in 'a$b' '${}' '${FOO' '${1A}' 'x$'; do
+    got=$(FOO=x $prog "-En /usr/bin/printf [%s] $bad" /bin/true 2>&1 | head -1)
+    if [[ $got != *'error: only ${NAME} expansion is supported' ]]; then
+      echo "Test expand-errors: '$bad' gave '$got'"
+      (( errs = errs + 1 ))
+    fi
+  done
+
+  echo "==Test expand-needs-shellwords"
+  for f in -ELn -Esn -Epn -Exn; do
+    got=$($prog "$f /usr/bin/printf [%s] x" /bin/true 2>&1 | head -1)
+    if [[ $got != *"-E needs the shellwords splitter"* ]]; then
+      echo "Test expand-needs-shellwords: '$f' gave '$got'"
+      (( errs = errs + 1 ))
+    fi
+  done
+  got=$($prog "-ESsn /usr/bin/printf [%s] x" /bin/true 2>&1)
+  if [[ $got != '[x][/bin/true]' ]]; then
+    echo "Test expand-needs-shellwords: -ESsn gave '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  # variables set by the rc file are visible to ${NAME} in the #! line (the rc file sets BOO)
+  echo "==Test expand-rc-variable"
+  got=$(env -u BOO $prog "-E /usr/bin/printf [%s] \"\${BOO}\"" /bin/true 2>&1)
+  if [[ $got != "[BABBLE MUTTER][/bin/true]" ]]; then
+    echo "Test expand-rc-variable: got '$got'"
+    (( errs = errs + 1 ))
+  fi
+
+  # interpreter-argument lines in the rc file are expanded too
+  echo "==Test expand-rc-args"
+  mkdir -p "$HOME/bin" && ln -sf /bin/echo "$HOME/bin/xprog"
+  echo 'xprog: -I${HOME}/lib' >> ~/.$rc
+  got=$($prog "-E $HOME/bin/xprog a" /bin/true 2>&1)
+  if [[ $got != "-I$HOME/lib a /bin/true" ]]; then
+    echo "Test expand-rc-args: got '$got'"
     (( errs = errs + 1 ))
   fi
 

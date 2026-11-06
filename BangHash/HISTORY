@@ -24,6 +24,7 @@ VERSIONS
   1.3   2020-11-18   git tag 1.3
   1.4   2026-11-05   version bumped in the source (no git tag)
   2.0   2026-11-06   shellwords splitting becomes the default (no git tag yet)
+  2.1   2026-11-06   -E: optional ${NAME} expansion in the #! line (no git tag yet)
 
 
 TIMELINE
@@ -74,7 +75,7 @@ TIMELINE
 
 2026-11-05         A modernisation pass (with Claude).  See the next section.
 
-2026-11-06         Version 2.0.
+2026-11-06         Versions 2.0 and 2.1.
 
 
 THE 2026 WORK
@@ -97,6 +98,10 @@ Features
     is "legacy": -L selects it, and -s, -p and -x (which only mean something to
     it) imply it, so older #! lines behave as before.  -S is still accepted.
     See the COMPATIBILITY section of the man page.
+  * Version 2.1 adds -E: ${NAME} in the #! line (and in the rc file's interpreter-
+    argument lines) is replaced by the environment variable's value, much as GNU
+    env -S does.  The expansion happens inside the tokenizer, so quoting is
+    respected and values are never split again.  Off unless asked for.
 
 Bugs found and fixed
   * Heap overflows in split_string() and env2() on long arguments or many

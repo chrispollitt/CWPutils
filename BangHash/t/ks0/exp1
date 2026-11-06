@@ -7,6 +7,7 @@ Where flags are one or more of:
   c     : Comments mode (stuff after # is discarded)                    
   d     : Debug mode (repeat for more)                                  
   e     : Emit mode (call dumpargs)                                     
+  E     : Expand ${NAME} environment variables (not with L, s, p, x)    
   f     : Find script opts separated by delimiter ~~                    
   L     : Legacy splitter, not shellwords (implied by s, p, x)          
   n     : No rc file read                                               
