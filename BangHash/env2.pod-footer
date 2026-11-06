@@ -18,7 +18,7 @@ env2, this restriction is removed. (Although Linux does not have this restrictio
 * Without env2, the interpreter arguments are treated differently on each platform. This
 will cause problems when there are multiple arguments that are separated by
 spaces that need to be passed in as separate arguments.  See the next sub-section
-titled '''Splitting out the interpreter argument string'''.
+titled B<Splitting out the interpreter arguments string>.
 
 =head2 Splitting out the interpreter arguments string
 
@@ -27,12 +27,15 @@ Each UN*X platform handles the interpreter arguments in their own unique (and br
 On B<Linux>, the entire string following the interpreter name is passed as a single argument
 to  the interpreter, and this string can include white space.
 
-On B<Solaris>, the first white space to terminate the args. Subsequent args
+On B<Solaris>, the first white space terminates the args. Subsequent args
 are silently discarded.
 
 On B<macOS> an interpreter script can have multiple arguments, and white spaces
 are used to delimit the arguments. This is a blind split and does not account for
 single or double quoted or backslash escaped whitespace.
+
+On B<Cygwin> the behavior is the same as on Linux: the whole string is passed as a
+single argument (this is what B<configure> detects on Cygwin).
 
 See the B<A BIT OF HISTORY> section for more.
 
@@ -71,7 +74,7 @@ script named /usr/bin/script had a first line of:
 
     #!/usr/bin/php -n -q -d error_prepend_string="<span style='color: #ff0000'>"
 
-then the /usr/bin/php program be started with the arguments of:
+then the /usr/bin/php program will be started with the arguments of:
 
     arg[0] = '/usr/bin/php'
     arg[1] = '-n -q -d error_prepend_string="<span style='color: #ff0000'>"'
@@ -82,7 +85,7 @@ However, when the first line is changed to use this program first:
 
     #!/usr/bin/env2 -a php -n -q -d~error_prepend_string="<span style='color: #ff0000'>"
 
-then the /usr/bin/php program be started with the arguments of:
+then the /usr/bin/php program will be started with the arguments of:
 
     arg[0] = '/usr/bin/php'
     arg[1] = '-n'
@@ -102,7 +105,7 @@ script named /usr/bin/script had a first line of:
 
     #!/usr/bin/php -n -q -d error_prepend_string="<span style='color: #ff0000'>"
 
-then the /usr/bin/php program be started with the arguments of:
+then the /usr/bin/php program will be started with the arguments of:
 
     arg[0] = '/usr/bin/php'
     arg[1] = '-n'
@@ -113,7 +116,7 @@ However, when the first line is changed to use this program first:
 
     #!/usr/bin/env2 -a php -n -q -d~error_prepend_string="<span style='color: #ff0000'>"
 
-then the /usr/bin/php program be started with the arguments of:
+then the /usr/bin/php program will be started with the arguments of:
 
     arg[0] = '/usr/bin/php'
     arg[1] = '-n'
@@ -133,7 +136,7 @@ script named /usr/bin/script had a first line of:
 
     #!/usr/bin/php -n -q -d error_prepend_string="<span style='color: #ff0000'>"
 
-then the /usr/bin/php program be started with the arguments of:
+then the /usr/bin/php program will be started with the arguments of:
 
     arg[0] = '/usr/bin/php'
     arg[1] = '-n'
@@ -149,7 +152,7 @@ However, when the first line is changed to use this program first:
 
     #!/usr/bin/env2 -a php -n -q -d~error_prepend_string="<span style='color: #ff0000'>"
 
-then the /usr/bin/php program be started with the arguments of:
+then the /usr/bin/php program will be started with the arguments of:
 
     arg[0] = '/usr/bin/php'
     arg[1] = '-n'
@@ -190,13 +193,14 @@ they were pre-split by the kernel as is done on Solaris and macOS.
 
 In 2018, the GNU version on env(1) added the same flag with slightly different
 behaviour. This program DOES handle
-single and double quoted whitespace. It does NOT handle backslash escaped whitespace.
+single and double quoted whitespace. It does NOT handle backslash escaped whitespace
+(a backslash followed by a space is an error; it offers C<\_> instead).
 It also does NOT reparse the arguments if they were pre-split
 by the kernel as is done on Solaris and macOS.
 
 =head1 BUGS
 
-Code has hard limits for string sizes (255).
+A HOME path (or program name) longer than about 250 characters makes the config file be silently ignored.
 Code uses a strange mix of C and C++.
 Please report all Bugs to the author.
 
