@@ -164,6 +164,45 @@ then the /usr/bin/php program will be started with the arguments of:
 (plus any arguments the user specified when executing script.) This will work
 as expected.
 
+=head1 QUOTING AND ESCAPES
+
+B<env2> splits the interpreter argument string itself, using these rules:
+
+* Space, tab, newline and carriage return separate arguments. Runs of them
+count as one separator.
+
+* Single quotes and double quotes group text, including whitespace, into one
+argument, and are removed. A quote of one kind can contain the other kind.
+
+* A backslash is kept in the argument, unless the B<s> flag is used (see
+below). The B<x> flag turns backslash sequences such as B<\n> and B<\t> into the
+characters they stand for.
+
+* With the B<s> flag, a backslash is removed when it comes before an ordinary
+character or another backslash. A backslash before whitespace or a quote
+is left in place (see B<BUGS>).
+
+* Empty arguments (C<""> or C<''>) are dropped, unless the B<p> flag is used.
+
+* A quote that is never closed is an error (C<unmatched quote>), with one
+exception (see B<BUGS>).
+
+These rules follow the shell-like splitting of Perl's C<shellwords()> closely, and
+for most input give the same arguments. The differences were found by comparing
+the two on every string of up to six characters built from the letters a and b, space, tab, single quote, double quote
+and backslash (about 137,000 strings; the method is described in
+B<DEVELOPER_NOTES.txt> in the source). They are:
+
+* B<env2> keeps the backslash in front of whitespace or a quote even with B<s>,
+where C<shellwords()> removes it and treats the character literally.
+
+* With B<p>, an empty pair of quotes directly followed by text (two double
+quotes then B<abc>, say) gives an extra empty argument, where C<shellwords()>
+gives just B<abc>.
+
+* A single quote or double quote with nothing after it (a lone double quote,
+for example) is silently ignored, where C<shellwords()> reports an error.
+
 =head1 CONFIG FILE
 
 If a configuration file is found ($HOME/.env2rc) then it is parsed as follows:
@@ -201,6 +240,9 @@ by the kernel as is done on Solaris and macOS.
 =head1 BUGS
 
 A HOME path (or program name) longer than about 250 characters makes the config file be silently ignored.
+The B<s> flag does not remove a backslash that comes before whitespace or a quote.
+With B<p>, an empty quote pair directly followed by text gives an extra empty argument.
+A quote with nothing after it is not reported as an unmatched quote.
 Code uses a strange mix of C and C++.
 Please report all Bugs to the author.
 
