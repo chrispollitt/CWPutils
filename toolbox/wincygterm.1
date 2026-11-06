@@ -1,11 +1,19 @@
-.TH WINCYGTERM 1 "October 2026" "wincygterm 1.0" "User Commands"
+.TH WINCYGTERM 1 "November 2026" "wincygterm 1.1" "User Commands"
 .SH NAME
 wincygterm \- run Cygwin programs on a real pty inside Windows Terminal
 
 .SH SYNOPSIS
 .B python wincygterm
-[\-\-root DIR] [\-\-python EXE] [\-\-term TERM] [\-\-login\-dir] [\-\-no\-reset] [\-\-debug FILE]
+[\-\-root DIR] [\-\-python EXE] [\-\-term TERM] [\-\-login\-dir] [\-\-no\-reset] [\-\-no\-direct] [\-\-debug FILE]
 [\-\-] [\fICMD\fP [\fIARG\fP...]]
+.br
+.B wincygterm \-\-direct
+.I PROG
+[\fIARG\fP...]
+.br
+.B wcdirect
+.I PROG
+[\fIARG\fP...]
 .br
 .B python wincygterm
 \-\-profile
@@ -63,6 +71,9 @@ When the command ends, \fBwincygterm\fP turns mouse reporting, bracketed paste, 
 modifyOtherKeys off, restores attributes and shows the cursor, in case the program died without doing so. This
 option skips that.
 .TP
+.B \-\-no\-direct
+Ignore requests from \fBwcdirect\fP (see DIRECT). The secret they need is then not even put in the environment.
+.TP
 .BI \-\-debug " FILE"
 Write the helper's standard error to \fIFILE\fP.
 .TP
@@ -72,9 +83,37 @@ Print a command line for a Windows Terminal profile and exit.
 .B \-\-version
 Print the version and exit.
 
+.SH DIRECT
+The pty carries text. A Windows console program that wants the console itself, for instance one that asks for mouse
+events with \fBENABLE_MOUSE_INPUT\fP (Microsoft Edit does) or draws with \fBWriteConsoleOutput\fP, is started by
+Cygwin on a hidden pseudo console, and nothing feeds that console mouse events. It runs, but the mouse is dead.
+.PP
+Inside the session, \fBwincygterm \-\-direct\fP \fIPROG\fP [\fIARG\fP...] (or \fBwcdirect\fP, a symlink to the same
+file) asks the front-end to run \fIPROG\fP on the real console instead. The front-end restores the console modes
+it found at start, runs \fIPROG\fP attached to the console, takes the console back and returns \fIPROG\fP's exit
+status; the shell sees an ordinary command. \fIPROG\fP is looked up on the Cygwin PATH and passed to Windows as a
+Windows path, and it starts in the current directory. The arguments are passed as they are, so give file names the
+program can resolve itself (relative names are fine). Use it for native Windows console programs only: a Cygwin
+program started this way is back on Cygwin's console layer, and loses what \fBwincygterm\fP is for.
+.PP
+The shim sends a private OSC string, \fBESC ] 7077 ; direct ; \fP\fITOKEN\fP\fB ; \fP\fIbase64\-JSON\fP\fB BEL\fP, which the
+front-end cuts out of the output, and is answered with \fBESC ] 7077 ; ack BEL\fP and, when the program ends,
+\fBESC ] 7077 ; exit ; \fP\fISTATUS\fP\fB BEL\fP. \fITOKEN\fP is a random secret created per session and exported to the
+shell as \fBWINCYGTERM_TOKEN\fP. Without it a request is dropped silently, so that text from a file you \fBcat\fP, or
+from a host you \fBssh\fP to, cannot make your PC run programs. Anything that runs in the session, however, has the
+token: this is not a boundary against your own processes. If no answer comes within 3 seconds, \fBwcdirect\fP
+fails with status 3.
+.PP
+Example:
+.nf
+ln \-s /usr/local/bin/wincygterm ~/bin/wcdirect
+wcdirect edit notes.txt
+.fi
+
 .SH EXIT STATUS
 That of \fICMD\fP (128 plus the signal number if it was killed). 2 if Cygwin, its Python or a console cannot be
-found, or if it is run on Cygwin or Linux.
+found, or if it is run on Cygwin or Linux. \fBwcdirect\fP returns that of \fIPROG\fP (127 if it could not be
+started), 2 outside a wincygterm session, 3 if the front-end does not answer.
 
 .SH WINDOWS TERMINAL PROFILE
 Add a profile whose command line is the output of \fBpython wincygterm \-\-profile\fP, for instance:
@@ -90,6 +129,9 @@ is under the Cygwin root, e.g. \fIusr\\local\\bin\\wincygterm\fP.
 .SH TESTED
 In Windows Terminal 1.24, with a Cygwin 3.7 development snapshot: an interactive \fBbash\fP, the colour query
 (checked with \fBtermprobe\fP), a live \fBtvmail\fP session and a live \fBbidet\fP animation.
+
+The request filter, the shim (on a Cygwin pty, against a stand\-in front\-end) and the request parsing were tested.
+The live hand\-over of the console, and Microsoft Edit's mouse through it, have not been tested yet.
 
 .SH LIMITATIONS
 Keys reach the program as the plain characters and VT sequences the console produces. A program that asks for
