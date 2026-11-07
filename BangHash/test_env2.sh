@@ -188,7 +188,7 @@ function main {
   fi
 
   echo "==Test many-args"
-  got=$(run_line "-n /bin/echo" $(seq 300) 2>&1 | wc -w)
+  got=$(run_line "-n /bin/echo" $(seq 300) 2>&1 | wc -w | tr -d ' ')   # (macOS pads wc's output)
   if [[ $got != 301 ]]; then
     echo "Test many-args: expected 301 words got '$got'"
     (( errs = errs + 1 ))
@@ -496,7 +496,8 @@ function main {
 
   echo "==Test no-interpreter"
   got=$(run_line "-n" 2>&1 | head -1)
-  if [[ $got != *"No interpreter found" ]]; then
+  # (a kernel that splits the line makes env2 look for the script first, which it cannot find either)
+  if [[ $got != *"No interpreter found" && $got != *"unable to determine script filename" ]]; then
     echo "Test no-interpreter: got '$got'"
     (( errs = errs + 1 ))
   fi

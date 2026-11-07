@@ -17,6 +17,7 @@ use Getopt::Long qw(GetOptions);
 use File::Temp qw(tempdir);
 use File::Basename qw(basename dirname);
 use File::Spec;
+use Config ();
 use Text::ParseWords qw(shellwords);
 use JSON::PP ();
 use POSIX qw(:sys_wait_h);
@@ -191,7 +192,10 @@ my $interp_name = basename($interp);
 my $probe = "$bin/$interp_name";
 {
   open(my $p, '>', $probe) or die "shebanglab: $probe: $!\n";
-  print $p "#!$^X\n";
+  # $^X can be a bare "perl" (macOS), which is no use after #!, so find the full path
+  my $perl = $^X =~ m{/} ? $^X : (which($^X) // $Config::Config{perlpath});
+  $perl = File::Spec->rel2abs($perl) unless $perl =~ m{^/};
+  print $p "#!$perl\n";
   print $p 'print "ARGV ", scalar(@ARGV), ":", join("\x1f", @ARGV), "\n";', "\n";
   close $p;
   chmod 0755, $probe;
@@ -228,7 +232,8 @@ sub run_capture {   # command output (first line) with a time limit; used for ve
 sub env_label {
   my ($path, $name) = @_;
   my $v = run_capture($path, '--version');
-  return $name if !length($v) || $v =~ /No such file|unknown option|invalid option|unrecognized/i;
+  # an env without --version (BSD, macOS, busybox) complains in its own words
+  return $name if !length($v) || $v =~ /No such file|unknown option|invalid option|unrecognized|illegal option|usage/i;
   $v =~ s/^\S+ \(GNU coreutils\) /GNU coreutils /;
   return "$name, $v";
 }
