@@ -125,6 +125,16 @@ Features
     t/naive, make lab builds lab/env2-linux, -naive and -solaris, and shebanglab, KERNEL_SHIM and
     t/fakekernel.pl use the same names.  Solaris, which keeps only the first #! argument, is now its own
     kernel instead of sharing "1" with macOS and being told apart by the compiler flag -DUNAME.
+  * configure is more forgiving: a kernel behaviour it does not recognise now gives a warning and the naive
+    kernel (which re-reads the #! line from the script, right whatever the kernel did) instead of an error.
+    It also probes long #! lines (4000 bytes down to 60) and records KERNEL_LINE_LIMIT in config.hh, the
+    number of bytes the kernel keeps (Linux: 127 before 5.1, 255 since).  A linux-kernel env2 whose line
+    reaches that length takes the full line from the script file, so a long line is no longer cut.  Where the
+    kernel refuses a long line outright nothing can help, but configure says so.
+  * Non-ASCII bytes on the #! line (UTF-8, invalid bytes, Latin-1, control characters) are ordinary
+    characters in all three splitters, and are now tested.  -W was the odd one out with a CR at the end of
+    the line (a script with DOS line endings): classic and shellwords treat CR as white space, wordexp kept it
+    as part of the last word; -W now drops a trailing CR/LF run.
   * wordexp mode is "whatever the C library's wordexp() does": checked against a real sh, it agrees on Cygwin
     (bash) but glibc (2.31 and 2.39, against dash) differs in two ways - an empty pair of quotes touching
     text gives an extra empty word, and a trailing backslash is an error.  Documented in the man page; the

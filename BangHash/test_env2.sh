@@ -293,6 +293,20 @@ function main {
     (( errs = errs + 1 ))
   fi
 
+  ### bytes that are not ASCII letters: every splitter treats them as ordinary characters ###
+  # UTF-8, an invalid byte (\xff), a UTF-8 no-break space (\xc2\xa0, which is not white space
+  # here), a control character; and a CR left at the end by DOS line endings is dropped.
+  echo "==Test bytes-and-cr"
+  for m in C S W; do
+    s=$'-n'"$m"$' /usr/bin/printf [%s] h\xc3\xa9llo a\xffb x\xc2\xa0y c\x01d "\xe6\x97\xa5 \xe6\x9c\xac" end\r'
+    got=$(run_line "$s" 2>&1)
+    want=$'[h\xc3\xa9llo][a\xffb][x\xc2\xa0y][c\x01d][\xe6\x97\xa5 \xe6\x9c\xac][end][/bin/true]'
+    if [[ $got != "$want" ]]; then
+      echo "Test bytes-and-cr -$m: got '$got'"
+      (( errs = errs + 1 ))
+    fi
+  done
+
   ### -W: wordexp mode (a POSIX shell's rules; no command substitution) ###
   # (printf '[%s]' with no newline shows where each argument starts and ends)
 

@@ -79,7 +79,12 @@ static bool has_command_substitution(const string &s) {
 
 argv_t split_wordexp(const char *input) {
 #ifdef HAVE_WORDEXP
-  const string s(input);
+  // A script saved with DOS line endings leaves a CR at the end of the #! line.  The other
+  // two splitters treat CR as white space; a shell would not, so drop a trailing run of
+  // CR/LF here (only at the very end: inside the line a CR is an ordinary character).
+  string line(input);
+  while(!line.empty() && (line[line.size()-1] == '\r' || line[line.size()-1] == '\n')) line.erase(line.size()-1);
+  const string s(line);
   vector<string> words;
 
   // leading words that start with '-' (env2's own flags) are taken literally

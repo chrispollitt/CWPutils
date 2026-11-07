@@ -79,6 +79,44 @@ regex set_dash(const Flags &flags) {
   return(dash);
 }
 
+#ifndef KERNEL_LINE_LIMIT
+#define KERNEL_LINE_LIMIT 0
+#endif
+#if KERNEL == KERNEL_LINUX && KERNEL_LINE_LIMIT > 0
+/****************************************************************
+ * uncut_hashbang_args - the whole interpreter-argument string of a #! line that the
+ *   kernel may have cut short - PRIVATE
+ *   The kernel keeps only the first KERNEL_LINE_LIMIT bytes of a #! line (configure
+ *   measured this).  If what we were given reaches that length, the end may be missing,
+ *   so look at the script file (argv[2], where the kernel puts it) and take the full
+ *   text from there.  Returns a new string, or NULL if the line is not cut (or this is
+ *   not a #! script at all, as when env2 is run by hand).
+ **************************************************************/
+static char *uncut_hashbang_args(const argv_t &o) {
+  if(o.argc < 3) return(NULL);
+  size_t have = strlen(o.argv[0]) + strlen(o.argv[1]) + 3;   // "#!" path " " args
+  if(have < (size_t)KERNEL_LINE_LIMIT) return(NULL);
+  FILE *fh = fopen(o.argv[2], "r");
+  if(fh == NULL) return(NULL);
+  char *line = NULL;
+  size_t sz  = 0;
+  ssize_t r  = getline(&line, &sz, fh);
+  fclose(fh);
+  char *res = NULL;
+  char *sp;
+  if(r >= 5 && strncmp(line, "#!/", 3) == 0 && (sp = strchr(line, ' ')) != NULL) {
+    sp++;
+    char *end = sp + strlen(sp);
+    while(end > sp && (end[-1] == '\n' || end[-1] == '\r')) end--;
+    *end = '\0';
+    size_t n = strlen(o.argv[1]);
+    if(strlen(sp) > n && strncmp(sp, o.argv[1], n) == 0) res = strdup(sp);
+  }
+  free(line);
+  return(res);
+}
+#endif
+
 /****************************************************************
  * read_hashbang - read #! line from script file
  *   input  = ia (argv_t)
@@ -263,6 +301,13 @@ argv_t env2(const Flags &flags, argv_t o) {
   }
 
 #if   KERNEL == KERNEL_LINUX
+#if KERNEL_LINE_LIMIT > 0
+  // the kernel cuts long #! lines: if this one may have been, take it from the script
+  {
+    char *whole = uncut_hashbang_args(o);
+    if(whole != NULL) o.argv[1] = whole;
+  }
+#endif
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_args(flags, o.argv[1]);
 #elif KERNEL == KERNEL_NAIVE || KERNEL == KERNEL_SOLARIS

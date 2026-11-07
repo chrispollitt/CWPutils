@@ -20,10 +20,57 @@ function set_sample_script {
 }
 
 ###################################
+# Find out whether the kernel cuts off (or refuses) a long #! line.
+#   Tries one long argument, ending in the letter E, on lines of decreasing length, until
+#   the script runs.  If the E arrives, the line is not cut.  If it does not, the kernel kept
+#   only part of the line.  Sets $line_limit to the number of bytes of the line (from the
+#   "#!") the kernel is known to keep, or 0 for no limit.  (env2 uses this to know when a
+#   line may have been cut, and reads it from the script instead.)
+# Needs sample_interpreter (the probe) and $PWD; sets and restores the sample script.
+###################################
+function probe_line_limit {
+  local len word out arg line_len found=0
+  local inter="$PWD/sample_interpreter"
+  line_limit=0
+  for len in 4000 1000 500 250 120 60; do
+    word=$(printf '%*s' $len '' | tr ' ' x)
+    set_sample_script "-${word}E"
+    if [[ -n $KERNEL_SHIM ]]; then
+      out=$(perl t/fakekernel.pl "$KERNEL_SHIM" ./sample_script.si 2>/dev/null)
+    else
+      out=$(./sample_script.si 2>/dev/null)
+    fi
+    arg=$(printf '%s\n' "$out" | sed -n "2s/^arg1='\(.*\)'\$/\1/p")   # what the probe got as its first argument
+    line_len=$(( 2 + ${#inter} + 1 + len + 2 ))                      # "#!" + path + " " + "-" + x's + "E"
+    if [[ -z $arg ]]; then
+      continue                                                       # would not run: try a shorter line
+    elif [[ $arg == *E ]]; then
+      line_limit=$(( len == 4000 ? 0 : line_len ))                   # arrived whole
+      found=1
+      break
+    else
+      line_limit=$(( 2 + ${#inter} + 1 + ${#arg} ))                  # cut: this much was kept
+      found=1
+      break
+    fi
+  done
+  if   [[ $found == 0 ]]; then
+    echo "config warning: no long #! line could be tested; assuming a limit of 60 bytes"
+    line_limit=60
+  elif [[ $line_limit == 0 ]]; then
+    echo "config info: kernel does NOT limit the length of the #! line (tried $len bytes)"
+  else
+    echo "config info: kernel limits the #! line to about $line_limit bytes"
+    echo "config info: (env2 will read a line that long from the script itself)"
+  fi
+  set_sample_script '-a:b\ c -d'      # put the usual sample script back
+}
+
+###################################
 # main
 ###################################
 function main {
-  local ks
+  local ks line_limit
 
   # Which make? The Makefile needs GNU make, which is called gmake on Solaris and
   # the BSDs (and plain make elsewhere). MAKE=... overrides.
@@ -131,9 +178,12 @@ _HERE_
     echo "config info: (using the naive kernel, which also works on such a kernel)"
     ks=naive
   else
-    echo "config error: unexpected result from kernel parsing of #! line"
-    echo "${args[1]}"
-    exit 1
+    # Some behaviour we have not met.  Every kernel except linux gets the same treatment:
+    #   env2 reads the #! line from the script itself, whatever the kernel did to it.
+    #   So guess the naive kernel instead of giving up.
+    echo "config warning: unrecognised kernel handling of the #! line: '${args[1]}'"
+    echo "config info: (using the naive kernel, which re-reads the #! line from the script)"
+    ks=naive
   fi
 	# test truncate
   if   [[ ${args[2]} == *".si'" ]]; then
@@ -148,12 +198,14 @@ _HERE_
   elif [[ ${args[2]} == *"d'" ]]; then                      # Perfect!
     echo "config info: kernel does NOT truncate #! line"    
   else
-    echo "config error: unexpected result from kernel parsing of #! line"
-    echo "${args[2]}"
-    exit 1
-  fi	
+    echo "config warning: unrecognised handling of the script name after the #! line: '${args[2]}'"
+    echo "config info: (assuming the kernel does not truncate the #! line)"
+  fi
+  # test the length of the #! line
+  probe_line_limit
 	# create config header
   echo "#define KERNEL KERNEL_$(echo $ks | tr a-z A-Z)" >> config.hh
+  echo "#define KERNEL_LINE_LIMIT $line_limit" >> config.hh
   cat >> config.hh <<'_HERE_'
 #define KERNEL_LINUX   0
 #define KERNEL_NAIVE   1

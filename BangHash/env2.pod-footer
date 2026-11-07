@@ -275,6 +275,11 @@ The shell's rules differ from Perl's in two places: inside double quotes a
 backslash only escapes B<$>, a backquote, B<">, B<\> and a newline (so B<"a\b"> is
 B<a\b>), and a single-quoted string has no escapes at all (so B<'a\'> is B<a\>).
 
+One courtesy: a carriage return at the very end of the line (the mark of a script
+saved with DOS line endings) is dropped, as the other two modes do by treating it as
+white space. A shell would keep it as part of the last word. Inside the line a
+carriage return is an ordinary character.
+
 Commands are never run: B<$(...)> and backquotes are refused with an error,
 because a C<#!> line must not run anything while it is being read. An unquoted
 B<( ) ; & | E<lt> E<gt>> or a newline, and an unclosed quote, are errors too.
