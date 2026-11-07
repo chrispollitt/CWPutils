@@ -144,7 +144,9 @@ the standard the other results are compared with.
 
 =item B<solaris>
 
-The kernel keeps only the first argument and drops the rest.
+The kernel keeps only the first argument and drops the rest. This is Solaris
+(checked on Solaris 11.4). Solaris also refuses to use a script as the interpreter
+of another script: the interpreter on a C<#!> line must be a real program.
 
 =back
 

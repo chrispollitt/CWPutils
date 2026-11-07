@@ -10,9 +10,9 @@
 // output per line:  <U|M>\x1ftoken1\x1ftoken2...
 //   M = the splitter complained (unmatched quote), U = it did not
 
-#ifndef _POSIX_C_SOURCE
+#if !defined(_POSIX_C_SOURCE) && !defined(__sun)
 #define _POSIX_C_SOURCE 200809L   // for fileno() with a strict -std=
-#endif
+#endif                            // (not on Solaris: it clashes with the -D_XPG6 used there)
 #include "env2lib.hh"
 #include <stdio.h>
 #include <string.h>

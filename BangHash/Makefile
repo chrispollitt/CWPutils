@@ -101,7 +101,8 @@ $(PROG2): $(PROG2)_m.o
 
 # splitcheck: test harness for the splitters (classic, shellwords, wordexp) (see t/splitcompare.pl)
 splitcheck: t/splitcheck.cc $(LIBOBJS)
-	$(CXX) $(CXXFLAGS) -I. -o $@ t/splitcheck.cc $(LIBOBJS) $(LDXXLIBS)
+	$(CXX) $(CXXFLAGS) -I. -c -o splitcheck.o t/splitcheck.cc
+	$(LDXX) $(LDXXFLAGS) -o $@ splitcheck.o $(LIBOBJS) $(LDXXLIBS)
 
 # SAMPLES
 $(SAMPLE)1.o: $(SAMPLE).cc
