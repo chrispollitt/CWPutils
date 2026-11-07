@@ -5,17 +5,17 @@ Finding memory bugs
 
 Testing against different kernels
   shebanglab (the top-level tool; see its man page) shows what an interpreter receives from a #! line
-  under each kernel (0, 1, 2, solaris) and helper (direct, env versions, env2 modes).  Run `make lab`
-  first to build the two env2 variants (KERNEL_SPLIT 0 and 1) it needs for the env2 rows.
+  under each kernel (linux, naive, solaris) and helper (direct, env versions, env2 modes).  Run `make lab`
+  first to build the three env2 variants (linux, naive, solaris) it needs for the env2 rows.
   `make test` runs test_shebanglab.sh.
 
-  The older, smaller shim t/fakekernel.pl MODE SCRIPT [ARGS] execs a script's interpreter the way a
-  linux (one arg), naive (split on whitespace) or perfect (shell-like split)
-  kernel would.  Build env2 with the matching KERNEL_SPLIT and call it through
+  The older, smaller shim t/fakekernel.pl KERNEL SCRIPT [ARGS] execs a script's interpreter the way a
+  linux (one arg), naive (split on whitespace), solaris (first arg only) or a made-up "perfect" (shell-like split)
+  kernel would.  Build env2 for the matching kernel (KERNEL in config.hh) and call it through
   the shim to test a flavour you do not have.  A second, real-process emulator
   exists outside this project: gh_cp/experiments/minsh/minsh*.c, a minimal shell that splits #! lines with
   POSIX wordexp() (sh rules, which differ from shellwords; see TODO).  configure honours
-  KERNEL_SHIM=linux|naive|perfect, and test_configure.sh (run by `make test`)
+  KERNEL_SHIM=linux|naive|solaris|perfect, and test_configure.sh (run by `make test`)
   uses that to check what configure picks for each flavour and that env2 works
   with it.  It works in a scratch copy because configure runs `make clean`.
 
@@ -42,4 +42,4 @@ Ideas (not currently needed)
 ====2026-11-06 redesign
 
 Not in scope
-Real kernel binfmt hooks; installing or building other env implementations; changing env2's compile-time KERNEL_SPLIT mechanism.
+Real kernel binfmt hooks; installing or building other env implementations; changing env2's compile-time KERNEL mechanism.

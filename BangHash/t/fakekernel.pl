@@ -1,30 +1,32 @@
 #!/usr/bin/perl
-# fakekernel.pl MODE SCRIPT [ARGS...]
-#   (The full tool is now ../shebanglab; this small shim is what test_configure.sh uses.)
+# fakekernel.pl KERNEL SCRIPT [ARGS...]
+#   (The full tool is ../shebanglab; this small shim is what test_configure.sh uses.)
 #
 # Pretend to be the kernel's #! handler: read the first line of SCRIPT,
 #   "#!/path/to/interpreter  args-string"
-# and exec the interpreter the way a given kind of kernel would.
+# and exec the interpreter the way the given kernel would.  The kernels are the
+# names used everywhere in this project (config.hh has KERNEL_LINUX etc.):
 #
-#   linux   : argv = interp, "args-string", script, ARGS      (KERNEL_SPLIT 0)
+#   linux   : argv = interp, "args-string", script, ARGS     (Linux, Cygwin, FreeBSD)
 #   naive   : args-string split on whitespace only; backslashes
-#             and quotes are NOT honoured                      (KERNEL_SPLIT 1)
-#   perfect : args-string split like a shell: backslashes and
-#             quotes honoured                                  (KERNEL_SPLIT 2)
+#             and quotes are NOT honoured                  (macOS)
 #   solaris : only the first word of args-string is passed on;
-#             the rest is dropped                              (KERNEL_SPLIT 1)
+#             the rest is dropped                          (Solaris)
+#
+# and one made-up kernel, which no known system is, so configure's handling of it can be tested:
+#
+#   perfect : args-string split like a shell: backslashes and
+#             quotes honoured (configure treats it as kernel 1)
 #
 # Then argv = interp, <split args>..., script, ARGS
 #
 # Use: lets us test env2 against each kind of kernel on a machine that only
-# has one.  Build env2 with the matching KERNEL_SPLIT (linux -> 0;
-# naive or perfect -> 1; configure maps a perfect kernel to 1 too).
+# has one.  Build env2 for the matching kernel.
 use strict; use warnings;
 use Text::ParseWords qw(shellwords);
 
 my ($mode, $script, @user) = @ARGV;
-die "usage: $0 linux|naive|perfect|solaris script [args]\n" unless defined $script;
-
+die "usage: $0 linux|naive|solaris|perfect script [args]\n" unless defined $script;
 open(my $fh, '<', $script) or die "$script: $!\n";
 my $line = <$fh>; close $fh;
 chomp $line;

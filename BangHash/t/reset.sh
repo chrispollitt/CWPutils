@@ -15,9 +15,9 @@ if [[ $ans == YES ]]; then
       exit 1
     fi
   done
-  read -p "Copy to ks$ks? " ans
+  read -p "Copy to t/$ks? " ans
   if [[ $ans == YES ]]; then
-    cp exp* ks$ks
+    cp exp* $ks
   fi
 else
   echo "Didn't think so"

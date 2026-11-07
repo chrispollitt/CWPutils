@@ -39,16 +39,16 @@ test check: all splitcheck
 	./test_configure.sh
 	./test_shebanglab.sh
 
-# lab: build env2 for each KERNEL_SPLIT, for shebanglab (it needs the right build per kernel)
+# lab: build env2 for each kernel (linux, naive, solaris), for shebanglab (it needs the right build per kernel)
 lab: env2
-	@for ks in 0 1; do \
-	  d=lab/ks$$ks; mkdir -p $$d; \
+	@for k in linux naive solaris; do \
+	  d=lab/$$k; mkdir -p $$d; \
 	  cp *.cc *.hh Makefile config.mk $$d; \
-	  sed "s/KERNEL_SPLIT [0-9]/KERNEL_SPLIT $$ks/" config.hh > $$d/config.hh; \
+	  sed "s/^#define KERNEL KERNEL_[A-Z]*/#define KERNEL KERNEL_`echo $$k | tr a-z A-Z`/" config.hh > $$d/config.hh; \
 	  $(MAKE) -C $$d env2 || exit 1; \
-	  cp $$d/env2 lab/env2-ks$$ks; \
+	  cp $$d/env2 lab/env2-$$k; \
 	done
-	@echo "built lab/env2-ks0 and lab/env2-ks1"
+	@echo "built lab/env2-linux, lab/env2-naive and lab/env2-solaris"
 
 install: build
 	mkdir -p $(PREFIX)/bin

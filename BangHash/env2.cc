@@ -103,8 +103,8 @@ argv_t read_hashbang(const Flags &flags, argv_t ia) {
   
 #ifdef MAKE_EXE
   start=1;
-#if UNAME == UNAME_SOLARIS
-  // Solaris strips off interpreter args past the first one
+#if KERNEL == KERNEL_SOLARIS
+  // The solaris kernel strips off interpreter args past the first one
   if(regex_search(ia.argv[1], dash)) {
     interpreter = (char *)"found";
     if(Debug>=2) printf("Debug: Solaris stripped interpreter\n");
@@ -262,19 +262,19 @@ argv_t env2(const Flags &flags, argv_t o) {
     rc_read = true;
   }
 
-#if   KERNEL_SPLIT == 0
+#if   KERNEL == KERNEL_LINUX
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_args(flags, o.argv[1]);
-#elif KERNEL_SPLIT == 1
-  // The kernel splits the #! line but mangles escaped spaces, so re-read the
-  //   #! line from the script.  (A kernel that splits it perfectly would not
-  //   need this, but none is known, and this is correct for it too.)
+#elif KERNEL == KERNEL_NAIVE || KERNEL == KERNEL_SOLARIS
+  // The kernel splits (naive) or truncates (solaris) the #! line, so re-read the #! line
+  //   from the script.  (A kernel that splits it perfectly would not need this,
+  //   but none is known, and this is correct for it too.)
   // get hashbang line from script
   o = read_hashbang(flags, o);
   // split up argv[1] (from #! line) ///////////////////////////////////////////
   n = split_args(flags, o.argv[1]);
 #else
-#error "Must define KERNEL_SPLIT as 0 or 1"
+#error "KERNEL must be KERNEL_LINUX, KERNEL_NAIVE or KERNEL_SOLARIS (see config.hh)"
 #endif
 
   // make room in n for the script and user args added below (+2 for script, NULL)

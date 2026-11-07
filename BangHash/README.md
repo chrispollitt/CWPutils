@@ -33,7 +33,7 @@ BUILD AND TEST
 * `make`          - build
 * `make test`     - run the unit tests, plus configure tested against simulated
                     kernels (`make check` is the same; slow under Cygwin)
-* `make lab`      - build env2 for each KERNEL_SPLIT, for shebanglab's env2 rows
+* `make lab`      - build env2 for each kernel (linux, naive, solaris), for shebanglab's env2 rows
 * `make install`  - install under `PREFIX` (default /usr/local)
 * `make clean` / `make distclean` - remove built files / also configure output
 
@@ -42,6 +42,8 @@ See INSTALL for requirements.
 TESTED ON (`./configure && make test` passes; use GNU make, which is `gmake` on Solaris and FreeBSD)
 * Cygwin (g++), Linux (g++, glibc), Solaris 11.4 (Studio `CC`), macOS 10.15 (Apple clang 12),
   FreeBSD 14.1 (clang 18; its kernel, like Linux, does not split the line).
+`./configure` sets KERNEL in config.hh to KERNEL_LINUX = the kernel passes the #! arguments as one string (Linux, Cygwin,
+FreeBSD), KERNEL_NAIVE = it splits on whitespace (macOS), or KERNEL_SOLARIS = it keeps only the first argument (Solaris).
 * The scripts need bash on the PATH (`#!/usr/bin/env bash`), and perl.
 
 SOURCES

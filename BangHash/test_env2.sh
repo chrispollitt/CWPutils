@@ -34,18 +34,18 @@ function set_sample_script {
 # Run env2 the way a #! line would, whatever the kernel does.
 #   run_line 'ARGS-STRING' [script-args ...]
 # ARGS-STRING is what follows "env2" on the #! line (flags, interpreter, its args).
-#   KERNEL_SPLIT 0 (Linux, Cygwin): the kernel hands env2 the whole string as one
+#   kernel linux (Linux, Cygwin, FreeBSD): the kernel hands env2 the whole string as one
 #     argument, so call env2 that way, with /bin/true standing in for the script.
-#   KERNEL_SPLIT 1 (Solaris, macOS): the kernel splits or truncates the line, and
+#   kernels naive and solaris (macOS, Solaris): the kernel splits or truncates the line, and
 #     env2 re-reads it from the script file, so write a real script file with that
 #     line and run it. Its path is replaced by /bin/true in the output, so the
 #     expected results are the same for both.
 # Needs $prog and $ks (set in main) and $target_script and $prog_abs.
-# Returns the exit status; in the KERNEL_SPLIT 1 case stderr is merged into stdout.
+# Returns the exit status; in those cases stderr is merged into stdout.
 ###################################
 function run_line {
   local line="$1"; shift
-  if [[ $ks == 0 ]]; then
+  if [[ $ks == linux ]]; then
     "$prog" "$line" /bin/true "$@"
     return
   fi
@@ -69,7 +69,7 @@ function main {
   local inter=""
   local rc="${prog}rc"
   rc="${rc##*/}"
-  ks=$(perl -lne '/KERNEL_SPLIT (\d+)/ and print $1' config.hh)
+  ks=$(sed -n 's/^#define KERNEL KERNEL_//p' config.hh | tr A-Z a-z)
   
   # make sure . is first in PATH
   export PATH=".:$PATH"
@@ -86,7 +86,7 @@ function main {
   tmphome=$(mktemp -d "${TMPDIR:-/tmp}/env2test.XXXXXX") || { echo "mktemp failed"; exit 1; }
   trap 'rm -rf "$tmphome"' EXIT
   export HOME="$tmphome"
-  target_script="$tmphome/target.si"      # used by run_line when KERNEL_SPLIT is 1
+  target_script="$tmphome/target.si"      # used by run_line when the kernel is not linux
   case $prog in /*) prog_abs=$prog ;; *) prog_abs="$PWD/${prog#./}" ;; esac
   cp t/$rc ~/.$rc
   cp t/$rc ~/.sample_interpreterrc
@@ -212,7 +212,7 @@ function main {
   fi
 
   ### parse_switches() via sample_interpreter3 (arg 1 is the #! args string) ###
-  if [[ $ks == 0 && -x ./sample_interpreter3 ]]; then
+  if [[ $ks == linux && -x ./sample_interpreter3 ]]; then
     echo "==Test switches"
     got=$(./sample_interpreter3 "-ab -c=x perl -w" script 2>&1 | tr '\n' '|')
     exp="switch -a|switch -b|switch -c arg='x'|clusters=2|rest='perl -w'|"

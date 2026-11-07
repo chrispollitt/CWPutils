@@ -109,7 +109,7 @@ _HERE_
 	OIFS="$IFS"
 	IFS='
 '
-  # KERNEL_SHIM=linux|naive|perfect pretends to be a different kernel
+  # KERNEL_SHIM=linux|naive|solaris|perfect pretends to be a different kernel
   #   (used by test_configure.sh); normally the real kernel runs the script
   if [[ -n $KERNEL_SHIM ]]; then
     args=($(perl t/fakekernel.pl "$KERNEL_SHIM" ./sample_script.si 2>/dev/null))
@@ -120,19 +120,16 @@ _HERE_
 	# test split
   if   [[ ${args[1]} == *"d'" ]]; then                      # Linux/FreeBSD
     echo "config info: kernel does NOT split #! line"     
-    echo "#define KERNEL_SPLIT 0" >> config.hh
-    ks=0
+    ks=linux
   elif [[ ${args[1]} == *"b"?"'" ]]; then                   # Solaris/Darwin
     echo "config info: kernel DOES split #! line but does NOT handle escaped whitespace"
-    echo "#define KERNEL_SPLIT 1" >> config.hh
-    ks=1
+    ks=naive
   elif [[ ${args[1]} == *"c'" ]]; then                      # Perfect!
-    # No such kernel is known.  KERNEL_SPLIT 1 (re-read the #! line from the
+    # No such kernel is known.  the naive kernel (re-read the #! line from the
     #   script and split it ourselves) gives the right answer here too.
     echo "config info: kernel DOES split #! line and DOES handle escaped whitespace"
-    echo "config info: (using KERNEL_SPLIT 1, which also works on such a kernel)"
-    echo "#define KERNEL_SPLIT 1" >> config.hh
-    ks=1
+    echo "config info: (using the naive kernel, which also works on such a kernel)"
+    ks=naive
   else
     echo "config error: unexpected result from kernel parsing of #! line"
     echo "${args[1]}"
@@ -140,10 +137,11 @@ _HERE_
   fi
 	# test truncate
   if   [[ ${args[2]} == *".si'" ]]; then
-	  if [[ $ks == 0 ]]; then                                 # Linux/FreeBSD
+	  if [[ $ks == linux ]]; then                                 # Linux/FreeBSD
       echo "config info: kernel does NOT truncate #! line"  
 		else                                                    # Solaris
       echo "config info: kernel DOES truncate #! line"      
+      ks=solaris
 		fi
   elif [[ ${args[2]} == *"c'" ]]; then                      # Darwin
     echo "config info: kernel does NOT truncate #! line"    
@@ -155,7 +153,11 @@ _HERE_
     exit 1
   fi	
 	# create config header
+  echo "#define KERNEL KERNEL_$(echo $ks | tr a-z A-Z)" >> config.hh
   cat >> config.hh <<'_HERE_'
+#define KERNEL_LINUX   0
+#define KERNEL_NAIVE   1
+#define KERNEL_SOLARIS 2
 #define UNAME_LINUX   1
 #define UNAME_CYGWIN  2
 #define UNAME_SOLARIS 3
@@ -164,7 +166,8 @@ _HERE_
 
   # copy correct test exp to t dir #########################
   echo "=== 4. Picking test exp files"
-  cp t/ks$ks/* t
+  # (the solaris kernel truncates the line, but the tests expect what the naive one gives)
+  cp t/$([[ $ks == solaris ]] && echo naive || echo $ks)/* t
 
   # Fix paths ##############################################
   echo "=== 5. Fixing paths"

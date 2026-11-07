@@ -105,7 +105,7 @@ Features
     env -S does.  The expansion happens inside the tokenizer, so quoting is
     respected and values are never split again.  Off unless asked for.
   * shebanglab (new, 1.0): t/fakekernel.pl grew into a proper tool.  Give it a #! line (or a script) and it
-    shows the arguments the interpreter receives under kernels 0, 1, 2 and solaris, through each helper:
+    shows the arguments the interpreter receives under kernels linux, naive and solaris, through each helper:
     direct, every env it can find (plain and -S), and env2 in each mode.  Each result is marked ok or X
     against the intended arguments.  "make lab" builds the env2 variants it needs.
   * Version 2.2 makes the splitter a choice of three modes: -C classic (the original, renamed from
@@ -120,6 +120,11 @@ Features
     Solaris kernel keeps only the first argument and will not run a script as an interpreter; the real
     macOS kernel splits the line without truncating it.  The wordexp-versus-sh test also got about
     six times faster (one fork per string, shorter strings).
+  * The kernels now have names everywhere (linux, naive, solaris) instead of KERNEL_SPLIT 0, 1 and 2:
+    config.hh has "#define KERNEL KERNEL_LINUX" (like UNAME), the expected-output directories are t/linux and
+    t/naive, make lab builds lab/env2-linux, -naive and -solaris, and shebanglab, KERNEL_SHIM and
+    t/fakekernel.pl use the same names.  Solaris, which keeps only the first #! argument, is now its own
+    kernel instead of sharing "1" with macOS and being told apart by the compiler flag -DUNAME.
   * wordexp mode is "whatever the C library's wordexp() does": checked against a real sh, it agrees on Cygwin
     (bash) but glibc (2.31 and 2.39, against dash) differs in two ways - an empty pair of quotes touching
     text gives an extra empty word, and a trailing backslash is an error.  Documented in the man page; the

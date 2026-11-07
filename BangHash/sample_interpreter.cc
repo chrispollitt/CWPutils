@@ -208,7 +208,7 @@ int main(int argc, char **argv) {
   Flags flags;
 
   try {
-#if KERNEL_SPLIT == 1
+#if KERNEL != KERNEL_LINUX
   o = read_hashbang(flags, o);    // get hashbang line from script
 #endif
   e = split_and_merge(flags, o);  // split up argv[1]
@@ -286,7 +286,7 @@ int main(int argc, char **argv) {
 
   Flags flags;                     // only needed by read_hashbang()
   try {
-#if KERNEL_SPLIT == 1
+#if KERNEL != KERNEL_LINUX
     o = read_hashbang(flags, o);   // get the #! line from the script itself
 #endif
     SwitchResult r = parse_switches(o.argv[1], spec);

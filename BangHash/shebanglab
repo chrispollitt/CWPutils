@@ -28,7 +28,7 @@ our $VERSION = '1.0';
 # options
 # ---------------------------------------------------------------------------
 my %opt = (
-  kernels  => '0,1,2',
+  kernels  => 'linux,naive,solaris',
   modes    => 'classic,shellwords,wordexp',
   format   => 'list',
   timeout  => 10,
@@ -48,23 +48,23 @@ Usage: shebanglab [options] SHEBANG|FILE [SCRIPT-ARG ...]
 Shows the arguments the interpreter receives under each kernel and helper.
 
 Options:
-  -k, --kernels LIST   kernels to simulate: 0,1,2,solaris   (default 0,1,2)
-        0 = whole string as one argument (Linux, Cygwin)
-        1 = split on whitespace only (quotes and backslashes ignored)
-        2 = split like a shell (quotes and backslashes honoured)
-        solaris = only the first argument is kept
+  -k, --kernels LIST   kernels to simulate: linux,naive,solaris   (default all three)
+        linux   = whole string as one argument (Linux, Cygwin, FreeBSD)
+        naive   = split on whitespace only, quotes and backslashes ignored (macOS)
+        solaris = only the first argument is kept (Solaris)
       --env LABEL=PATH   add an env(1) to test (repeatable); the env on PATH is always tried
       --find-envs        also try every env-like program on PATH (env, genv, benv, env832 ...)
       --no-env           do not test env
       --env2 PATH        an env2 to use for every kernel
-      --env2-ks0 PATH    an env2 built for KERNEL_SPLIT 0 (used for kernel 0)
-      --env2-ks1 PATH    an env2 built for KERNEL_SPLIT 1 (used for kernels 1, 2, solaris)
+      --env2-linux PATH    an env2 built for the linux kernel
+      --env2-naive PATH    an env2 built for the naive kernel
+      --env2-solaris PATH  an env2 built for the solaris kernel
       --modes LIST       env2 modes to try: classic,shellwords,wordexp  (default: all three)
       --flags LETTERS    extra env2 flags on every env2 row, e.g. a, or E (default none)
       --no-env2          do not test env2
       --no-direct        do not test the plain "direct" line
       --line             SHEBANG is a complete line (#!HELPER args): test exactly that, one row
-      --want 'a|b|c'     the intended arguments (default: what a perfect kernel gives the direct line)
+      --want 'a|b|c'     the intended arguments (default: the line split as a shell would, with the script name last)
       --rc FILE          an env2 rc file to use (default: none; env2 rows run with -n)
       --format FMT       list (default), table or json
       --strict           exit 1 if any cell is not ok
@@ -83,8 +83,9 @@ GetOptions(
   'find-envs'   => \$opt{find_envs},
   'no-env'      => \$opt{no_env},
   'env2=s'      => \$opt{env2},
-  'env2-ks0=s'  => \$opt{env2_ks0},
-  'env2-ks1=s'  => \$opt{env2_ks1},
+  'env2-linux=s'   => \$opt{env2_linux},
+  'env2-naive=s'   => \$opt{env2_naive},
+  'env2-solaris=s' => \$opt{env2_solaris},
   'modes=s'     => \$opt{modes},
   'flags=s'     => \$opt{flags},
   'no-env2'     => \$opt{no_env2},
@@ -154,21 +155,19 @@ my $helper_kind = '';
 # kernels
 # ---------------------------------------------------------------------------
 my %kernel_name = (
-  0       => 'kernel 0 (one argument)',
-  1       => 'kernel 1 (split on whitespace)',
-  2       => 'kernel 2 (shell-like split)',
-  solaris => 'kernel solaris (first argument only)',
+  linux   => 'linux (one argument)',
+  naive   => 'naive (split on whitespace)',
+  solaris => 'solaris (first argument only)',
 );
 my @kernels = grep { length } split(/,/, $opt{kernels});
-for my $k (@kernels) { die "shebanglab: unknown kernel '$k' (use 0, 1, 2, solaris)\n" unless exists $kernel_name{$k} }
+for my $k (@kernels) { die "shebanglab: unknown kernel '$k' (use linux, naive, solaris)\n" unless exists $kernel_name{$k} }
 
 # what the kernel passes as arguments between the helper and the script name
 sub kernel_args {
   my ($k, $str) = @_;
   return () unless length $str;
-  return ($str)                       if $k eq '0';
-  return split(' ', $str)             if $k eq '1';
-  return shellwords($str)             if $k eq '2';
+  return ($str)                       if $k eq 'linux';
+  return split(' ', $str)             if $k eq 'naive';
   if ($k eq 'solaris') { my @w = split(' ', $str); return @w ? ($w[0]) : () }
   die "bad kernel $k";
 }
@@ -270,26 +269,31 @@ unless ($opt{no_env}) {
   }
 }
 
-# env2 builds: KERNEL_SPLIT is fixed when env2 is compiled, so the right build is used per kernel
+# env2 builds: the kernel an env2 is built for is fixed when env2 is compiled, so the right build is used per kernel
 my %env2_for;     # kernel => path
 unless ($opt{no_env2} && $helper_kind ne 'env2') {
   my $here = dirname(File::Spec->rel2abs($0));
   my $find = sub { for my $c (@_) { my $f = which($c); return File::Spec->rel2abs($f) if $f && -x $f } return };
-  my $ks0 = $opt{env2_ks0} // $opt{env2};
-  my $ks1 = $opt{env2_ks1} // $opt{env2};
-  $ks0 //= $find->("$here/lab/env2-ks0");
-  $ks1 //= $find->("$here/lab/env2-ks1");
-  if (!defined $ks0 || !defined $ks1) {
-    # fall back to an env2 next to this script, or on PATH, whichever KERNEL_SPLIT it was built with
+  my %ks;
+  for my $n (qw(linux naive solaris)) { $ks{$n} = $opt{"env2_$n"} // $opt{env2} // $find->("$here/lab/env2-$n") }
+  if (grep { !defined } values %ks) {
+    # fall back to an env2 next to this script, or on PATH, whichever kernel it was built for
     my $one = $find->("$here/env2", 'env2');
     if ($one) {
-      my $built = 0;
-      if (open(my $ch, '<', "$here/config.hh")) { while (<$ch>) { $built = $1 if /KERNEL_SPLIT\s+(\d)/ } close $ch }
-      $ks0 //= $one if $built == 0;
-      $ks1 //= $one if $built == 1;
+      my $built = 'linux';
+      if (open(my $ch, '<', "$here/config.hh")) { while (<$ch>) { $built = lc $1 if /^#define KERNEL KERNEL_(\w+)/ } close $ch }
+      $ks{$built} //= $one;
     }
   }
-  for my $k (@kernels) { $env2_for{$k} = ($k eq '0') ? $ks0 : $ks1 }
+  $env2_for{$_} = $ks{$_} for @kernels;
+  # an env2 row that cannot run is no use: say how to fix it instead of printing n/a cells
+  my @missing = grep { !defined $env2_for{$_} } @kernels;
+  if (@missing) {
+    print STDERR "shebanglab: no env2 built for " . join(', ', @missing) . " (an env2 is built for one kernel only).\n"
+      . "  Run 'make lab' in the BangHash directory to build them all, or name one with --env2-$missing[0],\n"
+      . "  or leave env2 out with --no-env2, or test only the kernels that have a build (--kernels).\n";
+    exit 2;
+  }
 }
 my %mode_flag = (classic => 'C', shellwords => 'S', wordexp => 'W');
 my @modes = grep { length } split(/,/, $opt{modes});
@@ -343,7 +347,7 @@ if (!$opt{line}) {
 my $cell_no = 0;
 sub run_cell {
   my ($helper, $args, $kernel) = @_;
-  return { status => 'n/a', error => 'no env2 built for this kernel (see --env2-ks0/--env2-ks1, make lab)' }
+  return { status => 'n/a', error => "no env2 built for $kernel" }
     unless defined $helper;
 
   my $script = sprintf('%s/script.%d.sh', $tmp, ++$cell_no);
@@ -483,7 +487,7 @@ elsif ($opt{format} eq 'table') {
     print "\n";
   }
   print "\nok = the interpreter received the intended arguments; X = it received something else;\n",
-        "ERR = it never ran (see --format list for the message); n/a = no suitable env2 build.\n";
+        "ERR = it never ran (see --format list for the message).\n";
 }
 else {
   print "Line under test : ", ($from_file ? "$text   (from $from_file)" : $text), "\n";
@@ -500,7 +504,7 @@ else {
     print "\n";
   }
   print "ok = the interpreter received the intended arguments; X = it received something else;\n",
-        "ERR = it never ran; n/a = no suitable env2 build (make lab).\n";
+        "ERR = it never ran.\n";
 }
 
 exit(($opt{strict} && $any_bad) ? 1 : 0);

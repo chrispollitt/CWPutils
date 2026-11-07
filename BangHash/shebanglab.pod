@@ -46,7 +46,7 @@ With B<--line>, I<SHEBANG> is taken to be a complete line that names its own hel
 
 =item B<-k>, B<--kernels> I<LIST>
 
-Comma-separated kernels to simulate (default C<0,1,2>). See B<KERNELS>.
+Comma-separated kernels to simulate (default C<linux,naive,solaris>). See B<KERNELS>.
 
 =item B<--env> I<LABEL>=I<PATH>
 
@@ -68,10 +68,10 @@ Leave out the env rows, the env2 rows, or the plain "direct" row.
 An env2(1) to use for every kernel. See B<ENV2 BUILDS> for why there can be more
 than one.
 
-=item B<--env2-ks0> I<PATH>, B<--env2-ks1> I<PATH>
+=item B<--env2-linux> I<PATH>, B<--env2-naive> I<PATH>, B<--env2-solaris> I<PATH>
 
-An env2 built for C<KERNEL_SPLIT> 0, used for kernel 0, and one built for
-C<KERNEL_SPLIT> 1, used for the other kernels.
+An env2 built for the linux kernel, one built for the naive kernel,
+and one built for the solaris kernel.
 
 =item B<--modes> I<LIST>
 
@@ -94,8 +94,8 @@ I<SHEBANG> is a complete C<#!> line (see B<ARGUMENTS>).
 =item B<--want> I<'a|b|c'>
 
 The intended arguments, separated by C<|>, including the script name as
-C<E<lt>scriptE<gt>>. The default is what a kernel that splits like a shell would
-give the line with no helper.
+C<E<lt>scriptE<gt>>. The default is the line split the way a shell would, which is what most people
+expect.
 
 =item B<--format> I<FORMAT>
 
@@ -125,22 +125,15 @@ Keep the temporary directory (it holds the generated scripts) and print its name
 
 =over 4
 
-=item B<0>
+=item B<linux>
 
 The kernel passes everything after the interpreter name as B<one> argument, spaces
-and all. This is Linux, and Cygwin.
+and all. This is Linux, Cygwin and FreeBSD.
 
-=item B<1>
+=item B<naive>
 
 The kernel splits the text on whitespace only. Quotes and backslashes mean nothing
-to it, so C<x="a b"> becomes two arguments. This is how macOS and Solaris-like
-systems behave when they split at all.
-
-=item B<2>
-
-The kernel splits the text the way a shell does, honouring quotes and backslashes.
-No real system is known to do this, but it is what most people expect, and it is
-the standard the other results are compared with.
+to it, so C<x="a b"> becomes two arguments. This is how macOS behaves.
 
 =item B<solaris>
 
@@ -184,13 +177,14 @@ C<#!env2 -Sn interpreter args>.
 
 =head1 ENV2 BUILDS
 
-env2's C<KERNEL_SPLIT> is fixed when it is compiled: a build for a kernel that does
+env2 is built for one kind of kernel (see F<config.hh>): a build for a kernel that does
 not split cannot work on one that does, and the other way round. So B<shebanglab>
-uses one build for kernel 0 and another for kernels 1, 2 and solaris. If it cannot
-find one for a kernel, that cell shows B<n/a>.
+uses a separate build for each of the kernels (linux, naive, solaris). If it cannot
+find one for a requested kernel it refuses to run and says so; run B<make lab>, or
+leave env2 out with B<--no-env2>, or name fewer kernels with B<--kernels>.
 
-Running B<make lab> in the BangHash source directory builds both, as
-F<lab/env2-ks0> and F<lab/env2-ks1>, and B<shebanglab> finds them there. Otherwise
+Running B<make lab> in the BangHash source directory builds all three, as
+F<lab/env2-linux>, F<lab/env2-naive> and F<lab/env2-solaris>, and B<shebanglab> finds them there. Otherwise
 it uses an env2 next to itself or on PATH, for whichever kernel that was built for.
 
 =head1 OUTPUT
@@ -203,13 +197,11 @@ C<E<lt>scriptE<gt>>. For example:
     Intended args   : [-n][-q][-d][x=a b][<script>]
 
     direct
-      kernel 0  X    [-n -q -d 'x=a b'][<script>]
-      kernel 1  X    [-n][-q][-d]['x=a][b'][<script>]
-      kernel 2  ok   [-n][-q][-d][x=a b][<script>]
+      linux     X    [-n -q -d 'x=a b'][<script>]
+      naive     X    [-n][-q][-d]['x=a][b'][<script>]
 
 The statuses are B<ok> (the interpreter received the intended arguments), B<X> (it
-received something else), B<ERR> (it never ran; the message is shown) and B<n/a>
-(no suitable env2 build).
+received something else), B<ERR> (it never ran; the message is shown).
 
 =head1 EXAMPLES
 
@@ -227,7 +219,7 @@ Compare all the env versions installed on this machine:
 
 Check that a line is portable, in a test:
 
-    shebanglab --strict --format table --kernels 0,1,2 --no-env myscript.pl
+    shebanglab --strict --format table --kernels linux,naive --no-env myscript.pl
 
 =head1 FILES
 
