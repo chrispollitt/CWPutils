@@ -39,6 +39,11 @@ BUILD AND TEST
 
 See INSTALL for requirements.
 
+TESTED ON (`./configure && make test` passes; GNU make is `gmake` on Solaris)
+* Cygwin (g++), Linux (g++, glibc), Solaris 11.4 (Studio `CC`), macOS 10.15 (Apple clang 12).
+* Not tried: the BSDs.  They should behave like Linux (the kernel does not split the line), but
+  note that the scripts use `#!/bin/bash`, and the BSD `make` is not GNU make.
+
 SOURCES
 * array_utils.cc           - split_args() (picks the splitter), join and merge arrays
 * classic.cc               - split_classic(): env2's original splitter (-C)

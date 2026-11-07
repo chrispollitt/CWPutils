@@ -113,6 +113,13 @@ Features
     run).  The classic parser moved to its own file, classic.cc.  Cygwin's wordexp() turned out to
     choke on a first word like -n and to let command substitution through as text, so wordexp.cc handles
     both itself.
+  * Testing 2.2 on real Solaris 11.4 and macOS 10.15 machines (2026-11-06) found what Cygwin and Linux
+    could not: the new tests assumed a kernel that passes the whole #! line as one argument (they now
+    write real scripts where the kernel splits it), -W was silently off under Solaris Studio (no
+    __has_include), configure needed gmake, and shebanglab's probe had "#!perl" on macOS.  The real
+    Solaris kernel keeps only the first argument and will not run a script as an interpreter; the real
+    macOS kernel splits the line without truncating it.  The wordexp-versus-sh test also got about
+    six times faster (one fork per string, shorter strings).
   * wordexp mode is "whatever the C library's wordexp() does": checked against a real sh, it agrees on Cygwin
     (bash) but glibc (2.31 and 2.39, against dash) differs in two ways - an empty pair of quotes touching
     text gives an extra empty word, and a trailing backslash is an error.  Documented in the man page; the
