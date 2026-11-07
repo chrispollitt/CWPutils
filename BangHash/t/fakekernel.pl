@@ -11,6 +11,8 @@
 #             and quotes are NOT honoured                      (KERNEL_SPLIT 1)
 #   perfect : args-string split like a shell: backslashes and
 #             quotes honoured                                  (KERNEL_SPLIT 2)
+#   solaris : only the first word of args-string is passed on;
+#             the rest is dropped                              (KERNEL_SPLIT 1)
 #
 # Then argv = interp, <split args>..., script, ARGS
 #
@@ -21,7 +23,7 @@ use strict; use warnings;
 use Text::ParseWords qw(shellwords);
 
 my ($mode, $script, @user) = @ARGV;
-die "usage: $0 linux|naive|perfect script [args]\n" unless defined $script;
+die "usage: $0 linux|naive|perfect|solaris script [args]\n" unless defined $script;
 
 open(my $fh, '<', $script) or die "$script: $!\n";
 my $line = <$fh>; close $fh;
@@ -34,6 +36,7 @@ my @args;
 if    ($mode eq 'linux')   { @args = length($rest) ? ($rest) : () }
 elsif ($mode eq 'naive')   { @args = split(' ', $rest) }
 elsif ($mode eq 'perfect') { @args = shellwords($rest) }
+elsif ($mode eq 'solaris') { my @w = split(' ', $rest); @args = @w ? ($w[0]) : () }
 else { die "unknown mode '$mode'\n" }
 
 exec { $interp } $interp, @args, $script, @user or die "exec $interp: $!\n";

@@ -39,6 +39,9 @@
 #  if __has_include(<wordexp.h>)
 #    define HAVE_WORDEXP 1
 #  endif
+#elif defined(__sun) || defined(__linux__) || defined(__CYGWIN__) || defined(__APPLE__)
+   // compilers without __has_include (Solaris Studio) on systems known to have wordexp()
+#  define HAVE_WORDEXP 1
 #endif
 
 #ifdef HAVE_WORDEXP

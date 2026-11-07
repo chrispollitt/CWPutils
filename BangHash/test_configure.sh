@@ -12,6 +12,13 @@
 
 errs=0
 src="$PWD"
+host=$(uname -s)
+
+# GNU make is called gmake on Solaris and the BSDs
+if [[ -z $MAKE ]]; then
+  if command -v gmake >/dev/null 2>&1; then MAKE=gmake; else MAKE=make; fi
+fi
+export MAKE
 
 ###################################
 # check_configure MODE EXPECT_KS INFO_REGEX
@@ -51,13 +58,22 @@ function check_configure {
   fi
 
   # and did it say the right thing?
-  if ! grep -Eq "$want_info" "$tmp/configure.log"; then
-    echo "Test configure $mode: configure output does not match /$want_info/"
+  if [[ $(<"$tmp/configure.log") != *"$want_info"* ]]; then
+    echo "Test configure $mode: configure output does not contain '$want_info'"
     (( errs++ ))
   fi
 
+  # An env2 built on Solaris assumes the kernel cuts the #! line after the first
+  # argument; one built anywhere else assumes it does not. So run the scripts
+  # only where the shim and the build agree.
+  if [[ $mode == solaris && $host != SunOS ]] || [[ $mode != solaris && $mode != linux && $host == SunOS ]]; then
+    echo "  (skipping the script runs: the build on this system does not match the $mode shim)"
+    rm -rf "$tmp"
+    return
+  fi
+
   # build env2 for that kernel and run scripts through the shim
-  if ! ( cd "$tmp" && make env2 > make.log 2>&1 ); then
+  if ! ( cd "$tmp" && $MAKE -j4 env2 > make.log 2>&1 ); then
     echo "Test configure $mode: make env2 failed:"
     sed 's/^/    /' "$tmp/make.log" | tail -15
     (( errs++ ))
@@ -83,6 +99,7 @@ function check_configure {
 check_configure linux   0 "kernel does NOT split #! line"
 check_configure naive   1 "kernel DOES split #! line but does NOT handle escaped whitespace"
 check_configure perfect 1 "kernel DOES split #! line and DOES handle escaped whitespace"
+check_configure solaris 1 "kernel DOES truncate #! line"
 
 if [[ $errs != 0 ]]; then echo "**FAIL=$errs**"; exit 1; fi
 exit 0

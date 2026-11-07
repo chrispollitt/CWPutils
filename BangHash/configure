@@ -25,6 +25,12 @@ function set_sample_script {
 function main {
   local ks
 
+  # Which make? The Makefile needs GNU make, which is called gmake on Solaris and
+  # the BSDs (and plain make elsewhere). MAKE=... overrides.
+  if [[ -z $MAKE ]]; then
+    if command -v gmake >/dev/null 2>&1; then MAKE=gmake; else MAKE=make; fi
+  fi
+
   # Create config.mk #######################################
   echo "=== 1. Create config.mk"
   rm -f config.mk
@@ -91,12 +97,12 @@ _HERE_
   echo "=== 2. Cleaning"
   # (clean, not distclean: that would delete the config.mk made in step 1;
   #  config.hh and t/exp* are regenerated below)
-  make clean
+  $MAKE clean
 
   # Test to see kernel behaviour of #! splitting ##########
   echo "=== 3. Testing kernel #! parsing"
   echo "#pragma once" > config.hh
-  make da
+  $MAKE da
   set_sample_script '-a:b\ c -d'
   ln -fs da sample_interpreter
 	declare -a args
@@ -162,7 +168,7 @@ _HERE_
 
   # Fix paths ##############################################
   echo "=== 5. Fixing paths"
-  make fixpaths
+  $MAKE fixpaths
   
 }
 main ${1+"$@"}

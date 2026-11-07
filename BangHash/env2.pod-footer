@@ -305,6 +305,9 @@ These are glibc's behaviour, not B<env2>'s. If they matter, use the default
 shellwords mode, which has neither. B<make test> repeats a shorter version of the
 comparison and accepts these two glibc differences but nothing else.
 
+Other libraries have their own habits. On Solaris 11.4, for example, an unmatched
+double quote is not an error: B<"oops> gives the single argument B<oops>.
+
 =head1 ENVIRONMENT VARIABLES IN THE #! LINE
 
 With the B<E> flag, B<env2> replaces B<${NAME}> with the value of the

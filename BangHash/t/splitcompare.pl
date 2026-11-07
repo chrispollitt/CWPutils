@@ -51,7 +51,7 @@ if ($use_sh) {
   open(my $sf, '>', $script) or die;
   print $sf <<'SH';
 while IFS= read -r line; do
-  out=$( ( eval "set -- $line" || exit 1; printf U; for a in "$@"; do printf '\037%s' "$a"; done ) 2>/dev/null )
+  out=$( { eval "set -- $line" || exit 1; printf U; for a in "$@"; do printf '\037%s' "$a"; done; } 2>/dev/null )
   if [ $? -eq 0 ]; then printf '%s\n' "$out"; else printf 'M\n'; fi
 done
 SH

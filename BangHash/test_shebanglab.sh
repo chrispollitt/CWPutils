@@ -10,6 +10,12 @@
 errs=0
 lab=./shebanglab
 
+# The env2 in this directory is built for one kind of kernel (config.hh); the env2 rows
+# can only be checked for that kernel unless "make lab" has built the other one too.
+hostks=$(perl -lne '/KERNEL_SPLIT (\d+)/ and print $1' config.hh 2>/dev/null)
+hostks=${hostks:-0}
+otherks=$(( 1 - hostks ))
+
 # cells ROW-PREFIX OPTION... LINE : the last three columns (the kernel results) of the first
 # table row that starts with ROW-PREFIX
 function cells {
@@ -55,10 +61,10 @@ got=$($lab --format json --no-env --no-env2 --kernels 0,1,2 "$line" 2>&1 | perl 
   print @bad ? "differs for kernel(s) @bad" : "ok";')
 expect json-args ok "$got"
 
-# env2 (the build in this directory) fixes kernel 0 in every mode
+# env2 (the build in this directory) fixes the kernel it was built for, in every mode
 echo "==Test shebanglab-env2"
 for m in classic shellwords wordexp; do
-  expect "env2-$m" ok "$(lastcell env2 --no-env --no-direct --kernels 0 --modes $m "$line")"
+  expect "env2-$m" ok "$(lastcell env2 --no-env --no-direct --kernels $hostks --modes $m "$line")"
 done
 
 # GNU env -S fixes kernel 0 (one string) but not kernel 1 (quotes already lost)
@@ -74,18 +80,18 @@ fi
 echo "==Test shebanglab-file"
 tmpf=$(mktemp "${TMPDIR:-/tmp}/sbl.XXXXXX")
 printf '#!/usr/bin/env2 -Sn php -n -q\n' > "$tmpf"
-expect file-as-written ok "$(lastcell 'as written' --no-env --no-direct --no-env2 --kernels 0 "$tmpf")"
+expect file-as-written ok "$(lastcell 'as written' --no-env --no-direct --no-env2 --kernels $hostks "$tmpf")"
 rm -f "$tmpf"
 
 # --strict: exit status 1 when something is not ok, 0 when all is
 echo "==Test shebanglab-strict"
-$lab --strict --format table --no-env --no-direct --kernels 0 "$line" >/dev/null 2>&1; expect strict-ok 0 $?
+$lab --strict --format table --no-env --no-direct --kernels $hostks "$line" >/dev/null 2>&1; expect strict-ok 0 $?
 $lab --strict --format table --no-env --no-env2 --kernels 0,1,2 "$line" >/dev/null 2>&1; expect strict-bad 1 $?
 
 # no env2 build for a kernel: n/a (only checkable when "make lab" has not been run)
-if [[ ! -x lab/env2-ks1 && ! -x lab/env2-ks1.exe ]]; then
+if [[ ! -x lab/env2-ks$otherks && ! -x lab/env2-ks$otherks.exe ]]; then
   echo "==Test shebanglab-na"
-  expect na n/a "$(lastcell env2 --no-env --no-direct --kernels 1 --modes shellwords --env2-ks0 ./env2 "$line")"
+  expect na n/a "$(lastcell env2 --no-env --no-direct --kernels $otherks --modes shellwords --env2-ks$hostks ./env2 "$line")"
 fi
 
 # --want overrides the intended arguments
