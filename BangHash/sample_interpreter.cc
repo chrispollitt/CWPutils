@@ -61,9 +61,10 @@ void run_bash(argv_t ia, argv_t sa) {
   sc = load_script(sa.argv[0]);
   // open files
 #if 1
-  FILE *shell  = popen("/bin/bash --norc --noprofile -s", "w");
+  // (bash is found on PATH: it is /usr/local/bin/bash on FreeBSD, not /bin/bash)
+  FILE *shell  = popen("bash --norc --noprofile -s", "w");
 #else
-  FILE *shell  = popen("/bin/bash --norc --noprofile -i", "w");
+  FILE *shell  = popen("bash --norc --noprofile -i", "w");
 #endif
   if(shell == NULL) {
     fprintf(stderr, "%s error: pipe open failed for '%s'\n", Argv0, "bash");

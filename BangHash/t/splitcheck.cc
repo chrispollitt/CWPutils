@@ -10,9 +10,9 @@
 // output per line:  <U|M>\x1ftoken1\x1ftoken2...
 //   M = the splitter complained (unmatched quote), U = it did not
 
-#if !defined(_POSIX_C_SOURCE) && !defined(__sun)
-#define _POSIX_C_SOURCE 200809L   // for fileno() with a strict -std=
-#endif                            // (not on Solaris: it clashes with the -D_XPG6 used there)
+#if !defined(_POSIX_C_SOURCE) && (defined(__linux__) || defined(__CYGWIN__))
+#define _POSIX_C_SOURCE 200809L   // for fileno() with a strict -std= (glibc, Cygwin)
+#endif                            // (not elsewhere: on Solaris it clashes with -D_XPG6, on FreeBSD it hides isascii)
 #include "env2lib.hh"
 #include <stdio.h>
 #include <string.h>

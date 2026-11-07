@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ks=$(perl -lne '/KERNEL_SPLIT (\d+)/ and print $1' ../config.hh)
 
