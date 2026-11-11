@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: ShellCheck (errors only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # -S error keeps this green on day one; raise it to warning as the scripts are cleaned up.
+      # SC2148: BIDeT/v1/netpbm.sh is a sourced snippet with no shebang.
+      - name: ShellCheck
+        run: |
+          git ls-files '*.sh' | grep -v '/BAK/' | xargs shellcheck -S error -e SC2148 -x
+
+  banghash:
+    name: BangHash build and tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        include:
+          # macOS is recorded in BangHash/HISTORY as a tested platform, but a new runner image can break it;
+          # report it without failing the run.
+          - os: macos-latest
+            experimental: true
+    continue-on-error: ${{ matrix.experimental || false }}
+    defaults:
+      run:
+        working-directory: BangHash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: ./configure
+      - name: Build
+        run: make
+      - name: Test
+        run: make test
