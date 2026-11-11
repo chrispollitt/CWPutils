@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: ShellCheck (errors only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # -S error keeps this green on day one; raise it to warning as the scripts are cleaned up.
+      # SC2148: BIDeT/v1/netpbm.sh is a sourced snippet with no shebang.
+      - name: ShellCheck
+        run: |
+          git ls-files '*.sh' | grep -v '/BAK/' | xargs shellcheck -S error -e SC2148 -x
+
+  banghash:
+    name: BangHash build and tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The blocking job: Ubuntu 24.04 (bash 5.2, GNU coreutils).
+          - os: ubuntu-24.04
+          # ubuntu-latest is Ubuntu 26.04 now: its bash 5.3 prints xtrace quoting differently and its
+          # Rust coreutils refuse a symlink named xprog to echo, so two BangHash tests fail there (test
+          # assumptions, not env2). Reported without failing the run until the tests are made portable.
+          - os: ubuntu-latest
+            experimental: true
+          # macOS is recorded in BangHash/HISTORY as a tested platform, but a new runner image can break it.
+          - os: macos-latest
+            experimental: true
+    continue-on-error: ${{ matrix.experimental || false }}
+    defaults:
+      run:
+        working-directory: BangHash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: ./configure
+      - name: Build
+        run: make
+      - name: Test
+        run: make test
