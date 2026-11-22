@@ -1,0 +1,160 @@
+.TH LVGREP 1 "November 2026" "lvgrep 1.0" "User Commands"
+.SH NAME
+lvgrep \- list the files that do not contain a regular expression
+
+.SH SYNOPSIS
+.B lvgrep
+[OPTIONS]
+.I PATTERN
+[FILE|DIR...]
+
+.SH DESCRIPTION
+.B lvgrep
+is the inverse of
+.BR "grep \-l" :
+it reads each
+.I FILE
+and prints the name of every one in which
+.I PATTERN
+does
+.B not
+occur. It is like
+.BR "grep \-L" ,
+but
+.I PATTERN
+is a Python regular expression, a directory search skips version-control directories, and a whole-file
+mode lets the pattern span lines. Typical uses: source files with no copyright notice, scripts with no
+.B #!
+line, pages that never mention a tag.
+
+By default the pattern is matched against one line at a time, so
+.B ^
+and
+.B $
+anchor to a line and the pattern cannot match across a newline. With
+.B \-M
+it is matched against the whole file instead.
+
+Files are read as UTF-8 (undecodable bytes are replaced). A file containing a NUL byte in its first
+8 KiB is taken to be binary and skipped, unless
+.B \-a
+is given. An empty file lacks every pattern and is listed.
+
+Names are printed as given on the command line, or, under a directory, as that directory's name joined
+to the path found below it, in sorted order.
+
+.SH OPTIONS
+.TP
+.B \-i, \-\-ignore\-case
+Case-insensitive matching.
+.TP
+.B \-r, \-\-recursive
+Descend into directories. With no
+.I FILE
+at all,
+.B \-r
+searches the current directory.
+.IR .git ,
+.IR .svn ,
+.I .hg
+and
+.I CVS
+directories are never entered.
+.TP
+.B \-M, \-\-multiline
+Match
+.I PATTERN
+against the whole file at once, so it may span lines
+.RB ( ^
+and
+.B $
+still match at line boundaries). A
+.B .
+does not match a newline unless
+.B \-s
+is also given.
+.TP
+.B \-s, \-\-dotall
+With
+.BR \-M ,
+let
+.B .
+match a newline too.
+.TP
+.B \-a, \-\-text
+Check binary files as well instead of skipping them.
+.TP
+.BI \-\-include= GLOB
+Only check files whose base name matches
+.IR GLOB .
+May be repeated. Applies to files found by
+.BR \-r ;
+a file named on the command line is always checked.
+.TP
+.BI \-\-exclude= GLOB
+Skip files found by
+.B \-r
+whose base name matches
+.IR GLOB .
+May be repeated.
+.TP
+.BI \-\-exclude\-dir= GLOB
+Do not enter directories whose name matches
+.IR GLOB .
+May be repeated.
+.TP
+.B \-0, \-\-null
+End each name with a NUL byte instead of a newline, for
+.BR "xargs \-0" .
+.TP
+.B \-q, \-\-quiet
+Print nothing; only set the exit status.
+.TP
+.B \-h, \-\-help
+Print a usage summary and exit.
+
+.SH EXIT STATUS
+.TP
+.B 0
+At least one file lacking the pattern was found.
+.TP
+.B 1
+Every file checked contains the pattern (or none was checked).
+.TP
+.B 2
+An error: bad pattern, no
+.IR FILE ,
+a directory given without
+.BR \-r ,
+or a file that could not be read. Remaining files are still checked.
+
+.SH EXAMPLES
+Which C files have no copyright notice:
+.RS
+.B lvgrep Copyright *.c
+.RE
+
+Python scripts under the current directory with no
+.B #!
+line:
+.RS
+.B lvgrep \-r \-\-include='*.py' '^#!'
+.RE
+
+HTML files that do not end with a closing tag:
+.RS
+.B lvgrep \-rM '</html>\\s*\\Z' \-\-include='*.html' site/
+.RE
+
+Long-list every file under src that never mentions TODO:
+.RS
+.B lvgrep \-r0 TODO src | xargs \-0 ls \-l
+.RE
+
+.SH AUTHOR
+Chris Pollitt.
+
+.SH SEE ALSO
+.BR grep (1),
+.BR ghgrep (1),
+.BR xargs (1)

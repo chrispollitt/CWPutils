@@ -11,6 +11,7 @@ or bash for `fixperms` and `gitcheck`); no build step or third-party packages ar
 | [`pullout`](#pullout) | Pull a substring out of a stream using before/after context regexes |
 | [`rpullout`](#rpullout) | Like `pullout`, but finds the *last* match before an after-context regex |
 | [`ghgrep`](#ghgrep) | `grep` that also prints the group/section header a match belongs to |
+| [`lvgrep`](#lvgrep) | List the files that do *not* contain a regex (like `grep -L`, with recursion and whole-file matching) |
 | [`tcping`](#tcping) | Time a TCP connect/disconnect and report any welcome banner |
 | [`termprobe`](#termprobe) | Find out what survives the trip between a program and its terminal (colour queries, key and mouse input, ConPTY/ssh damage) |
 | [`wincygterm`](#wincygterm) | Run Cygwin programs on a real pty inside Windows Terminal (fixes OSC colour queries and ncurses input) |
@@ -19,7 +20,7 @@ or bash for `fixperms` and `gitcheck`); no build step or third-party packages ar
 | [`clean-user-cache.ps1`](#clean-user-cacheps1) | Preview or remove old per-user temporary files and browser caches; optionally schedule daily cleanup |
 
 Full details for each tool are in its man page (`cut2.1`, `pullout.1`,
-`rpullout.1`, `ghgrep.1`, `tcping.1`, `termprobe.1`, `wincygterm.1`,
+`rpullout.1`, `ghgrep.1`, `lvgrep.1`, `tcping.1`, `termprobe.1`, `wincygterm.1`,
 `fixperms.1`, `gitcheck.1`); this
 file is a quick-start summary.
 
@@ -114,6 +115,21 @@ ghgrep "System32" handles.txt
 ghgrep -i "listening" netstat.txt
 ghgrep --brackets "ESTABLISHED" ports.txt
 ghgrep --separator="----" "SysWOW64" handles.txt
+```
+
+## lvgrep
+
+The inverse of `grep -l`: prints the names of the files in which a regex
+does *not* occur. Matching is per line by default; `-M` matches the whole
+file so the pattern can span lines. `-r` recurses (skipping `.git`, `.svn`,
+`.hg`, `CVS`), binary files are skipped unless `-a`. Exit status is 0 if any
+file was listed, 1 if every file has the pattern, 2 on error.
+
+```bash
+lvgrep Copyright *.c                          # C files with no copyright notice
+lvgrep -r -i --include='*.py' '^#!'           # Python files under . with no #! line
+lvgrep -rM '</html>\s*\Z' --include='*.html' site/
+lvgrep -r0 TODO src | xargs -0 ls -l          # NUL-separated, for xargs
 ```
 
 ## tcping

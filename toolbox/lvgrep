@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""
+lvgrep - list the files that do NOT contain a regular expression.
+
+Like "grep -L", but with Python regular expressions, recursive search that
+skips version-control directories, and a whole-file mode in which a pattern
+can span lines.
+
+Usage:
+    lvgrep [options] PATTERN [FILE|DIR...]
+
+Options:
+    -i, --ignore-case      Case-insensitive matching
+    -r, --recursive        Search directories recursively (default DIR: .)
+    -M, --multiline        Match against the whole file, so PATTERN may span
+                           lines ("." still stops at a newline unless -s)
+    -s, --dotall           With -M, let "." match a newline too
+    -a, --text             Also check binary files (default: skip them)
+    --include GLOB         Only check files whose name matches GLOB (repeatable)
+    --exclude GLOB         Skip files whose name matches GLOB (repeatable)
+    --exclude-dir GLOB     Skip directories whose name matches GLOB (repeatable;
+                           .git, .svn, .hg and CVS are always skipped)
+    -0, --null             End each name with NUL instead of newline
+    -q, --quiet            Print nothing; only set the exit status
+    -h, --help             Show this help
+
+Exit status: 0 if at least one file lacks the pattern, 1 if every file has it,
+2 on error (bad pattern, unreadable file, usage).
+"""
+
+import argparse
+import fnmatch
+import os
+import re
+import sys
+
+VCS_DIRS = (".git", ".svn", ".hg", "CVS")
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(
+        prog="lvgrep",
+        description="List the files that do NOT contain a regular expression.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=r"""
+Examples:
+    lvgrep 'Copyright' *.c                 C files with no copyright notice
+    lvgrep -r -i --include='*.py' '^#!' .  Python files with no #! line
+    lvgrep -rM '</html>\s*\Z' site/        pages that do not end in </html>
+    lvgrep -r0 TODO . | xargs -0 ls -l
+""",
+    )
+    parser.add_argument("pattern", help="Regex (Python syntax) that files must lack")
+    parser.add_argument("paths", nargs="*", help="Files or directories (default: .  with -r)")
+    parser.add_argument("-i", "--ignore-case", action="store_true", help="Case-insensitive")
+    parser.add_argument("-r", "--recursive", action="store_true", help="Recurse into directories")
+    parser.add_argument("-M", "--multiline", action="store_true",
+                        help="Match against the whole file; PATTERN may span lines")
+    parser.add_argument("-s", "--dotall", action="store_true",
+                        help="With -M, '.' also matches a newline")
+    parser.add_argument("-a", "--text", action="store_true", help="Also check binary files")
+    parser.add_argument("--include", action="append", default=[], metavar="GLOB",
+                        help="Only check files whose name matches GLOB")
+    parser.add_argument("--exclude", action="append", default=[], metavar="GLOB",
+                        help="Skip files whose name matches GLOB")
+    parser.add_argument("--exclude-dir", action="append", default=[], metavar="GLOB",
+                        help="Skip directories whose name matches GLOB")
+    parser.add_argument("-0", "--null", action="store_true", help="NUL-terminate each name")
+    parser.add_argument("-q", "--quiet", action="store_true", help="Print nothing")
+    return parser.parse_args(argv)
+
+
+def name_selected(name, args):
+    """Apply --include / --exclude to a file's base name."""
+    if args.include and not any(fnmatch.fnmatch(name, g) for g in args.include):
+        return False
+    return not any(fnmatch.fnmatch(name, g) for g in args.exclude)
+
+
+def walk(top, args):
+    """Yield the files under directory TOP in sorted order, pruning excluded directories."""
+    skip = list(VCS_DIRS) + args.exclude_dir
+    for root, dirs, files in os.walk(top):
+        dirs[:] = sorted(d for d in dirs if not any(fnmatch.fnmatch(d, g) for g in skip))
+        for f in sorted(files):
+            yield os.path.join(root, f)
+
+
+def is_binary(path):
+    with open(path, "rb") as fh:
+        return b"\0" in fh.read(8192)
+
+
+def has_match(path, regex, whole_file):
+    """True if PATTERN occurs in the file (on a single line, unless whole_file)."""
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        if whole_file:
+            return regex.search(fh.read()) is not None
+        return any(regex.search(line) for line in fh)
+
+
+def main(argv=None):
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+
+    flags = re.MULTILINE
+    if args.ignore_case:
+        flags |= re.IGNORECASE
+    if args.multiline and args.dotall:
+        flags |= re.DOTALL
+    try:
+        regex = re.compile(args.pattern, flags)
+    except re.error as e:
+        print(f"lvgrep: bad pattern: {e}", file=sys.stderr)
+        return 2
+
+    paths = args.paths or (["."] if args.recursive else [])
+    if not paths:
+        print("lvgrep: no FILE given (use -r to search the current directory)", file=sys.stderr)
+        return 2
+
+    # (path, explicitly named by the user) -- a named file is not filtered by --include/--exclude
+    candidates = []
+    errors = False
+    for p in paths:
+        if os.path.isdir(p):
+            if not args.recursive:
+                print(f"lvgrep: {p}: is a directory (use -r)", file=sys.stderr)
+                errors = True
+                continue
+            candidates.extend((f, False) for f in walk(p, args))
+        else:
+            candidates.append((p, True))
+
+    listed = 0
+    end = "\0" if args.null else "\n"
+    out = sys.stdout
+    for path, named in candidates:
+        if not named and not name_selected(os.path.basename(path), args):
+            continue
+        try:
+            if not args.text and is_binary(path):
+                continue
+            found = has_match(path, regex, args.multiline)
+        except OSError as e:
+            print(f"lvgrep: {path}: {e.strerror or e}", file=sys.stderr)
+            errors = True
+            continue
+        if not found:
+            listed += 1
+            if not args.quiet:
+                out.write(path + end)
+    out.flush()
+
+    if errors:
+        return 2
+    return 0 if listed else 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except BrokenPipeError:
+        # Reader (head, xargs ...) closed the pipe early; not an error.
+        try:
+            sys.stdout.close()
+        except Exception:
+            pass
+        sys.exit(0)
