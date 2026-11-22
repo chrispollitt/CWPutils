@@ -1,6 +1,6 @@
 # CWPutils/toolbox - Makefile for a set of standalone CLI utilities.
 #
-# The tools (cut2, pullout, rpullout, ghgrep, tcping, termprobe, wincygterm) are dependency-free
+# The tools (cut2, pullout, rpullout, ghgrep, lvgrep, tcping, termprobe, wincygterm) are dependency-free
 # Python 3 scripts, plus two bash scripts (fixperms, gitcheck), so "build" is just making sure they are
 # executable and syntactically valid; there is nothing to compile.
 
@@ -10,10 +10,10 @@ BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man/man1
 SUDO =
 
-PYBINS   = cut2 pullout rpullout ghgrep tcping termprobe wincygterm
+PYBINS   = cut2 pullout rpullout ghgrep lvgrep tcping termprobe wincygterm
 SHBINS   = fixperms gitcheck
 BINS     = $(PYBINS) $(SHBINS)
-MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1 tcping.1 termprobe.1 wincygterm.1 fixperms.1 gitcheck.1
+MANPAGES = cut2.1 pullout.1 rpullout.1 ghgrep.1 lvgrep.1 tcping.1 termprobe.1 wincygterm.1 fixperms.1 gitcheck.1
 # Symlinks made in BINDIR, as  name:target  (wcdirect is wincygterm's "run on the real console" shim, see wincygterm(1))
 LINKS    = wcdirect:wincygterm
 
